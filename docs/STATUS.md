@@ -77,7 +77,7 @@ Centered, compact Summary/Breakdown boxes remain, with no bottom branding.
 See docs/BUILD_VALIDATION.md for checked fields, image margins and test limits.
 
 The 13 UI wiring gaps found after packaging 0.1.14 are fixed in 0.1.15.
-See [the control wiring audit](docs/CONTROL_WIRING_AUDIT.md) for the original
+See [the control wiring audit](CONTROL_WIRING_AUDIT.md) for the original
 findings and verification of the repaired entry points.
 
 ## Decisions (user-confirmed 2026-10-21)
@@ -117,7 +117,7 @@ findings and verification of the repaired entry points.
       lasso/transform, DXF import/export, PNG/SVG/PDF exports, print preview,
       area breakdown, reference images/geo controls, Options, Subject Info,
       command search and reusable libraries are implemented. See the refreshed
-      `refs/ui-spec/PARITY.md` and all-634-row `feature-audit.json` for exact scope,
+      `docs/PARITY.md` and all-634-row `feature-audit.json` for exact scope,
       native adaptations and explicitly deferred boundaries.
 - [ ] **Disto physical-device acceptance** — explicitly deferred by the user.
       Native BLE software and simulated measurement tests are implemented.

@@ -1,6 +1,6 @@
 # Sketch Rust 0.1.1 — quick manual test
 
-Use a disposable sketch. Files are in this folder.
+Use a disposable sketch. The test files are in [`examples/`](../examples/).
 
 ## Layer import
 

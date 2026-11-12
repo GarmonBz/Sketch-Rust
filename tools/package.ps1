@@ -25,12 +25,12 @@ try {
     Copy-Item -LiteralPath 'docs/BUILD_VALIDATION.md' -Destination (Join-Path $stage 'BUILD_VALIDATION.md') -Force
     Copy-Item -LiteralPath 'docs/CONTROL_WIRING_AUDIT.md' -Destination (Join-Path $stage 'CONTROL_WIRING_AUDIT.md') -Force
     Copy-Item -LiteralPath 'docs/APEX_REPLACEMENT.md' -Destination (Join-Path $stage 'APEX-COMPATIBILITY.md') -Force
-    Copy-Item -LiteralPath 'refs/ui-spec/PARITY.md' -Destination (Join-Path $stage 'FEATURE-AUDIT.md') -Force
-    $packagedAudit = (Get-Content -LiteralPath (Join-Path $stage 'FEATURE-AUDIT.md') -Raw).Replace('../../ACCEPTANCE.md','ACCEPTANCE.md').Replace('docs/DISTO.md','DISTO.md')
+    Copy-Item -LiteralPath 'docs/PARITY.md' -Destination (Join-Path $stage 'FEATURE-AUDIT.md') -Force
+    $packagedAudit = (Get-Content -LiteralPath (Join-Path $stage 'FEATURE-AUDIT.md') -Raw).Replace('../refs/ui-spec/feature-audit.json','feature-audit.json').Replace('(FEATURE_INVENTORY.md)','(feature-inventory.md)')
     Set-Content -LiteralPath (Join-Path $stage 'FEATURE-AUDIT.md') -Value $packagedAudit -Encoding utf8
-    Copy-Item -LiteralPath 'ACCEPTANCE.md' -Destination (Join-Path $stage 'ACCEPTANCE.md') -Force
+    Copy-Item -LiteralPath 'docs/ACCEPTANCE.md' -Destination (Join-Path $stage 'ACCEPTANCE.md') -Force
     Copy-Item -LiteralPath 'refs/ui-spec/feature-audit.json' -Destination (Join-Path $stage 'feature-audit.json') -Force
-    Copy-Item -LiteralPath 'refs/ui-spec/feature-inventory.md' -Destination (Join-Path $stage 'feature-inventory.md') -Force
+    Copy-Item -LiteralPath 'docs/FEATURE_INVENTORY.md' -Destination (Join-Path $stage 'feature-inventory.md') -Force
     $sourceFiles = @('Cargo.toml','Cargo.lock') + @(Get-ChildItem -LiteralPath 'crates','assets' -Recurse -File | ForEach-Object { $_.FullName.Substring($repoRoot.Length + 1) })
     $fingerprints = foreach ($sourceFile in ($sourceFiles | Sort-Object)) {
         "$sourceFile $((Get-FileHash -LiteralPath $sourceFile -Algorithm SHA256).Hash)"

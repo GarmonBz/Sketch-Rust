@@ -143,8 +143,8 @@ Expected: 220+ app tests, 143 core tests, all green.
 
 - `refs/sketch-app.js:1994` — `placeSymbolAt` (original)
 - `refs/sketch-app.js:1799` — `resolveSymbolPlacement` (original)
-- `refs/ui-spec/feature-inventory.md:388-432` — Screen 8 feature inventory (45 rows)
-- `STATUS.md:1009-1050` — P4 symbol placement status (already built in a prior phase; this Screen 8 work is integrating it into the Rust port)
+- `docs/FEATURE_INVENTORY.md:388-432` — Screen 8 feature inventory (45 rows)
+- `docs/STATUS.md:1009-1050` — P4 symbol placement status (already built in a prior phase; this Screen 8 work is integrating it into the Rust port)
 
 ---
 

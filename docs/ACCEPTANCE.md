@@ -1746,7 +1746,7 @@ and separate core run both exited successfully. No user app process was terminat
 
 Suite integration and physical DISTO acceptance remain deferred at user request.
 Release/package provenance and installation checks are recorded in
-[BUILD_VALIDATION.md](docs/BUILD_VALIDATION.md).
+[BUILD_VALIDATION.md](BUILD_VALIDATION.md).
 
 
 ## 2026-10-29 — 0.1.2 symbol-manager fit and live-preview correction
@@ -1778,7 +1778,7 @@ Actions with unmet selection/category prerequisites are disabled.
   0.1.1 evidence, not a new full-suite or pixel-parity claim for 0.1.2.
 
 Suite integration and physical DISTO testing remain deferred. See
-[BUILD_VALIDATION.md](docs/BUILD_VALIDATION.md) for current package provenance.
+[BUILD_VALIDATION.md](BUILD_VALIDATION.md) for current package provenance.
 
 
 ## 2026-10-29 — 0.1.3 deleted-boundary repair
@@ -1812,7 +1812,7 @@ from reusing the newly created polygon's ID.
   correction; earlier full-suite and comparison numbers remain historical evidence.
 
 Current optimized package validation and executable fingerprint are recorded in
-[BUILD_VALIDATION.md](docs/BUILD_VALIDATION.md). Suite integration and physical
+[BUILD_VALIDATION.md](BUILD_VALIDATION.md). Suite integration and physical
 DISTO testing remain deferred.
 
 Additional 0.1.3 check: `e2e_redraw_deleted_boundary_with_remaining_curved_wall_recloses_area` passes. It replaces a straight boundary while another boundary is bowed, verifies the curved edge and curved area are retained, and verifies automatic pen-up. This is one additional unique regression beyond the 69-test run (70 affected tests total, nine repair cases). No production code changed for this additional test.

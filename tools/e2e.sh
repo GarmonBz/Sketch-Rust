@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tools/e2e.sh — the standard acceptance command (ACCEPTANCE.md).
+# tools/e2e.sh — the standard acceptance command (docs/ACCEPTANCE.md).
 #
 # 1. Runs the sketch-app tests, including the headless end-to-end suite
 #    (src/e2e.rs, iced_test Emulator: the real program, scripted input,

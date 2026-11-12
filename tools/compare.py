@@ -1,4 +1,4 @@
-"""tools/compare.py — objective screenshot comparison for ACCEPTANCE.md.
+"""tools/compare.py — objective screenshot comparison for docs/ACCEPTANCE.md.
 
 Usage:
     python tools/compare.py <reference.png> <candidate.png> [--out target/compare]
