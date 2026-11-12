@@ -1,21 +1,50 @@
-MIT License
+Sketch Rust Free Use License 1.0
 
 Copyright (c) 2026 Sketch Rust contributors
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Scope
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+"Software" means the Sketch Rust program, source code, and accompanying
+documentation offered under this license. The conditions below also apply to
+modified versions and other works to the extent they incorporate the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Permission
+
+Anyone may, free of charge, use, copy, study, and modify the Software for any
+purpose, including business and professional work. You may share source and
+binary copies, including modified versions, free of charge under these terms.
+When sharing any part of the Software, include this license, retain applicable
+copyright and license notices, and identify any modifications you made.
+
+Paid appraisal work
+
+You may use the Software in paid appraisal work and other paid professional
+work, and charge for work products you create with it, including sketches,
+floor plans, and appraisal reports. You may use the Software alongside other
+products, including paid products, when the Software is available independently
+and free of charge.
+
+No monetization of the Software
+
+As a condition of this license, you may not directly or indirectly sell, rent,
+license for a fee, or otherwise monetize the Software, in whole or in part,
+including modified versions. This includes charging for copies, access,
+downloads, features, updates, hosting, or Software-specific services. It also
+includes offering the Software as part of a paid bundle or subscription or
+earning advertising, sponsorship, or other revenue specifically from offering
+the Software. The permission for paid work and its outputs above still applies.
+
+Other rights
+
+Third-party materials are governed by their own license terms. Rights already
+granted for earlier versions continue under their original terms. All other
+rights are reserved. Your rights under this license end automatically if you
+violate its conditions.
+
+Warranty and liability
+
+The Software is provided "as is" without express or implied warranties,
+including warranties of merchantability, fitness for a particular purpose,
+and noninfringement. To the extent permitted by law, the copyright holders and
+contributors are not liable for claims, damages, or other liability arising
+from the Software or its use.

@@ -5,7 +5,7 @@ members = ["crates/sketch-core", "crates/sketch-app"]
 [workspace.package]
 version = "0.1.29"
 edition = "2021"
-license = "MIT"
+license-file = "LICENSE"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }

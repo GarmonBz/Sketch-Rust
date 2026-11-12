@@ -21,6 +21,8 @@ try {
     Copy-Item -LiteralPath 'assets/symbols.previous.json' -Destination (Join-Path $stage 'symbols.previous.json') -Force
     Copy-Item -LiteralPath 'docs/SYMBOL_LIBRARY.md' -Destination (Join-Path $stage 'SYMBOL-LIBRARY.md') -Force
     Copy-Item -LiteralPath 'docs/RELEASE_README.txt' -Destination (Join-Path $stage 'README.txt') -Force
+    Copy-Item -LiteralPath 'LICENSE' -Destination (Join-Path $stage 'LICENSE.txt') -Force
+    Copy-Item -LiteralPath 'assets/icons/LICENSE' -Destination (Join-Path $stage 'PHOSPHOR-LICENSE.txt') -Force
     Copy-Item -LiteralPath 'docs/DISTO.md' -Destination (Join-Path $stage 'DISTO.md') -Force
     Copy-Item -LiteralPath 'docs/BUILD_VALIDATION.md' -Destination (Join-Path $stage 'BUILD_VALIDATION.md') -Force
     Copy-Item -LiteralPath 'docs/CONTROL_WIRING_AUDIT.md' -Destination (Join-Path $stage 'CONTROL_WIRING_AUDIT.md') -Force
@@ -31,7 +33,7 @@ try {
     Copy-Item -LiteralPath 'ACCEPTANCE.md' -Destination (Join-Path $stage 'ACCEPTANCE.md') -Force
     Copy-Item -LiteralPath 'refs/ui-spec/feature-audit.json' -Destination (Join-Path $stage 'feature-audit.json') -Force
     Copy-Item -LiteralPath 'refs/ui-spec/feature-inventory.md' -Destination (Join-Path $stage 'feature-inventory.md') -Force
-    $sourceFiles = @('Cargo.toml','Cargo.lock') + @(Get-ChildItem -LiteralPath 'crates','assets' -Recurse -File | ForEach-Object { $_.FullName.Substring($repoRoot.Length + 1) })
+    $sourceFiles = @('Cargo.toml','Cargo.lock','LICENSE') + @(Get-ChildItem -LiteralPath 'crates','assets' -Recurse -File | ForEach-Object { $_.FullName.Substring($repoRoot.Length + 1) })
     $fingerprints = foreach ($sourceFile in ($sourceFiles | Sort-Object)) {
         "$sourceFile $((Get-FileHash -LiteralPath $sourceFile -Algorithm SHA256).Hash)"
     }

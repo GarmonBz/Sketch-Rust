@@ -72,7 +72,7 @@ try {
     $lines += '    </ComponentGroup>', '  </Fragment>', '</Wix>'
     Set-Content -LiteralPath (Join-Path $work 'Files.wxs') -Value $lines -Encoding utf8
 
-    # Licence page: the repository's MIT licence as RTF.
+    # Licence page: the repository licence as RTF.
     $text = (Get-Content -LiteralPath 'LICENSE' -Raw) -replace '\\', '\\\\' -replace '\{', '\{' -replace '\}', '\}'
     $rtf = '{\rtf1\ansi\deff0{\fonttbl{\f0 Segoe UI;}}\f0\fs20 ' + (($text -split "\r?\n\r?\n") -replace "\r?\n", ' ' -join '\par\par ') + '}'
     Set-Content -LiteralPath (Join-Path $work 'License.rtf') -Value $rtf -Encoding ascii

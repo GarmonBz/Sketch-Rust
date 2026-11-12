@@ -77,5 +77,10 @@ against the original app.
 
 ## License
 
-MIT — see [LICENSE](LICENSE). The CADdillo residential symbols are CC0 1.0; the
-Phosphor icons are MIT. See [docs/SYMBOL_LIBRARY.md](docs/SYMBOL_LIBRARY.md).
+Sketch Rust uses the [Sketch Rust Free Use License](LICENSE). Anyone may use,
+modify, and share the program for free, including using it for paid appraisals
+and charging for the resulting sketches and reports. Selling or otherwise
+monetizing the program or modified versions is prohibited.
+
+The [CADdillo residential symbols](docs/SYMBOL_LIBRARY.md) are CC0 1.0.
+The [Phosphor icons](assets/icons/LICENSE) are MIT.

@@ -1,5 +1,9 @@
 Sketch Rust 0.1.29 - Windows x64 native compatibility development build, 2026-11-11
 
+See LICENSE.txt for the Sketch Rust Free Use License. Paid appraisal work is
+permitted. Selling or monetizing the program or modified versions is prohibited.
+See PHOSPHOR-LICENSE.txt and SYMBOL-LIBRARY.md for third-party materials.
+
 Native Apex compatibility is in development. This package is NOT a completed
 universal Apex replacement. Read APEX-COMPATIBILITY.md for supported interfaces,
 verification and remaining gaps before changing a host's sketch provider.
