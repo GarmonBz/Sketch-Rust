@@ -1,0 +1,183 @@
+{
+  "version": "Sketch-Layer",
+  "layers": [
+    {
+      "id": "sample-group",
+      "name": "Import Test",
+      "visible": true,
+      "locked": false,
+      "isGroup": true,
+      "collapsed": false
+    },
+    {
+      "id": "sample-room",
+      "name": "Sample Room",
+      "visible": true,
+      "locked": false,
+      "isGroup": false,
+      "parentId": "sample-group",
+      "areaPolyId": "201"
+    },
+    {
+      "id": "sample-notes",
+      "name": "Sample Notes",
+      "visible": true,
+      "locked": false,
+      "isGroup": false,
+      "parentId": "sample-group"
+    }
+  ],
+  "lines": [
+    {
+      "id": 101,
+      "start": {
+        "x": 4,
+        "y": 4
+      },
+      "end": {
+        "x": 20,
+        "y": 4
+      },
+      "type": "exterior",
+      "layerId": "sample-room",
+      "color": "#2563eb"
+    },
+    {
+      "id": 102,
+      "start": {
+        "x": 20,
+        "y": 4
+      },
+      "end": {
+        "x": 20,
+        "y": 16
+      },
+      "type": "exterior",
+      "layerId": "sample-room",
+      "color": "#2563eb"
+    },
+    {
+      "id": 103,
+      "start": {
+        "x": 20,
+        "y": 16
+      },
+      "end": {
+        "x": 4,
+        "y": 16
+      },
+      "type": "exterior",
+      "layerId": "sample-room",
+      "color": "#2563eb"
+    },
+    {
+      "id": 104,
+      "start": {
+        "x": 4,
+        "y": 16
+      },
+      "end": {
+        "x": 4,
+        "y": 4
+      },
+      "type": "exterior",
+      "layerId": "sample-room",
+      "color": "#2563eb"
+    }
+  ],
+  "polygons": [
+    {
+      "id": 201,
+      "name": "Sample room",
+      "type": "GLA1",
+      "points": [
+        {
+          "x": 4,
+          "y": 4
+        },
+        {
+          "x": 20,
+          "y": 4
+        },
+        {
+          "x": 20,
+          "y": 16
+        },
+        {
+          "x": 4,
+          "y": 16
+        }
+      ],
+      "edges": [
+        {
+          "lineId": 101,
+          "bowAngle": 0
+        },
+        {
+          "lineId": 102,
+          "bowAngle": 0
+        },
+        {
+          "lineId": 103,
+          "bowAngle": 0
+        },
+        {
+          "lineId": 104,
+          "bowAngle": 0
+        }
+      ],
+      "layerId": "sample-room",
+      "measureTo": "center",
+      "factor": 1,
+      "subtractMode": "auto",
+      "fillColor": "#dbeafe",
+      "fillOpacity": 0.25
+    }
+  ],
+  "labels": [
+    {
+      "id": 301,
+      "text": "LAYER IMPORT TEST",
+      "x": 7,
+      "y": 8,
+      "fontFamily": "Arial",
+      "fontSize": 12,
+      "bold": true,
+      "color": "#1d4ed8",
+      "layerId": "sample-notes"
+    },
+    {
+      "id": 302,
+      "text": "16 x 12 ft room",
+      "x": 7,
+      "y": 10,
+      "fontFamily": "Arial",
+      "fontSize": 10,
+      "color": "#000000",
+      "layerId": "sample-notes"
+    }
+  ],
+  "symbols": [
+    {
+      "id": 401,
+      "symbolType": "arrows/north-arrow",
+      "x": 17,
+      "y": 10,
+      "scale": 0.25,
+      "rotation": 0,
+      "wallSnap": "NONE",
+      "layerId": "sample-notes"
+    }
+  ],
+  "dimensionChains": [
+    {
+      "id": 501,
+      "seedLineId": 101,
+      "side": 1,
+      "offset": 2,
+      "showOverall": true,
+      "hiddenSpans": []
+    }
+  ],
+  "customSymbols": {}
+}

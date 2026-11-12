@@ -1,0 +1,170 @@
+{
+  "dialog": "Area Properties (showSelectedAreaProperties)",
+  "box": {
+    "x": 440,
+    "y": 202,
+    "w": 520,
+    "h": 456
+  },
+  "style": {
+    "bg": "#252526",
+    "border": "#3F3F46",
+    "radius": 5,
+    "shadow": "0 16px 46px rgba(0,0,0,.5)",
+    "padding": 12
+  },
+  "close": {
+    "x": 935.3,
+    "y": 215,
+    "w": 11.7,
+    "h": 23,
+    "text": "\u00d7"
+  },
+  "rows": [
+    {
+      "label": "Area",
+      "control": "select",
+      "x": 591,
+      "y": 248,
+      "w": 356,
+      "h": 31,
+      "value": "GLA1",
+      "options": [
+        "<code> - <name> for every area code"
+      ]
+    },
+    {
+      "label": "Name",
+      "control": "text",
+      "x": 591,
+      "y": 289,
+      "w": 356,
+      "h": 29,
+      "value": "First Floor"
+    },
+    {
+      "label": "Factor",
+      "control": "number",
+      "x": 602,
+      "y": 353,
+      "w": 334,
+      "h": 29,
+      "value": "1"
+    },
+    {
+      "radios": [
+        {
+          "label": "Positive",
+          "x": 594,
+          "y": 389
+        },
+        {
+          "label": "Negative",
+          "x": 672.6,
+          "y": 389
+        }
+      ],
+      "size": 13
+    },
+    {
+      "label": "Auto-Subtract",
+      "control": "select",
+      "x": 602,
+      "y": 412,
+      "w": 334,
+      "h": 31,
+      "value": "auto",
+      "options": [
+        "Automatic",
+        "None"
+      ]
+    },
+    {
+      "label": "Measure To",
+      "control": "select",
+      "x": 602,
+      "y": 443,
+      "w": 334,
+      "h": 31,
+      "value": "center",
+      "options": [
+        "Centerline",
+        "Interior Face",
+        "Exterior Face"
+      ]
+    },
+    {
+      "checkboxes": [
+        {
+          "label": "Code",
+          "x": 464,
+          "y": 520,
+          "w": 152.7,
+          "checked": false
+        },
+        {
+          "label": "Name",
+          "x": 623.7,
+          "y": 520,
+          "w": 152.7,
+          "checked": true
+        },
+        {
+          "label": "Dims",
+          "x": 783.3,
+          "y": 520,
+          "w": 152.7,
+          "checked": true
+        },
+        {
+          "label": "Calcs",
+          "x": 464,
+          "y": 543,
+          "w": 152.7,
+          "checked": true
+        },
+        {
+          "label": "Base",
+          "x": 623.7,
+          "y": 543,
+          "w": 152.7,
+          "checked": false
+        },
+        {
+          "label": "Factor",
+          "x": 783.3,
+          "y": 543,
+          "w": 152.7,
+          "checked": false
+        }
+      ],
+      "size": 13
+    },
+    {
+      "label": "Suffix",
+      "control": "text",
+      "x": 602,
+      "y": 568,
+      "w": 334,
+      "h": 29,
+      "value": "sf"
+    }
+  ],
+  "buttons": [
+    {
+      "label": "Cancel",
+      "x": 828.1,
+      "y": 618,
+      "w": 59.5,
+      "h": 27
+    },
+    {
+      "label": "Apply",
+      "x": 895.6,
+      "y": 618,
+      "w": 51.4,
+      "h": 27
+    }
+  ],
+  "measured": "live original at 1400x860, 2026-10-24, one GLA1 area selected"
+}

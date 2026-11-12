@@ -1,0 +1,640 @@
+[
+ {
+  "tag": "div",
+  "id": "file-menu",
+  "cls": "file-menu",
+  "x": 0,
+  "y": 54,
+  "w": 200,
+  "h": 806,
+  "bg": "rgb(37, 37, 38)",
+  "color": "rgb(204, 204, 204)",
+  "font": "16px 400"
+ },
+ {
+  "tag": "div",
+  "cls": "file-menu-left",
+  "x": 0,
+  "y": 54,
+  "w": 200,
+  "h": 806,
+  "bg": "rgb(37, 37, 38)",
+  "color": "rgb(204, 204, 204)",
+  "font": "16px 400"
+ },
+ {
+  "tag": "div",
+  "cls": "file-menu-items",
+  "x": 0,
+  "y": 54,
+  "w": 200,
+  "h": 765,
+  "color": "rgb(204, 204, 204)",
+  "font": "16px 400"
+ },
+ {
+  "tag": "button",
+  "id": "file-new",
+  "cls": "file-menu-item",
+  "x": 0,
+  "y": 64,
+  "w": 200,
+  "h": 36,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "i",
+  "cls": "ph ph-file",
+  "x": 15,
+  "y": 72,
+  "w": 20,
+  "h": 20,
+  "color": "rgb(246, 224, 94)",
+  "font": "20px 400"
+ },
+ {
+  "tag": "span",
+  "text": "New",
+  "x": 45,
+  "y": 75,
+  "w": 26,
+  "h": 15,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "button",
+  "id": "file-open",
+  "cls": "file-menu-item",
+  "x": 0,
+  "y": 100,
+  "w": 200,
+  "h": 36,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "i",
+  "cls": "ph-fill ph-folder-open",
+  "x": 15,
+  "y": 108,
+  "w": 20,
+  "h": 20,
+  "color": "rgb(246, 173, 85)",
+  "font": "20px 400"
+ },
+ {
+  "tag": "span",
+  "text": "Open...",
+  "x": 45,
+  "y": 111,
+  "w": 43,
+  "h": 15,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "button",
+  "id": "file-save",
+  "cls": "file-menu-item",
+  "x": 0,
+  "y": 136,
+  "w": 200,
+  "h": 36,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "i",
+  "cls": "ph-fill ph-floppy-disk",
+  "x": 15,
+  "y": 144,
+  "w": 20,
+  "h": 20,
+  "color": "rgb(99, 179, 237)",
+  "font": "20px 400"
+ },
+ {
+  "tag": "span",
+  "text": "Save",
+  "x": 45,
+  "y": 147,
+  "w": 30,
+  "h": 15,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "button",
+  "id": "file-save-as",
+  "cls": "file-menu-item",
+  "x": 0,
+  "y": 172,
+  "w": 200,
+  "h": 36,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "div",
+  "x": 15,
+  "y": 180,
+  "w": 20,
+  "h": 20,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "i",
+  "cls": "ph-fill ph-floppy-disk",
+  "x": 15,
+  "y": 180,
+  "w": 20,
+  "h": 20,
+  "color": "rgb(93, 174, 132)",
+  "font": "20px 400"
+ },
+ {
+  "tag": "i",
+  "cls": "ph-fill ph-pencil-simple",
+  "x": 27,
+  "y": 192,
+  "w": 12,
+  "h": 12,
+  "color": "rgb(246, 173, 85)",
+  "font": "12px 400"
+ },
+ {
+  "tag": "span",
+  "text": "Save As...",
+  "x": 45,
+  "y": 183,
+  "w": 59,
+  "h": 15,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "div",
+  "cls": "file-menu-divider",
+  "x": 0,
+  "y": 213,
+  "w": 200,
+  "h": 1,
+  "bg": "rgb(63, 63, 70)",
+  "color": "rgb(204, 204, 204)",
+  "font": "16px 400"
+ },
+ {
+  "tag": "button",
+  "id": "file-import",
+  "cls": "file-menu-item",
+  "x": 0,
+  "y": 219,
+  "w": 200,
+  "h": 36,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "i",
+  "cls": "ph-fill ph-arrow-square-in",
+  "x": 15,
+  "y": 227,
+  "w": 20,
+  "h": 20,
+  "color": "rgb(246, 173, 85)",
+  "font": "20px 400"
+ },
+ {
+  "tag": "span",
+  "text": "Import...",
+  "x": 45,
+  "y": 230,
+  "w": 48,
+  "h": 15,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "button",
+  "id": "file-import-cad",
+  "cls": "file-menu-item",
+  "x": 0,
+  "y": 255,
+  "w": 200,
+  "h": 36,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "i",
+  "cls": "ph-fill ph-blueprint",
+  "x": 15,
+  "y": 263,
+  "w": 20,
+  "h": 20,
+  "color": "rgb(183, 148, 244)",
+  "font": "20px 400"
+ },
+ {
+  "tag": "span",
+  "text": "Import CAD...",
+  "x": 45,
+  "y": 266,
+  "w": 79,
+  "h": 15,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "button",
+  "id": "file-export-png",
+  "cls": "file-menu-item",
+  "x": 0,
+  "y": 291,
+  "w": 200,
+  "h": 36,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "i",
+  "cls": "ph-fill ph-arrow-square-out",
+  "x": 15,
+  "y": 299,
+  "w": 20,
+  "h": 20,
+  "color": "rgb(99, 179, 237)",
+  "font": "20px 400"
+ },
+ {
+  "tag": "span",
+  "text": "Export as PNG",
+  "x": 45,
+  "y": 302,
+  "w": 87,
+  "h": 15,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "button",
+  "id": "file-export-svg",
+  "cls": "file-menu-item",
+  "x": 0,
+  "y": 327,
+  "w": 200,
+  "h": 36,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "i",
+  "cls": "ph-fill ph-vector-two",
+  "x": 15,
+  "y": 335,
+  "w": 20,
+  "h": 20,
+  "color": "rgb(104, 211, 145)",
+  "font": "20px 400"
+ },
+ {
+  "tag": "span",
+  "text": "Export as SVG",
+  "x": 45,
+  "y": 338,
+  "w": 86,
+  "h": 15,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "button",
+  "id": "file-export-dxf",
+  "cls": "file-menu-item",
+  "x": 0,
+  "y": 363,
+  "w": 200,
+  "h": 36,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "i",
+  "cls": "ph-fill ph-blueprint",
+  "x": 15,
+  "y": 371,
+  "w": 20,
+  "h": 20,
+  "color": "rgb(183, 148, 244)",
+  "font": "20px 400"
+ },
+ {
+  "tag": "span",
+  "text": "Export as DXF",
+  "x": 45,
+  "y": 374,
+  "w": 85,
+  "h": 15,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "button",
+  "id": "file-export-pdf",
+  "cls": "file-menu-item",
+  "x": 0,
+  "y": 399,
+  "w": 200,
+  "h": 36,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "i",
+  "cls": "ph-fill ph-file-pdf",
+  "x": 15,
+  "y": 407,
+  "w": 20,
+  "h": 20,
+  "color": "rgb(252, 129, 129)",
+  "font": "20px 400"
+ },
+ {
+  "tag": "span",
+  "text": "Export as PDF",
+  "x": 45,
+  "y": 410,
+  "w": 85,
+  "h": 15,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "div",
+  "cls": "file-menu-divider",
+  "x": 0,
+  "y": 440,
+  "w": 200,
+  "h": 1,
+  "bg": "rgb(63, 63, 70)",
+  "color": "rgb(204, 204, 204)",
+  "font": "16px 400"
+ },
+ {
+  "tag": "button",
+  "cls": "file-menu-item",
+  "x": 0,
+  "y": 446,
+  "w": 200,
+  "h": 36,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "i",
+  "cls": "ph-fill ph-envelope-simple",
+  "x": 15,
+  "y": 454,
+  "w": 20,
+  "h": 20,
+  "color": "rgb(246, 173, 85)",
+  "font": "20px 400"
+ },
+ {
+  "tag": "span",
+  "text": "Email...",
+  "x": 45,
+  "y": 457,
+  "w": 43,
+  "h": 15,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "div",
+  "cls": "file-menu-divider",
+  "x": 0,
+  "y": 487,
+  "w": 200,
+  "h": 1,
+  "bg": "rgb(63, 63, 70)",
+  "color": "rgb(204, 204, 204)",
+  "font": "16px 400"
+ },
+ {
+  "tag": "button",
+  "id": "file-recent",
+  "cls": "file-menu-item",
+  "x": 0,
+  "y": 493,
+  "w": 200,
+  "h": 36,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "i",
+  "cls": "ph-fill ph-clock-counter-clockwise",
+  "x": 15,
+  "y": 501,
+  "w": 20,
+  "h": 20,
+  "color": "rgb(99, 179, 237)",
+  "font": "20px 400"
+ },
+ {
+  "tag": "span",
+  "text": "Recent Files",
+  "x": 45,
+  "y": 504,
+  "w": 72,
+  "h": 15,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "i",
+  "cls": "ph ph-caret-right",
+  "x": 171,
+  "y": 504,
+  "w": 14,
+  "h": 14,
+  "color": "rgb(204, 204, 204)",
+  "font": "14px 400"
+ },
+ {
+  "tag": "div",
+  "cls": "file-menu-divider",
+  "x": 0,
+  "y": 534,
+  "w": 200,
+  "h": 1,
+  "bg": "rgb(63, 63, 70)",
+  "color": "rgb(204, 204, 204)",
+  "font": "16px 400"
+ },
+ {
+  "tag": "button",
+  "cls": "file-menu-item",
+  "x": 0,
+  "y": 540,
+  "w": 200,
+  "h": 36,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "i",
+  "cls": "ph-fill ph-printer",
+  "x": 15,
+  "y": 548,
+  "w": 20,
+  "h": 20,
+  "color": "rgb(160, 174, 192)",
+  "font": "20px 400"
+ },
+ {
+  "tag": "span",
+  "text": "Print...",
+  "x": 45,
+  "y": 551,
+  "w": 38,
+  "h": 15,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "button",
+  "cls": "file-menu-item",
+  "x": 0,
+  "y": 576,
+  "w": 200,
+  "h": 36,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "div",
+  "x": 15,
+  "y": 584,
+  "w": 20,
+  "h": 20,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "i",
+  "cls": "ph-fill ph-printer",
+  "x": 15,
+  "y": 584,
+  "w": 20,
+  "h": 20,
+  "color": "rgb(160, 174, 192)",
+  "font": "20px 400"
+ },
+ {
+  "tag": "i",
+  "cls": "ph-fill ph-eye",
+  "x": 27,
+  "y": 596,
+  "w": 12,
+  "h": 12,
+  "color": "rgb(246, 173, 85)",
+  "font": "12px 400"
+ },
+ {
+  "tag": "span",
+  "text": "Print Preview...",
+  "x": 45,
+  "y": 587,
+  "w": 87,
+  "h": 15,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "button",
+  "cls": "file-menu-item",
+  "x": 0,
+  "y": 612,
+  "w": 200,
+  "h": 36,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "i",
+  "cls": "ph ph-layout",
+  "x": 15,
+  "y": 620,
+  "w": 20,
+  "h": 20,
+  "color": "rgb(99, 179, 237)",
+  "font": "20px 400"
+ },
+ {
+  "tag": "span",
+  "text": "Page Layout",
+  "x": 45,
+  "y": 623,
+  "w": 73,
+  "h": 15,
+  "color": "rgb(204, 204, 204)",
+  "font": "13px 400"
+ },
+ {
+  "tag": "div",
+  "cls": "file-menu-footer",
+  "x": 0,
+  "y": 819,
+  "w": 200,
+  "h": 41,
+  "color": "rgb(204, 204, 204)",
+  "font": "16px 400"
+ },
+ {
+  "tag": "button",
+  "cls": "file-btn",
+  "text": "Options",
+  "x": 10,
+  "y": 828,
+  "w": 81,
+  "h": 24,
+  "color": "rgb(204, 204, 204)",
+  "font": "12px 400"
+ },
+ {
+  "tag": "i",
+  "cls": "ph-fill ph-gear",
+  "x": 21,
+  "y": 834,
+  "w": 12,
+  "h": 12,
+  "color": "rgb(99, 179, 237)",
+  "font": "12px 400"
+ },
+ {
+  "tag": "button",
+  "cls": "file-btn",
+  "text": "Exit",
+  "x": 99,
+  "y": 828,
+  "w": 60,
+  "h": 24,
+  "color": "rgb(204, 204, 204)",
+  "font": "12px 400"
+ },
+ {
+  "tag": "i",
+  "cls": "ph-fill ph-power",
+  "x": 110,
+  "y": 834,
+  "w": 12,
+  "h": 12,
+  "color": "rgb(252, 129, 129)",
+  "font": "12px 400"
+ }
+]

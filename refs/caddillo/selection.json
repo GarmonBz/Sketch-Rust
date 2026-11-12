@@ -1,0 +1,1248 @@
+{
+  "source": "https://caddillo.com/downloads/caddillo-blocks-library.zip",
+  "license": "CC0 1.0",
+  "sha256": "2555528a67338f5e13c173e2f15da8d3db0292a10b20c36b6db07597ad528ed9",
+  "downloadDate": "2026-10-31",
+  "sourceDxfCount": 413,
+  "symbols": [
+    {
+      "file": "architectural/DOOR-BIFOLD-48.dxf",
+      "id": "caddillo/door-bifold-48",
+      "category": "caddillo-doors-windows",
+      "categoryName": "CADdillo - Doors & Windows",
+      "label": "Door Bifold 48"
+    },
+    {
+      "file": "architectural/DOOR-BIFOLD-60.dxf",
+      "id": "caddillo/door-bifold-60",
+      "category": "caddillo-doors-windows",
+      "categoryName": "CADdillo - Doors & Windows",
+      "label": "Door Bifold 60"
+    },
+    {
+      "file": "architectural/DOOR-BIFOLD-72.dxf",
+      "id": "caddillo/door-bifold-72",
+      "category": "caddillo-doors-windows",
+      "categoryName": "CADdillo - Doors & Windows",
+      "label": "Door Bifold 72"
+    },
+    {
+      "file": "architectural/DOOR-BIFOLD-96.dxf",
+      "id": "caddillo/door-bifold-96",
+      "category": "caddillo-doors-windows",
+      "categoryName": "CADdillo - Doors & Windows",
+      "label": "Door Bifold 96"
+    },
+    {
+      "file": "architectural/DOOR-BYPASS-72.dxf",
+      "id": "caddillo/door-bypass-72",
+      "category": "caddillo-doors-windows",
+      "categoryName": "CADdillo - Doors & Windows",
+      "label": "Door Bypass 72"
+    },
+    {
+      "file": "architectural/DOOR-DOUBLE-72.dxf",
+      "id": "caddillo/door-double-72",
+      "category": "caddillo-doors-windows",
+      "categoryName": "CADdillo - Doors & Windows",
+      "label": "Door Double 72"
+    },
+    {
+      "file": "architectural/DOOR-DOUBLE-ACTING-30.dxf",
+      "id": "caddillo/door-double-acting-30",
+      "category": "caddillo-doors-windows",
+      "categoryName": "CADdillo - Doors & Windows",
+      "label": "Door Double Acting 30"
+    },
+    {
+      "file": "architectural/DOOR-DOUBLE-ACTING-36.dxf",
+      "id": "caddillo/door-double-acting-36",
+      "category": "caddillo-doors-windows",
+      "categoryName": "CADdillo - Doors & Windows",
+      "label": "Door Double Acting 36"
+    },
+    {
+      "file": "architectural/DOOR-DOUBLE-ACTING-42.dxf",
+      "id": "caddillo/door-double-acting-42",
+      "category": "caddillo-doors-windows",
+      "categoryName": "CADdillo - Doors & Windows",
+      "label": "Door Double Acting 42"
+    },
+    {
+      "file": "architectural/DOOR-GARAGE-108.dxf",
+      "id": "caddillo/door-garage-108",
+      "category": "caddillo-doors-windows",
+      "categoryName": "CADdillo - Doors & Windows",
+      "label": "Door Garage 108"
+    },
+    {
+      "file": "architectural/DOOR-POCKET-32.dxf",
+      "id": "caddillo/door-pocket-32",
+      "category": "caddillo-doors-windows",
+      "categoryName": "CADdillo - Doors & Windows",
+      "label": "Door Pocket 32"
+    },
+    {
+      "file": "architectural/DOOR-SWING-26.dxf",
+      "id": "caddillo/door-swing-26",
+      "category": "caddillo-doors-windows",
+      "categoryName": "CADdillo - Doors & Windows",
+      "label": "Door Swing 26"
+    },
+    {
+      "file": "architectural/DOOR-SWING-28.dxf",
+      "id": "caddillo/door-swing-28",
+      "category": "caddillo-doors-windows",
+      "categoryName": "CADdillo - Doors & Windows",
+      "label": "Door Swing 28"
+    },
+    {
+      "file": "architectural/DOOR-SWING-30.dxf",
+      "id": "caddillo/door-swing-30",
+      "category": "caddillo-doors-windows",
+      "categoryName": "CADdillo - Doors & Windows",
+      "label": "Door Swing 30"
+    },
+    {
+      "file": "architectural/DOOR-SWING-32.dxf",
+      "id": "caddillo/door-swing-32",
+      "category": "caddillo-doors-windows",
+      "categoryName": "CADdillo - Doors & Windows",
+      "label": "Door Swing 32"
+    },
+    {
+      "file": "architectural/DOOR-SWING-36.dxf",
+      "id": "caddillo/door-swing-36",
+      "category": "caddillo-doors-windows",
+      "categoryName": "CADdillo - Doors & Windows",
+      "label": "Door Swing 36"
+    },
+    {
+      "file": "architectural/WINDOW-DOUBLE-60.dxf",
+      "id": "caddillo/window-double-60",
+      "category": "caddillo-doors-windows",
+      "categoryName": "CADdillo - Doors & Windows",
+      "label": "Window Double 60"
+    },
+    {
+      "file": "architectural/WINDOW-SINGLE-24.dxf",
+      "id": "caddillo/window-single-24",
+      "category": "caddillo-doors-windows",
+      "categoryName": "CADdillo - Doors & Windows",
+      "label": "Window Single 24"
+    },
+    {
+      "file": "architectural/WINDOW-SINGLE-36.dxf",
+      "id": "caddillo/window-single-36",
+      "category": "caddillo-doors-windows",
+      "categoryName": "CADdillo - Doors & Windows",
+      "label": "Window Single 36"
+    },
+    {
+      "file": "architectural/WINDOW-SLIDER-72.dxf",
+      "id": "caddillo/window-slider-72",
+      "category": "caddillo-doors-windows",
+      "categoryName": "CADdillo - Doors & Windows",
+      "label": "Window Slider 72"
+    },
+    {
+      "file": "residential-appliance/DRYER-27.dxf",
+      "id": "caddillo/dryer-27",
+      "category": "caddillo-laundry",
+      "categoryName": "CADdillo - Laundry",
+      "label": "Dryer 27"
+    },
+    {
+      "file": "residential-appliance/WASHER-27.dxf",
+      "id": "caddillo/washer-27",
+      "category": "caddillo-laundry",
+      "categoryName": "CADdillo - Laundry",
+      "label": "Washer 27"
+    },
+    {
+      "file": "residential-appliance/WASHER-DRYER-STACKED.dxf",
+      "id": "caddillo/washer-dryer-stacked",
+      "category": "caddillo-laundry",
+      "categoryName": "CADdillo - Laundry",
+      "label": "Washer Dryer Stacked"
+    },
+    {
+      "file": "residential-me/AC-CONDENSER.dxf",
+      "id": "caddillo/ac-condenser",
+      "category": "caddillo-utilities",
+      "categoryName": "CADdillo - Utilities",
+      "label": "Ac Condenser"
+    },
+    {
+      "file": "residential-me/AIR-HANDLER.dxf",
+      "id": "caddillo/air-handler",
+      "category": "caddillo-utilities",
+      "categoryName": "CADdillo - Utilities",
+      "label": "Air Handler"
+    },
+    {
+      "file": "residential-me/CEILING-FAN.dxf",
+      "id": "caddillo/ceiling-fan",
+      "category": "caddillo-utilities",
+      "categoryName": "CADdillo - Utilities",
+      "label": "Ceiling Fan"
+    },
+    {
+      "file": "residential-me/FURNACE.dxf",
+      "id": "caddillo/furnace",
+      "category": "caddillo-utilities",
+      "categoryName": "CADdillo - Utilities",
+      "label": "Furnace"
+    },
+    {
+      "file": "residential-me/HOSE-BIBB.dxf",
+      "id": "caddillo/hose-bibb",
+      "category": "caddillo-utilities",
+      "categoryName": "CADdillo - Utilities",
+      "label": "Hose Bibb"
+    },
+    {
+      "file": "residential-me/SMOKE-DETECTOR.dxf",
+      "id": "caddillo/smoke-detector",
+      "category": "caddillo-utilities",
+      "categoryName": "CADdillo - Utilities",
+      "label": "Smoke Detector"
+    },
+    {
+      "file": "residential-me/THERMOSTAT.dxf",
+      "id": "caddillo/thermostat",
+      "category": "caddillo-utilities",
+      "categoryName": "CADdillo - Utilities",
+      "label": "Thermostat"
+    },
+    {
+      "file": "residential-furniture/ARMCHAIR-30.dxf",
+      "id": "caddillo/armchair-30",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Armchair 30"
+    },
+    {
+      "file": "residential-furniture/BAR-CART-32X18.dxf",
+      "id": "caddillo/bar-cart-32x18",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Bar Cart 32X18"
+    },
+    {
+      "file": "residential-furniture/BED-KING.dxf",
+      "id": "caddillo/bed-king",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Bed King"
+    },
+    {
+      "file": "residential-furniture/BED-TWIN.dxf",
+      "id": "caddillo/bed-twin",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Bed Twin"
+    },
+    {
+      "file": "residential-furniture/BED.dxf",
+      "id": "caddillo/bed",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Bed"
+    },
+    {
+      "file": "residential-furniture/BENCH-48.dxf",
+      "id": "caddillo/bench-48",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Bench 48"
+    },
+    {
+      "file": "residential-furniture/BOOKSHELF-36.dxf",
+      "id": "caddillo/bookshelf-36",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Bookshelf 36"
+    },
+    {
+      "file": "residential-furniture/BOOKSHELF-36X12.dxf",
+      "id": "caddillo/bookshelf-36x12",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Bookshelf 36X12"
+    },
+    {
+      "file": "residential-furniture/BOOKSHELF-48X12.dxf",
+      "id": "caddillo/bookshelf-48x12",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Bookshelf 48X12"
+    },
+    {
+      "file": "residential-furniture/BOOKSHELF-72X12.dxf",
+      "id": "caddillo/bookshelf-72x12",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Bookshelf 72X12"
+    },
+    {
+      "file": "residential-furniture/CHAIR-ACCENT.dxf",
+      "id": "caddillo/chair-accent",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Chair Accent"
+    },
+    {
+      "file": "residential-furniture/CHAIR-DINING.dxf",
+      "id": "caddillo/chair-dining",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Chair Dining"
+    },
+    {
+      "file": "residential-furniture/CHAISE-LOUNGE-65X30-LH.dxf",
+      "id": "caddillo/chaise-lounge-65x30-lh",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Chaise Lounge 65X30 Lh"
+    },
+    {
+      "file": "residential-furniture/CHAISE-LOUNGE-65X30-RH.dxf",
+      "id": "caddillo/chaise-lounge-65x30-rh",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Chaise Lounge 65X30 Rh"
+    },
+    {
+      "file": "residential-furniture/CLOSET-ISLAND-36X60.dxf",
+      "id": "caddillo/closet-island-36x60",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Closet Island 36X60"
+    },
+    {
+      "file": "residential-furniture/CLOSET-ROD-SHELF-48.dxf",
+      "id": "caddillo/closet-rod-shelf-48",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Closet Rod Shelf 48"
+    },
+    {
+      "file": "residential-furniture/CLOSET-ROD-SHELF-72.dxf",
+      "id": "caddillo/closet-rod-shelf-72",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Closet Rod Shelf 72"
+    },
+    {
+      "file": "residential-furniture/CLOSET-ROD-SHELF-84.dxf",
+      "id": "caddillo/closet-rod-shelf-84",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Closet Rod Shelf 84"
+    },
+    {
+      "file": "residential-furniture/CLOSET-ROD-SHELF-96.dxf",
+      "id": "caddillo/closet-rod-shelf-96",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Closet Rod Shelf 96"
+    },
+    {
+      "file": "residential-furniture/CLOSET-ROD-SHELF.dxf",
+      "id": "caddillo/closet-rod-shelf",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Closet Rod Shelf"
+    },
+    {
+      "file": "residential-furniture/COAT-CLOSET-36.dxf",
+      "id": "caddillo/coat-closet-36",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Coat Closet 36"
+    },
+    {
+      "file": "residential-furniture/COAT-HOOKS-36.dxf",
+      "id": "caddillo/coat-hooks-36",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Coat Hooks 36"
+    },
+    {
+      "file": "residential-furniture/COFFEE-TABLE-48X24.dxf",
+      "id": "caddillo/coffee-table-48x24",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Coffee Table 48X24"
+    },
+    {
+      "file": "residential-furniture/COFFEE-TABLE-ANTIQUE-48X24.dxf",
+      "id": "caddillo/coffee-table-antique-48x24",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Coffee Table Antique 48X24"
+    },
+    {
+      "file": "residential-furniture/COFFEE-TABLE-OVAL-48X26.dxf",
+      "id": "caddillo/coffee-table-oval-48x26",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Coffee Table Oval 48X26"
+    },
+    {
+      "file": "residential-furniture/COFFEE-TABLE-ROUND-36.dxf",
+      "id": "caddillo/coffee-table-round-36",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Coffee Table Round 36"
+    },
+    {
+      "file": "residential-furniture/CONSOLE-48X16.dxf",
+      "id": "caddillo/console-48x16",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Console 48X16"
+    },
+    {
+      "file": "residential-furniture/COUCH-84.dxf",
+      "id": "caddillo/couch-84",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Couch 84"
+    },
+    {
+      "file": "residential-furniture/CUBBIES-48.dxf",
+      "id": "caddillo/cubbies-48",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Cubbies 48"
+    },
+    {
+      "file": "residential-furniture/DAYBED-75X39.dxf",
+      "id": "caddillo/daybed-75x39",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Daybed 75X39"
+    },
+    {
+      "file": "residential-furniture/DESK-48.dxf",
+      "id": "caddillo/desk-48",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Desk 48"
+    },
+    {
+      "file": "residential-furniture/DINING-TABLE-96X42.dxf",
+      "id": "caddillo/dining-table-96x42",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Dining Table 96X42"
+    },
+    {
+      "file": "residential-furniture/DINING-TABLE.dxf",
+      "id": "caddillo/dining-table",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Dining Table"
+    },
+    {
+      "file": "residential-furniture/DRESSER-60.dxf",
+      "id": "caddillo/dresser-60",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Dresser 60"
+    },
+    {
+      "file": "residential-furniture/END-TABLE-24.dxf",
+      "id": "caddillo/end-table-24",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "End Table 24"
+    },
+    {
+      "file": "residential-furniture/END-TABLE-ROUND-22.dxf",
+      "id": "caddillo/end-table-round-22",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "End Table Round 22"
+    },
+    {
+      "file": "residential-furniture/FLOOR-LAMP-12.dxf",
+      "id": "caddillo/floor-lamp-12",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Floor Lamp 12"
+    },
+    {
+      "file": "residential-furniture/FOLDING-COUNTER-48.dxf",
+      "id": "caddillo/folding-counter-48",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Folding Counter 48"
+    },
+    {
+      "file": "residential-furniture/FOLDING-SCREEN-72X2.dxf",
+      "id": "caddillo/folding-screen-72x2",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Folding Screen 72X2"
+    },
+    {
+      "file": "residential-furniture/GARAGE-STORAGE-CABINET-36.dxf",
+      "id": "caddillo/garage-storage-cabinet-36",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Garage Storage Cabinet 36"
+    },
+    {
+      "file": "residential-furniture/LAMP-FLOOR.dxf",
+      "id": "caddillo/lamp-floor",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Lamp Floor"
+    },
+    {
+      "file": "residential-furniture/LAMP-TABLE.dxf",
+      "id": "caddillo/lamp-table",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Lamp Table"
+    },
+    {
+      "file": "residential-furniture/LINEN-SHELVES-30.dxf",
+      "id": "caddillo/linen-shelves-30",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Linen Shelves 30"
+    },
+    {
+      "file": "residential-furniture/LOVESEAT-58.dxf",
+      "id": "caddillo/loveseat-58",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Loveseat 58"
+    },
+    {
+      "file": "residential-furniture/NIGHTSTAND-24X18.dxf",
+      "id": "caddillo/nightstand-24x18",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Nightstand 24X18"
+    },
+    {
+      "file": "residential-furniture/NIGHTSTAND.dxf",
+      "id": "caddillo/nightstand",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Nightstand"
+    },
+    {
+      "file": "residential-furniture/OFFICE-CHAIR-26.dxf",
+      "id": "caddillo/office-chair-26",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Office Chair 26"
+    },
+    {
+      "file": "residential-furniture/OTTOMAN-36X24.dxf",
+      "id": "caddillo/ottoman-36x24",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Ottoman 36X24"
+    },
+    {
+      "file": "residential-furniture/OVERHEAD-STORAGE-RACK-48.dxf",
+      "id": "caddillo/overhead-storage-rack-48",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Overhead Storage Rack 48"
+    },
+    {
+      "file": "residential-furniture/PLANT-FLOOR-18.dxf",
+      "id": "caddillo/plant-floor-18",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Plant Floor 18"
+    },
+    {
+      "file": "residential-furniture/PLANT-FLOOR-24.dxf",
+      "id": "caddillo/plant-floor-24",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Plant Floor 24"
+    },
+    {
+      "file": "residential-furniture/PLANT-TABLETOP-10.dxf",
+      "id": "caddillo/plant-tabletop-10",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Plant Tabletop 10"
+    },
+    {
+      "file": "residential-furniture/RUG-5X8.dxf",
+      "id": "caddillo/rug-5x8",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Rug 5X8"
+    },
+    {
+      "file": "residential-furniture/RUG-8X10.dxf",
+      "id": "caddillo/rug-8x10",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Rug 8X10"
+    },
+    {
+      "file": "residential-furniture/RUG-9X12.dxf",
+      "id": "caddillo/rug-9x12",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Rug 9X12"
+    },
+    {
+      "file": "residential-furniture/SECTIONAL-L-96.dxf",
+      "id": "caddillo/sectional-l-96",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Sectional L 96"
+    },
+    {
+      "file": "residential-furniture/SHELVING-UNIT-48.dxf",
+      "id": "caddillo/shelving-unit-48",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Shelving Unit 48"
+    },
+    {
+      "file": "residential-furniture/SIDEBOARD-60.dxf",
+      "id": "caddillo/sideboard-60",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Sideboard 60"
+    },
+    {
+      "file": "residential-furniture/TABLE-2TOP-30X24.dxf",
+      "id": "caddillo/table-2top-30x24",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Table 2Top 30X24"
+    },
+    {
+      "file": "residential-furniture/TABLE-30X48.dxf",
+      "id": "caddillo/table-30x48",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Table 30X48"
+    },
+    {
+      "file": "residential-furniture/TABLE-4TOP-48X30.dxf",
+      "id": "caddillo/table-4top-48x30",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Table 4Top 48X30"
+    },
+    {
+      "file": "residential-furniture/TABLE-OVAL-42X84.dxf",
+      "id": "caddillo/table-oval-42x84",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Table Oval 42X84"
+    },
+    {
+      "file": "residential-furniture/TABLE-ROUND-48.dxf",
+      "id": "caddillo/table-round-48",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Table Round 48"
+    },
+    {
+      "file": "residential-furniture/TABLE-ROUND-60.dxf",
+      "id": "caddillo/table-round-60",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Table Round 60"
+    },
+    {
+      "file": "residential-furniture/TABLE-SQUARE-42.dxf",
+      "id": "caddillo/table-square-42",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Table Square 42"
+    },
+    {
+      "file": "residential-furniture/TV-CONSOLE-60.dxf",
+      "id": "caddillo/tv-console-60",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Tv Console 60"
+    },
+    {
+      "file": "residential-furniture/TV-WALL-65.dxf",
+      "id": "caddillo/tv-wall-65",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Tv Wall 65"
+    },
+    {
+      "file": "residential-furniture/WORKBENCH-72.dxf",
+      "id": "caddillo/workbench-72",
+      "category": "caddillo-furniture",
+      "categoryName": "CADdillo - Furniture",
+      "label": "Workbench 72"
+    },
+    {
+      "file": "kitchen/BAR-COUNTER-STOOLS.dxf",
+      "id": "caddillo/bar-counter-stools",
+      "category": "caddillo-kitchen",
+      "categoryName": "CADdillo - Kitchen",
+      "label": "Bar Counter Stools"
+    },
+    {
+      "file": "kitchen/BAR-COUNTER.dxf",
+      "id": "caddillo/bar-counter",
+      "category": "caddillo-kitchen",
+      "categoryName": "CADdillo - Kitchen",
+      "label": "Bar Counter"
+    },
+    {
+      "file": "kitchen/COOKTOP-30.dxf",
+      "id": "caddillo/cooktop-30",
+      "category": "caddillo-kitchen",
+      "categoryName": "CADdillo - Kitchen",
+      "label": "Cooktop 30"
+    },
+    {
+      "file": "kitchen/COUNTER-RUN.dxf",
+      "id": "caddillo/counter-run",
+      "category": "caddillo-kitchen",
+      "categoryName": "CADdillo - Kitchen",
+      "label": "Counter Run"
+    },
+    {
+      "file": "kitchen/DISHWASHER-24.dxf",
+      "id": "caddillo/dishwasher-24",
+      "category": "caddillo-kitchen",
+      "categoryName": "CADdillo - Kitchen",
+      "label": "Dishwasher 24"
+    },
+    {
+      "file": "kitchen/FRIDGE-36.dxf",
+      "id": "caddillo/fridge-36",
+      "category": "caddillo-kitchen",
+      "categoryName": "CADdillo - Kitchen",
+      "label": "Fridge 36"
+    },
+    {
+      "file": "kitchen/ISLAND-KITCHEN.dxf",
+      "id": "caddillo/island-kitchen",
+      "category": "caddillo-kitchen",
+      "categoryName": "CADdillo - Kitchen",
+      "label": "Island Kitchen"
+    },
+    {
+      "file": "kitchen/MICROWAVE.dxf",
+      "id": "caddillo/microwave",
+      "category": "caddillo-kitchen",
+      "categoryName": "CADdillo - Kitchen",
+      "label": "Microwave"
+    },
+    {
+      "file": "kitchen/PANTRY-SHELVING.dxf",
+      "id": "caddillo/pantry-shelving",
+      "category": "caddillo-kitchen",
+      "categoryName": "CADdillo - Kitchen",
+      "label": "Pantry Shelving"
+    },
+    {
+      "file": "kitchen/RANGE-30.dxf",
+      "id": "caddillo/range-30",
+      "category": "caddillo-kitchen",
+      "categoryName": "CADdillo - Kitchen",
+      "label": "Range 30"
+    },
+    {
+      "file": "kitchen/STOOL-BAR-15.dxf",
+      "id": "caddillo/stool-bar-15",
+      "category": "caddillo-kitchen",
+      "categoryName": "CADdillo - Kitchen",
+      "label": "Stool Bar 15"
+    },
+    {
+      "file": "kitchen/WALL-OVEN.dxf",
+      "id": "caddillo/wall-oven",
+      "category": "caddillo-kitchen",
+      "categoryName": "CADdillo - Kitchen",
+      "label": "Wall Oven"
+    },
+    {
+      "file": "plumbing/SHOWER-60X32.dxf",
+      "id": "caddillo/shower-60x32",
+      "category": "caddillo-bath",
+      "categoryName": "CADdillo - Bath & Plumbing",
+      "label": "Shower 60X32"
+    },
+    {
+      "file": "plumbing/SHOWER-STALL.dxf",
+      "id": "caddillo/shower-stall",
+      "category": "caddillo-bath",
+      "categoryName": "CADdillo - Bath & Plumbing",
+      "label": "Shower Stall"
+    },
+    {
+      "file": "plumbing/SINK-BATH-RECT.dxf",
+      "id": "caddillo/sink-bath-rect",
+      "category": "caddillo-bath",
+      "categoryName": "CADdillo - Bath & Plumbing",
+      "label": "Sink Bath Rect"
+    },
+    {
+      "file": "plumbing/SINK-BATH-RND.dxf",
+      "id": "caddillo/sink-bath-rnd",
+      "category": "caddillo-bath",
+      "categoryName": "CADdillo - Bath & Plumbing",
+      "label": "Sink Bath Rnd"
+    },
+    {
+      "file": "plumbing/SINK-KITCHEN-DBL.dxf",
+      "id": "caddillo/sink-kitchen-dbl",
+      "category": "caddillo-bath",
+      "categoryName": "CADdillo - Bath & Plumbing",
+      "label": "Sink Kitchen Dbl"
+    },
+    {
+      "file": "plumbing/SINK-KITCHEN-SGL.dxf",
+      "id": "caddillo/sink-kitchen-sgl",
+      "category": "caddillo-bath",
+      "categoryName": "CADdillo - Bath & Plumbing",
+      "label": "Sink Kitchen Sgl"
+    },
+    {
+      "file": "plumbing/SINK-LAUNDRY-24.dxf",
+      "id": "caddillo/sink-laundry-24",
+      "category": "caddillo-bath",
+      "categoryName": "CADdillo - Bath & Plumbing",
+      "label": "Sink Laundry 24"
+    },
+    {
+      "file": "plumbing/TOILET.dxf",
+      "id": "caddillo/toilet",
+      "category": "caddillo-bath",
+      "categoryName": "CADdillo - Bath & Plumbing",
+      "label": "Toilet"
+    },
+    {
+      "file": "plumbing/TUB.dxf",
+      "id": "caddillo/tub",
+      "category": "caddillo-bath",
+      "categoryName": "CADdillo - Bath & Plumbing",
+      "label": "Tub"
+    },
+    {
+      "file": "plumbing/WATER-HEATER.dxf",
+      "id": "caddillo/water-heater",
+      "category": "caddillo-bath",
+      "categoryName": "CADdillo - Bath & Plumbing",
+      "label": "Water Heater"
+    },
+    {
+      "file": "commercial-ada/GRAB-BAR-36.dxf",
+      "id": "caddillo/grab-bar-36",
+      "category": "caddillo-stairs",
+      "categoryName": "CADdillo - Stairs & Accessibility",
+      "label": "Grab Bar 36"
+    },
+    {
+      "file": "commercial-ada/GRAB-BAR-42.dxf",
+      "id": "caddillo/grab-bar-42",
+      "category": "caddillo-stairs",
+      "categoryName": "CADdillo - Stairs & Accessibility",
+      "label": "Grab Bar 42"
+    },
+    {
+      "file": "commercial-ada/GUARDRAIL.dxf",
+      "id": "caddillo/guardrail",
+      "category": "caddillo-stairs",
+      "categoryName": "CADdillo - Stairs & Accessibility",
+      "label": "Guardrail"
+    },
+    {
+      "file": "commercial-ada/HANDRAIL.dxf",
+      "id": "caddillo/handrail",
+      "category": "caddillo-stairs",
+      "categoryName": "CADdillo - Stairs & Accessibility",
+      "label": "Handrail"
+    },
+    {
+      "file": "commercial-ada/RAMP.dxf",
+      "id": "caddillo/ramp",
+      "category": "caddillo-stairs",
+      "categoryName": "CADdillo - Stairs & Accessibility",
+      "label": "Ramp"
+    },
+    {
+      "file": "commercial-ada/STAIR-L-36-LH.dxf",
+      "id": "caddillo/stair-l-36-lh",
+      "category": "caddillo-stairs",
+      "categoryName": "CADdillo - Stairs & Accessibility",
+      "label": "Stair L 36 Lh"
+    },
+    {
+      "file": "commercial-ada/STAIR-L-36-RH.dxf",
+      "id": "caddillo/stair-l-36-rh",
+      "category": "caddillo-stairs",
+      "categoryName": "CADdillo - Stairs & Accessibility",
+      "label": "Stair L 36 Rh"
+    },
+    {
+      "file": "commercial-ada/STAIR-L-44-LH.dxf",
+      "id": "caddillo/stair-l-44-lh",
+      "category": "caddillo-stairs",
+      "categoryName": "CADdillo - Stairs & Accessibility",
+      "label": "Stair L 44 Lh"
+    },
+    {
+      "file": "commercial-ada/STAIR-L-44-RH.dxf",
+      "id": "caddillo/stair-l-44-rh",
+      "category": "caddillo-stairs",
+      "categoryName": "CADdillo - Stairs & Accessibility",
+      "label": "Stair L 44 Rh"
+    },
+    {
+      "file": "commercial-ada/STAIR-RUN.dxf",
+      "id": "caddillo/stair-run",
+      "category": "caddillo-stairs",
+      "categoryName": "CADdillo - Stairs & Accessibility",
+      "label": "Stair Run"
+    },
+    {
+      "file": "commercial-ada/STAIR-SPIRAL-60-LH.dxf",
+      "id": "caddillo/stair-spiral-60-lh",
+      "category": "caddillo-stairs",
+      "categoryName": "CADdillo - Stairs & Accessibility",
+      "label": "Stair Spiral 60 Lh"
+    },
+    {
+      "file": "commercial-ada/STAIR-SPIRAL-60-RH.dxf",
+      "id": "caddillo/stair-spiral-60-rh",
+      "category": "caddillo-stairs",
+      "categoryName": "CADdillo - Stairs & Accessibility",
+      "label": "Stair Spiral 60 Rh"
+    },
+    {
+      "file": "commercial-ada/STAIR-SPIRAL-72-LH.dxf",
+      "id": "caddillo/stair-spiral-72-lh",
+      "category": "caddillo-stairs",
+      "categoryName": "CADdillo - Stairs & Accessibility",
+      "label": "Stair Spiral 72 Lh"
+    },
+    {
+      "file": "commercial-ada/STAIR-SPIRAL-72-RH.dxf",
+      "id": "caddillo/stair-spiral-72-rh",
+      "category": "caddillo-stairs",
+      "categoryName": "CADdillo - Stairs & Accessibility",
+      "label": "Stair Spiral 72 Rh"
+    },
+    {
+      "file": "commercial-ada/STAIR-SPIRAL-84-LH.dxf",
+      "id": "caddillo/stair-spiral-84-lh",
+      "category": "caddillo-stairs",
+      "categoryName": "CADdillo - Stairs & Accessibility",
+      "label": "Stair Spiral 84 Lh"
+    },
+    {
+      "file": "commercial-ada/STAIR-SPIRAL-84-RH.dxf",
+      "id": "caddillo/stair-spiral-84-rh",
+      "category": "caddillo-stairs",
+      "categoryName": "CADdillo - Stairs & Accessibility",
+      "label": "Stair Spiral 84 Rh"
+    },
+    {
+      "file": "commercial-ada/STAIR-U-36-LH.dxf",
+      "id": "caddillo/stair-u-36-lh",
+      "category": "caddillo-stairs",
+      "categoryName": "CADdillo - Stairs & Accessibility",
+      "label": "Stair U 36 Lh"
+    },
+    {
+      "file": "commercial-ada/STAIR-U-36-RH.dxf",
+      "id": "caddillo/stair-u-36-rh",
+      "category": "caddillo-stairs",
+      "categoryName": "CADdillo - Stairs & Accessibility",
+      "label": "Stair U 36 Rh"
+    },
+    {
+      "file": "commercial-ada/STAIR-U-44-LH.dxf",
+      "id": "caddillo/stair-u-44-lh",
+      "category": "caddillo-stairs",
+      "categoryName": "CADdillo - Stairs & Accessibility",
+      "label": "Stair U 44 Lh"
+    },
+    {
+      "file": "commercial-ada/STAIR-U-44-RH.dxf",
+      "id": "caddillo/stair-u-44-rh",
+      "category": "caddillo-stairs",
+      "categoryName": "CADdillo - Stairs & Accessibility",
+      "label": "Stair U 44 Rh"
+    },
+    {
+      "file": "commercial-ada/STAIRS.dxf",
+      "id": "caddillo/stairs",
+      "category": "caddillo-stairs",
+      "categoryName": "CADdillo - Stairs & Accessibility",
+      "label": "Stairs"
+    },
+    {
+      "file": "electrical/CHANDELIER.dxf",
+      "id": "caddillo/chandelier",
+      "category": "caddillo-electrical",
+      "categoryName": "CADdillo - Electrical",
+      "label": "Chandelier"
+    },
+    {
+      "file": "electrical/ELEC-LIGHT-CEILING.dxf",
+      "id": "caddillo/elec-light-ceiling",
+      "category": "caddillo-electrical",
+      "categoryName": "CADdillo - Electrical",
+      "label": "Elec Light Ceiling"
+    },
+    {
+      "file": "electrical/ELEC-LIGHT-RECESSED.dxf",
+      "id": "caddillo/elec-light-recessed",
+      "category": "caddillo-electrical",
+      "categoryName": "CADdillo - Electrical",
+      "label": "Elec Light Recessed"
+    },
+    {
+      "file": "electrical/ELEC-OUTLET-220.dxf",
+      "id": "caddillo/elec-outlet-220",
+      "category": "caddillo-electrical",
+      "categoryName": "CADdillo - Electrical",
+      "label": "Elec Outlet 220"
+    },
+    {
+      "file": "electrical/ELEC-OUTLET-DUPLEX.dxf",
+      "id": "caddillo/elec-outlet-duplex",
+      "category": "caddillo-electrical",
+      "categoryName": "CADdillo - Electrical",
+      "label": "Elec Outlet Duplex"
+    },
+    {
+      "file": "electrical/ELEC-PANEL.dxf",
+      "id": "caddillo/elec-panel",
+      "category": "caddillo-electrical",
+      "categoryName": "CADdillo - Electrical",
+      "label": "Elec Panel"
+    },
+    {
+      "file": "electrical/ELEC-SWITCH-SP.dxf",
+      "id": "caddillo/elec-switch-sp",
+      "category": "caddillo-electrical",
+      "categoryName": "CADdillo - Electrical",
+      "label": "Elec Switch Sp"
+    },
+    {
+      "file": "site/CAR-PLAN-6X16.dxf",
+      "id": "caddillo/car-plan-6x16",
+      "category": "caddillo-outdoor",
+      "categoryName": "CADdillo - Outdoor",
+      "label": "Car Plan 6X16"
+    },
+    {
+      "file": "site/DECK.dxf",
+      "id": "caddillo/deck",
+      "category": "caddillo-outdoor",
+      "categoryName": "CADdillo - Outdoor",
+      "label": "Deck"
+    },
+    {
+      "file": "site/DRIVEWAY.dxf",
+      "id": "caddillo/driveway",
+      "category": "caddillo-outdoor",
+      "categoryName": "CADdillo - Outdoor",
+      "label": "Driveway"
+    },
+    {
+      "file": "site/FENCE.dxf",
+      "id": "caddillo/fence",
+      "category": "caddillo-outdoor",
+      "categoryName": "CADdillo - Outdoor",
+      "label": "Fence"
+    },
+    {
+      "file": "site/GATE.dxf",
+      "id": "caddillo/gate",
+      "category": "caddillo-outdoor",
+      "categoryName": "CADdillo - Outdoor",
+      "label": "Gate"
+    },
+    {
+      "file": "site/GRILL-36.dxf",
+      "id": "caddillo/grill-36",
+      "category": "caddillo-outdoor",
+      "categoryName": "CADdillo - Outdoor",
+      "label": "Grill 36"
+    },
+    {
+      "file": "site/HOT-TUB.dxf",
+      "id": "caddillo/hot-tub",
+      "category": "caddillo-outdoor",
+      "categoryName": "CADdillo - Outdoor",
+      "label": "Hot Tub"
+    },
+    {
+      "file": "site/LOUNGE-CHAIR-30.dxf",
+      "id": "caddillo/lounge-chair-30",
+      "category": "caddillo-outdoor",
+      "categoryName": "CADdillo - Outdoor",
+      "label": "Lounge Chair 30"
+    },
+    {
+      "file": "site/MAILBOX.dxf",
+      "id": "caddillo/mailbox",
+      "category": "caddillo-outdoor",
+      "categoryName": "CADdillo - Outdoor",
+      "label": "Mailbox"
+    },
+    {
+      "file": "site/PATIO.dxf",
+      "id": "caddillo/patio",
+      "category": "caddillo-outdoor",
+      "categoryName": "CADdillo - Outdoor",
+      "label": "Patio"
+    },
+    {
+      "file": "site/PLANTER-24-SQ.dxf",
+      "id": "caddillo/planter-24-sq",
+      "category": "caddillo-outdoor",
+      "categoryName": "CADdillo - Outdoor",
+      "label": "Planter 24 Sq"
+    },
+    {
+      "file": "site/PLANTER-24.dxf",
+      "id": "caddillo/planter-24",
+      "category": "caddillo-outdoor",
+      "categoryName": "CADdillo - Outdoor",
+      "label": "Planter 24"
+    },
+    {
+      "file": "site/POOL-KIDNEY.dxf",
+      "id": "caddillo/pool-kidney",
+      "category": "caddillo-outdoor",
+      "categoryName": "CADdillo - Outdoor",
+      "label": "Pool Kidney"
+    },
+    {
+      "file": "site/POOL-OVAL.dxf",
+      "id": "caddillo/pool-oval",
+      "category": "caddillo-outdoor",
+      "categoryName": "CADdillo - Outdoor",
+      "label": "Pool Oval"
+    },
+    {
+      "file": "site/POOL-RECT.dxf",
+      "id": "caddillo/pool-rect",
+      "category": "caddillo-outdoor",
+      "categoryName": "CADdillo - Outdoor",
+      "label": "Pool Rect"
+    },
+    {
+      "file": "site/PORCH-SWING-48.dxf",
+      "id": "caddillo/porch-swing-48",
+      "category": "caddillo-outdoor",
+      "categoryName": "CADdillo - Outdoor",
+      "label": "Porch Swing 48"
+    },
+    {
+      "file": "site/RAISED-BED-4X48.dxf",
+      "id": "caddillo/raised-bed-4x48",
+      "category": "caddillo-outdoor",
+      "categoryName": "CADdillo - Outdoor",
+      "label": "Raised Bed 4X48"
+    },
+    {
+      "file": "site/RETAINING-WALL.dxf",
+      "id": "caddillo/retaining-wall",
+      "category": "caddillo-outdoor",
+      "categoryName": "CADdillo - Outdoor",
+      "label": "Retaining Wall"
+    },
+    {
+      "file": "site/ROCKING-CHAIR-26.dxf",
+      "id": "caddillo/rocking-chair-26",
+      "category": "caddillo-outdoor",
+      "categoryName": "CADdillo - Outdoor",
+      "label": "Rocking Chair 26"
+    },
+    {
+      "file": "site/SHED.dxf",
+      "id": "caddillo/shed",
+      "category": "caddillo-outdoor",
+      "categoryName": "CADdillo - Outdoor",
+      "label": "Shed"
+    },
+    {
+      "file": "site/SHRUB.dxf",
+      "id": "caddillo/shrub",
+      "category": "caddillo-outdoor",
+      "categoryName": "CADdillo - Outdoor",
+      "label": "Shrub"
+    },
+    {
+      "file": "site/SIDEWALK.dxf",
+      "id": "caddillo/sidewalk",
+      "category": "caddillo-outdoor",
+      "categoryName": "CADdillo - Outdoor",
+      "label": "Sidewalk"
+    },
+    {
+      "file": "site/TREE.dxf",
+      "id": "caddillo/tree",
+      "category": "caddillo-outdoor",
+      "categoryName": "CADdillo - Outdoor",
+      "label": "Tree"
+    },
+    {
+      "file": "site/VEHICLE-STALL.dxf",
+      "id": "caddillo/vehicle-stall",
+      "category": "caddillo-outdoor",
+      "categoryName": "CADdillo - Outdoor",
+      "label": "Vehicle Stall"
+    },
+    {
+      "file": "architectural/CHIMNEY-24X48.dxf",
+      "id": "caddillo/chimney-24x48",
+      "category": "caddillo-structure",
+      "categoryName": "CADdillo - Fireplaces & Structure",
+      "label": "Chimney 24X48"
+    },
+    {
+      "file": "architectural/COLUMN-12.dxf",
+      "id": "caddillo/column-12",
+      "category": "caddillo-structure",
+      "categoryName": "CADdillo - Fireplaces & Structure",
+      "label": "Column 12"
+    },
+    {
+      "file": "architectural/COLUMN-8.dxf",
+      "id": "caddillo/column-8",
+      "category": "caddillo-structure",
+      "categoryName": "CADdillo - Fireplaces & Structure",
+      "label": "Column 8"
+    },
+    {
+      "file": "architectural/FIREPLACE-36.dxf",
+      "id": "caddillo/fireplace-36",
+      "category": "caddillo-structure",
+      "categoryName": "CADdillo - Fireplaces & Structure",
+      "label": "Fireplace 36"
+    },
+    {
+      "file": "architectural/FIREPLACE-48.dxf",
+      "id": "caddillo/fireplace-48",
+      "category": "caddillo-structure",
+      "categoryName": "CADdillo - Fireplaces & Structure",
+      "label": "Fireplace 48"
+    }
+  ]
+}

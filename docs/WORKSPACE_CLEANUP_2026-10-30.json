@@ -1,0 +1,38 @@
+{
+  "cleanedAtUtc": "2026-10-30T20:17:41.7993220Z",
+  "workspace": "D:\\AIProjects\\Sketch Rust",
+  "workspaceBytesBefore": 104376785624,
+  "workspaceBytesAfter": 655951008,
+  "logicalBytesRemoved": 103720834616,
+  "diskFreeBytesBefore": 755724525568,
+  "diskFreeBytesAfter": 852995317760,
+  "removedTargets": [
+    "target\\release",
+    "target\\package",
+    "target\\package-smoke",
+    "target\\doc",
+    ".pytest_cache",
+    "dist\\0.1.18",
+    "dist\\0.1.19",
+    "dist\\0.1.20",
+    "dist\\SketchRust-0.1.19-native-preview-2026-10-30-windows-x64.zip",
+    "dist\\SketchRust-0.1.19-native-preview-2026-10-30-windows-x64.zip.sha256",
+    "dist\\SketchRust-0.1.20-native-preview-2026-10-30-windows-x64.zip",
+    "dist\\SketchRust-0.1.20-native-preview-2026-10-30-windows-x64.zip.sha256"
+  ],
+  "retainedLockedFile": "target\\debug\\deps\\sketch_app-6eb1867eb8f037b7.exe",
+  "retainedLockedFileBytes": 64151040,
+  "protectedBuilds": [
+    "dist\\0.1.22",
+    "dist\\0.1.21"
+  ],
+  "protectedFilesVerified": 22,
+  "hostIntegration": "D:\\AIProjects\\Sketch Rust\\dist\\0.1.22\\sketch-app.exe",
+  "preserved": [
+    "Source code and Git history",
+    "Sketch documents and examples",
+    "Validation logs, receipts and screenshots",
+    "Current and previous portable archives",
+    "Existing root dist installation"
+  ]
+}
