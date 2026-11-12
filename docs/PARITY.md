@@ -57,7 +57,7 @@ All 634 inventory rows are classified. The old ~495/634 and ~88% estimates are r
 
 ## Remaining boundaries
 
-- Disto physical-device validation is deferred at the user's request. See docs/DISTO.md.
+- Disto physical-device validation is deferred at the user's request. See [DISTO.md](DISTO.md).
 - Symbol additions support DXF and symbol JSON. Binary DWG requires conversion to DXF; no native DWG decoder is advertised.
 - Parent-suite embedding/report-bridge hooks and hidden programmatic commands are outside the standalone UI; see the row ledger for exact IDs.
 - Native pickers and lists, cursor artwork, dialog measurements, tooltips, animation and some swatch previews differ visually. Options and all other dialogs are not universally pixel-certified. Existing reference differences are recorded in ACCEPTANCE.md.
@@ -65,9 +65,9 @@ All 634 inventory rows are classified. The old ~495/634 and ~88% estimates are r
 
 ## Evidence and reproduction
 
-- Full row ledger: [feature-audit.json](feature-audit.json), including implementation paths, exception reasons and grouped regression names.
-- User feature list: [feature-inventory.md](feature-inventory.md).
-- Actual test/build/screenshot results: ../../ACCEPTANCE.md; counts are validation evidence, not a feature-completion percentage.
+- Full row ledger: [feature-audit.json](../refs/ui-spec/feature-audit.json), including implementation paths, exception reasons and grouped regression names.
+- User feature list: [FEATURE_INVENTORY.md](FEATURE_INVENTORY.md).
+- Actual test/build/screenshot results: [ACCEPTANCE.md](ACCEPTANCE.md); counts are validation evidence, not a feature-completion percentage.
 - Reproduce the ledger: `python tools/audit_features.py`. Its classifications are explicit reviewed decisions, not automatic feature detection.
 
 

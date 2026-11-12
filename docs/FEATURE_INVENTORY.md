@@ -10,7 +10,7 @@ Source of truth: `00) sketch standalone.html` (attachment; line numbers below re
 - `AREA DEFINITION WORKFLOW` / optional region classification (l.22401): the Areas dock palette, chooser, *New area / Find undefined / Edit areas…*, renames the Define tab to **Areas**.
 - Inline IIFEs before the ribbon markup: command palette (l.2696) and pages navigator + totals chip (l.2814).
 
-Status column refreshed 2026-10-29. See PARITY.md and feature-audit.json for classification, scope and evidence; implementation status is distinct from individual visual acceptance.
+Status column refreshed 2026-10-29. See PARITY.md and refs/ui-spec/feature-audit.json for classification, scope and evidence; implementation status is distinct from individual visual acceptance.
 
 ## Screens (ACCEPTANCE.md)
 

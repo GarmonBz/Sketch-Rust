@@ -1,6 +1,6 @@
 //! sketch-app — native rebuild of Appraisal Sketch 1.1 (Iced 0.14).
 //!
-//! Screens 1-2 of ACCEPTANCE.md. Screen 1: the static chrome of the default state —
+//! Screens 1-2 of docs/ACCEPTANCE.md. Screen 1: the static chrome of the default state —
 //! borderless window with the app-drawn title bar (logo, QAT, save-state
 //! pill, title, working minimize / full-screen / close + drag-to-move), the
 //! ribbon tab strip with the Home body, the 17-button left rail, the white
