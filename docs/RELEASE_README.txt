@@ -8,9 +8,11 @@ verification and remaining gaps before changing a host's sketch provider.
 calculations, symbols and text, pages and printing, and saving. Help >
 Integration Guide explains how to set up and use Appraise-It integration, how
 to go back to Apex, and what to check when something goes wrong.
-A Windows installer (SketchRust-Setup-<version>.exe) is available next to this
-zip: it installs for the current user without administrator rights, adds Start
-Menu and desktop shortcuts, and can be removed from Windows Settings > Apps.
+A Windows installer (SketchRust-<version>-x64.msi) is available next to this
+zip: it installs for the current user without administrator rights, offers a
+choice of folder and an optional desktop shortcut, upgrades older installer
+builds in place, and can be removed from Windows Settings > Apps. Upgrading
+replaces symbols.json, so keep a copy if you have edited the symbol library.
 
 0.1.28 fixes a crash: opening File > Recent Files with at least one entry in the
 list closed the app.

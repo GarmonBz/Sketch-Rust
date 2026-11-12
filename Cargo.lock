@@ -3943,14 +3943,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sketch-setup"
-version = "0.1.29"
-dependencies = [
- "flate2",
- "windows 0.61.3",
-]
-
-[[package]]
 name = "skrifa"
 version = "0.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

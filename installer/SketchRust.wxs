@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Sketch Rust installer (WiX Toolset 5, the same toolchain the ArtCraft
+  Launcher's MSI is built with). Built by tools\installer.ps1, which also
+  writes Files.wxs (the staged package, one component per file) and the
+  dialog bitmaps and licence text this file refers to.
+
+  Per-user: installs under %LOCALAPPDATA%\Programs\SketchRust with no
+  administrator permission, adds a Start Menu shortcut and an optional
+  desktop shortcut, registers under Settings > Apps with the app icon, and
+  upgrades or removes cleanly. Never touches the user's sketches or the
+  settings under %APPDATA%\SketchRust.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+  <Package Name="Sketch Rust"
+           Manufacturer="Sketch Rust"
+           Version="$(Version)"
+           UpgradeCode="6B1F2D54-3A0E-4C7B-9E58-2F4D7A91C3E6"
+           Scope="perUser"
+           Language="1033"
+           InstallerVersion="500">
+
+    <SummaryInformation Description="Sketch Rust: native floor-plan sketching for appraisers" />
+
+    <!-- A newer build replaces an older one in place; going back is refused. -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Sketch Rust is already installed. Remove it from Settings > Apps first if you want to go back." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <!-- The app icon: Settings > Apps, both shortcuts and the installer's own windows. -->
+    <Icon Id="SketchRust.ico" SourceFile="$(IconFile)" />
+    <Property Id="ARPPRODUCTICON" Value="SketchRust.ico" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/GarmonBz/Sketch-Rust" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/GarmonBz/Sketch-Rust/issues" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="SketchRust" />
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+    <StandardDirectory Id="DesktopFolder" />
+
+    <!--
+      Main: the program, always installed, with a Change location button in
+      the feature tree. Desktop shortcut: on by default, untick it in the
+      feature tree or pass ADDLOCAL=Main on the command line.
+    -->
+    <Feature Id="Main" Title="Sketch Rust" Description="The program, its symbol library and documentation."
+             Level="1" AllowAbsent="no" AllowAdvertise="no" ConfigurableDirectory="INSTALLFOLDER">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentRef Id="StartMenuShortcutComponent" />
+      <ComponentRef Id="CleanupComponent" />
+      <Feature Id="DesktopShortcut" Title="Desktop shortcut" Description="Put a Sketch Rust shortcut on the desktop."
+               Level="1" AllowAdvertise="no">
+        <ComponentRef Id="DesktopShortcutComponent" />
+      </Feature>
+    </Feature>
+
+    <!-- Shortcuts. A per-user component needs a registry value as its key path. -->
+    <Component Id="StartMenuShortcutComponent" Directory="ProgramMenuFolder">
+      <Shortcut Id="StartMenuShortcut" Name="Sketch Rust" Description="Appraisal Sketch"
+                Target="[INSTALLFOLDER]sketch-app.exe" WorkingDirectory="INSTALLFOLDER"
+                Icon="SketchRust.ico" />
+      <RegistryValue Root="HKCU" Key="Software\SketchRust" Name="StartMenuShortcut"
+                     Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+    <Component Id="DesktopShortcutComponent" Directory="DesktopFolder">
+      <Shortcut Id="DesktopShortcut" Name="Sketch Rust" Description="Appraisal Sketch"
+                Target="[INSTALLFOLDER]sketch-app.exe" WorkingDirectory="INSTALLFOLDER"
+                Icon="SketchRust.ico" />
+      <RegistryValue Root="HKCU" Key="Software\SketchRust" Name="DesktopShortcut"
+                     Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+    <!-- Files the program makes in its own folder (Manage symbols keeps the previous library as a .bak). -->
+    <Component Id="CleanupComponent" Directory="INSTALLFOLDER">
+      <RegistryValue Root="HKCU" Key="Software\SketchRust" Name="InstallLocation"
+                     Type="string" Value="[INSTALLFOLDER]" KeyPath="yes" />
+      <RemoveFile Id="RemoveSymbolsBak" Name="symbols.json.bak" On="uninstall" />
+    </Component>
+
+    <!-- Interface: welcome, licence, feature tree with a location button, ready, progress, finish. -->
+    <ui:WixUI Id="WixUI_FeatureTree" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(LicenseRtf)" />
+    <WixVariable Id="WixUIBannerBmp" Value="$(BannerBmp)" />
+    <WixVariable Id="WixUIDialogBmp" Value="$(DialogBmp)" />
+
+    <!-- "Launch Sketch Rust" on the finish page. -->
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch Sketch Rust" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+    <Property Id="WixShellExecTarget" Value="[#F_sketch_app_exe]" />
+    <CustomAction Id="LaunchSketchRust" DllEntry="WixShellExec" Impersonate="yes"
+                  BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)" />
+    <UI>
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchSketchRust"
+               Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed" />
+    </UI>
+  </Package>
+</Wix>

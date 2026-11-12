@@ -6,7 +6,8 @@ Standalone native Windows port of `Appraisal Sketch 1.1`
 0.1.29 adds an in-app User Guide on the Help tab (seven topics, including
 Appraise-It integration setup, daily use and troubleshooting), with an
 Integration Guide button that opens it at that topic. A per-user Windows
-installer (crates/sketch-setup, tools/installer.ps1) is built alongside the zip.
+installer (installer/SketchRust.wxs, built by tools/installer.ps1 with WiX 5, the
+same toolchain as the ArtCraft Launcher's) is built alongside the zip.
 
 0.1.28 fixes a crash when File > Recent Files was opened with at least one
 entry: the row's filled file icon was not embedded. A release build now draws

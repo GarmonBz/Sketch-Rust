@@ -13,9 +13,11 @@ program Appraise-It Pro opens.
 
 Download the latest release and use one of:
 
-- **Installer** — `SketchRust-Setup-<version>.exe`. Installs for the current Windows
-  user (no administrator permission), adds Start Menu and desktop shortcuts, and can be
-  removed from Windows Settings > Apps > Installed apps.
+- **Installer** — `SketchRust-<version>-x64.msi` (a Windows Installer package built with
+  WiX Toolset 5). Installs for the current Windows user (no administrator permission), with
+  a licence page, a choice of folder, an optional desktop shortcut and a Start Menu shortcut.
+  Later versions upgrade it in place, and it is removed from Windows Settings > Apps >
+  Installed apps. Silent install: `msiexec /i SketchRust-<version>-x64.msi /qn`.
 - **Portable zip** — `SketchRust-<version>-native-preview-<date>-windows-x64.zip`.
   Extract it anywhere and run `sketch-app.exe`.
 
@@ -54,8 +56,9 @@ cargo test --workspace
 ```
 
 - `tools\package.ps1 -NativePreview` builds the portable zip into `dist\`.
-- `tools\installer.ps1` builds the zip and then `dist\SketchRust-Setup-<version>.exe`,
-  and runs the installer's self-test.
+- `tools\installer.ps1` builds the zip and then `dist\SketchRust-<version>-x64.msi`
+  (source in `installer\`). Run it once with `-FetchWix` to download WiX (it needs a .NET
+  runtime, not the SDK); add `-Test` to install, check and remove the result.
 
 ## Layout
 
@@ -63,7 +66,7 @@ cargo test --workspace
 |---|---|
 | `crates/sketch-core` | Geometry, calculations, file formats, symbol import |
 | `crates/sketch-app` | The application (iced UI), Appraise-It/Apex compatibility |
-| `crates/sketch-setup` | The per-user installer |
+| `installer/` | The WiX source of the Windows installer |
 | `assets/` | Symbol library, icons, cursors |
 | `refs/` | The original web app's source and UI measurements the port is checked against |
 | `docs/` | Release notes, build validation, compatibility and symbol-library notes |

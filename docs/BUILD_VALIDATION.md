@@ -8,12 +8,13 @@
   app. The integration steps follow the behavior documented in
   APEX-COMPATIBILITY.md and were not re-run against Appraise-It Pro.
 - Automated: 626 app and 178 core tests passed, 0 failed.
-- Installer: tools/installer.ps1 builds SketchRust-Setup-<version>.exe and runs
-  its --selftest, which installs into a scratch folder, verifies every file,
-  the two shortcuts and the registry entry, updates over an edited symbol
-  library (kept as a backup), and uninstalls, leaving nothing behind. The
-  message-box flow, the real Start Menu/desktop/registry locations and
-  removal through Windows Settings were not exercised.
+- Installer: tools/installer.ps1 builds SketchRust-<version>-x64.msi (WiX 5.0.2).
+  Its -Test installs silently into a scratch folder, checks the program files,
+  both shortcuts and the Windows Installer registration with the app icon, then
+  uninstalls and checks nothing is left. The dialogs were stepped through once
+  by hand (install, then the finish-page launch); upgrade over an older MSI,
+  folder change, desktop-shortcut opt-out and removal through Settings > Apps
+  were not exercised.
 
 0.1.28 Recent Files crash (2026-11-11):
 

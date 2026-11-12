@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/sketch-core", "crates/sketch-app", "crates/sketch-setup"]
+members = ["crates/sketch-core", "crates/sketch-app"]
 
 [workspace.package]
 version = "0.1.29"
