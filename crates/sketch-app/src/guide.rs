@@ -12,7 +12,7 @@ use crate::theme::*;
 use crate::Message;
 
 #[cfg(windows)]
-use crate::appraise_it::{self, Report, ReportStatus};
+use crate::appraise_it::{self, AreaTarget, AreaTransfer, Report, ReportStatus, UnitAreaTotals};
 #[cfg(windows)]
 use iced::widget::image::Handle;
 
@@ -195,6 +195,12 @@ pub struct Guide {
     report_target: Option<Report>,
     #[cfg(windows)]
     sketch_preview: Vec<(usize, Handle)>,
+    #[cfg(windows)]
+    area_target: Option<Result<AreaTarget, String>>,
+    #[cfg(windows)]
+    area_preview: Option<Result<AreaTransfer, String>>,
+    #[cfg(windows)]
+    include_areas: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -213,14 +219,20 @@ pub enum GuideMsg {
     #[cfg(windows)]
     SketchRendered(Result<Vec<(usize, Handle)>, String>),
     #[cfg(windows)]
+    IncludeAreas(bool),
+    #[cfg(windows)]
     SendSketch,
     #[cfg(windows)]
-    SketchSent(Result<(), String>),
+    SketchSent(Result<(), String>, bool),
 }
 
 impl Guide {
     #[cfg(windows)]
-    pub fn preview_sketch(&mut self, pages: Vec<(usize, String)>) -> Task<Message> {
+    pub fn preview_sketch(
+        &mut self,
+        pages: Vec<(usize, String)>,
+        totals: Result<UnitAreaTotals, String>,
+    ) -> Task<Message> {
         let Some(report) = self.report_target.as_ref() else {
             return Task::none();
         };
@@ -236,6 +248,10 @@ impl Guide {
         }
         self.report_busy = true;
         self.report_status = Some(report.summary());
+        self.include_areas = false;
+        self.area_preview = self.area_target.clone().map(|target| {
+            target.and_then(|target| totals.map(|totals| AreaTransfer::new(target, totals)))
+        });
         Task::perform(appraise_it::render_pages(pages), |result| {
             Message::Guide(GuideMsg::SketchRendered(result))
         })
@@ -254,6 +270,9 @@ impl Guide {
                 {
                     self.report_target = None;
                     self.sketch_preview.clear();
+                    self.area_target = None;
+                    self.area_preview = None;
+                    self.include_areas = false;
                     if !self.report_busy {
                         self.report_status = None;
                     }
@@ -265,6 +284,9 @@ impl Guide {
                     self.report_busy = true;
                     self.report_target = None;
                     self.sketch_preview.clear();
+                    self.area_target = None;
+                    self.area_preview = None;
+                    self.include_areas = false;
                     self.report_status = None;
                     return Task::perform(appraise_it::check_report(), |result| {
                         Message::Guide(GuideMsg::ReportChecked(result))
@@ -276,11 +298,12 @@ impl Guide {
                 self.report_busy = false;
                 if self.open && self.topic == INTEGRATION_TOPIC {
                     self.report_status = Some(match result {
-                        Ok(ReportStatus::Open(report)) => {
+                        Ok(ReportStatus::Open(report, area_target)) => {
                             let summary = report.summary();
                             match report.transfer_availability() {
                                 Ok(()) => {
                                     self.report_target = Some(report);
+                                    self.area_target = Some(area_target);
                                     summary
                                 }
                                 Err(reason) => format!("{summary}\n{reason}"),
@@ -306,26 +329,40 @@ impl Guide {
                 }
             }
             #[cfg(windows)]
+            GuideMsg::IncludeAreas(include) => {
+                self.include_areas = include && matches!(self.area_preview, Some(Ok(_)));
+            }
+            #[cfg(windows)]
             GuideMsg::SendSketch => {
                 if !self.report_busy && !self.sketch_preview.is_empty() {
                     if let Some(target) = self.report_target.take() {
                         let images = std::mem::take(&mut self.sketch_preview);
+                        let preview = self.area_preview.take();
+                        let areas = if self.include_areas {
+                            preview.and_then(Result::ok)
+                        } else {
+                            None
+                        };
+                        let included = areas.is_some();
+                        self.include_areas = false;
                         self.report_busy = true;
                         self.report_status = Some("Sending sketch to Appraise-It Pro…".into());
-                        return Task::perform(appraise_it::send_sketch(target, images), |result| {
-                            Message::Guide(GuideMsg::SketchSent(result))
-                        });
+                        return Task::perform(
+                            appraise_it::send_sketch(target, images, areas),
+                            move |result| Message::Guide(GuideMsg::SketchSent(result, included)),
+                        );
                     }
                 }
             }
             #[cfg(windows)]
-            GuideMsg::SketchSent(result) => {
+            GuideMsg::SketchSent(result, included) => {
                 self.report_busy = false;
                 self.report_status = Some(result.map_or_else(
                     |error| error,
-                    |()| {
-                        "Sketch added. Review Additional Sketches in Appraise-It Pro and save the report."
-                            .into()
+                    |()| if included {
+                        "Sketch and area totals added. Review Additional Sketches and the living unit's area fields in Appraise-It Pro, then save.".into()
+                    } else {
+                        "Sketch added. Review Additional Sketches in Appraise-It Pro and save the report.".into()
                     },
                 ));
             }
@@ -497,8 +534,37 @@ pub fn layer(guide: &Guide, size: iced::Size) -> Option<Element<'static, Message
                             .height(260),
                     );
             }
+            match &guide.area_preview {
+                Some(Ok(preview)) => {
+                    body = body.push(
+                        iced::widget::checkbox(guide.include_areas)
+                            .label("Include area totals")
+                            .on_toggle(|value| Message::Guide(GuideMsg::IncludeAreas(value))),
+                    );
+                    if guide.include_areas {
+                        body = body.push(para(
+                            "Review the replacements for the subject living unit. Mark above-grade outlines as GLA only when they qualify as standard finished area.",
+                            text_main(),
+                        )).push(text(preview.summary()).font(SEGOE).size(BODY).width(Length::Fill));
+                    }
+                }
+                Some(Err(reason)) => {
+                    body = body.push(
+                        text(reason.clone())
+                            .font(SEGOE)
+                            .size(BODY)
+                            .width(Length::Fill),
+                    );
+                }
+                None => {}
+            }
+            let send_label = if guide.include_areas {
+                "Send sketch and area totals"
+            } else {
+                "Send sketch images"
+            };
             body = body.push(
-                button(text("Send sketch images").font(SEGOE).size(BODY))
+                button(text(send_label).font(SEGOE).size(BODY))
                     .on_press(Message::Guide(GuideMsg::SendSketch)),
             );
         }
@@ -522,10 +588,11 @@ pub fn layer(guide: &Guide, size: iced::Size) -> Option<Element<'static, Message
     ]
     .spacing(10);
 
-    let divider = container(Space::new().width(1).height(Length::Fill)).style(|_| container::Style {
-        background: Some(Background::Color(border())),
-        ..container::Style::default()
-    });
+    let divider =
+        container(Space::new().width(1).height(Length::Fill)).style(|_| container::Style {
+            background: Some(Background::Color(border())),
+            ..container::Style::default()
+        });
 
     let card = container(row![list, divider, reading].spacing(14).padding(14))
         .width(860.0_f32.min((size.width - 32.0).max(320.0)))

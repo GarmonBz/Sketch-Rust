@@ -3342,8 +3342,8 @@ impl App {
             Message::About => self.open_dialog(dialog::Dialog::alert(&about_text())),
             #[cfg(windows)]
             Message::Guide(guide::GuideMsg::PreviewSketch) => {
-                let pages = self.appraise_it_sketch_pages();
-                self.guide.preview_sketch(pages)
+                let (pages, totals) = self.appraise_it_sketch();
+                self.guide.preview_sketch(pages, totals)
             }
             Message::Guide(m) => self.guide.update(m),
             Message::GeoLoadMap => {
@@ -4853,8 +4853,9 @@ impl App {
     }
 
     #[cfg(windows)]
-    fn appraise_it_sketch_pages(&self) -> Vec<(usize, String)> {
-        exporter::build_export_pages(&self.drawing, &self.pages, &self.area_codes)
+    fn appraise_it_sketch(&self) -> (Vec<(usize, String)>, Result<appraise_it::UnitAreaTotals, String>) {
+        let mut totals = Vec::new();
+        let images = exporter::build_export_pages(&self.drawing, &self.pages, &self.area_codes)
             .iter()
             .enumerate()
             .filter(|(_, page)| {
@@ -4865,6 +4866,12 @@ impl App {
             })
             .map(|(index, page)| {
                 let drawing = self.drawing_for_report_page(index);
+                let calculated = drawing.recalculate_areas(
+                    &drawing.polygons,
+                    &drawing.lines,
+                    &self.area_codes,
+                );
+                totals.push(calculated.totals.totals_by_code);
                 let svg = report_sketch::svg(
                     &drawing,
                     page,
@@ -4875,7 +4882,8 @@ impl App {
                 );
                 (index + 1, svg)
             })
-            .collect()
+            .collect();
+        (images, appraise_it::AreaTransfer::calculated_totals(totals))
     }
 
     /// `exportPdf` - the one-page report bytes; the paper choice is Page

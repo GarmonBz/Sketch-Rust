@@ -1,5 +1,5 @@
 //! Sketch transfer through the locally installed SFREP COM server.
-use std::{mem::ManuallyDrop, ptr};
+use std::{collections::BTreeMap, mem::ManuallyDrop, ptr};
 
 use iced::widget::image::Handle;
 use image::{codecs::png::PngEncoder, ExtendedColorType, ImageEncoder};
@@ -34,7 +34,104 @@ type Result<T> = std::result::Result<T, String>;
 pub enum ReportStatus {
     Cancelled,
     NoReport,
-    Open(Report),
+    Open(Report, Result<AreaTarget>),
+}
+
+// Unit field IDs verified through Appraise-It Pro's dynamic data store.
+const AREA_FIELDS: [(&str, &str); 3] = [
+    ("FinishedAreaAboveGrade", "Standard finished above grade"),
+    ("FinishedAreaBelowGrade", "Finished below grade"),
+    ("UnfinishedAreaBelowGrade", "Unfinished below grade"),
+];
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AreaTarget {
+    dwelling: String,
+    unit: String,
+    values: [String; 3],
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct AreaTransfer {
+    target: AreaTarget,
+    square_feet: UnitAreaTotals,
+}
+
+pub(crate) type UnitAreaTotals = [Option<u64>; 3];
+
+impl AreaTransfer {
+    pub(crate) fn new(target: AreaTarget, totals: UnitAreaTotals) -> Self {
+        Self {
+            target,
+            square_feet: totals,
+        }
+    }
+
+    pub(crate) fn calculated_totals(
+        pages: impl IntoIterator<Item = BTreeMap<String, f64>>,
+    ) -> Result<UnitAreaTotals> {
+        let mut totals = BTreeMap::new();
+        for page in pages {
+            for (code, value) in page {
+                *totals.entry(code).or_default() += value;
+            }
+        }
+        unit_area_totals(&totals)
+    }
+
+    pub(crate) fn summary(&self) -> String {
+        let mut lines = vec![format!(
+            "Dwelling {} · Unit {}",
+            self.target.dwelling, self.target.unit
+        )];
+        for (index, value) in self.square_feet.iter().enumerate() {
+            if let Some(value) = value {
+                let current = &self.target.values[index];
+                let current = if current.is_empty() {
+                    "blank".to_owned()
+                } else {
+                    format!("{current} sq ft")
+                };
+                lines.push(format!(
+                    "{}   {current} → {value} sq ft",
+                    AREA_FIELDS[index].1
+                ));
+            }
+        }
+        lines.join("\n")
+    }
+}
+
+fn unit_area_totals(totals: &BTreeMap<String, f64>) -> Result<UnitAreaTotals> {
+    let mut areas = [0.0; 3];
+    for (code, &value) in totals {
+        let index = match code.as_str() {
+            "GLA1" | "GLA2" | "GLA3" | "GLA4" | "GLA5" | "GLA6" | "GLA7" | "GLA8" | "GLA9"
+            | "GLA10" => 0,
+            "BSMT" => 1,
+            "BSMT2" => 2,
+            _ => continue,
+        };
+        if !value.is_finite() || value < 0.0 {
+            return Err(format!(
+                "{code} has an invalid net area. Review the sketch calculations."
+            ));
+        }
+        areas[index] += value;
+    }
+    // The drawing stores square feet internally, even when the display uses metric.
+    // Round the combined total once, after net deductions and multipliers.
+    if areas.iter().any(|&value| value >= u64::MAX as f64) {
+        return Err("An area total exceeds the supported range.".into());
+    }
+    let rounded = areas.map(|value| {
+        let whole = value.round() as u64;
+        (whole > 0).then_some(whole)
+    });
+    if rounded.iter().all(Option::is_none) {
+        return Err("Define a living-area or basement outline to include area totals.".into());
+    }
+    Ok(rounded)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,7 +187,7 @@ impl ReportStatus {
             Self::NoReport => {
                 "Connected. Open a report in Appraise-It Pro, then check again.".into()
             }
-            Self::Open(report) => report.summary(),
+            Self::Open(report, _) => report.summary(),
         }
     }
 }
@@ -99,8 +196,12 @@ pub(crate) async fn check_report() -> Result<ReportStatus> {
     on_worker(inspect_report).await
 }
 
-pub(crate) async fn send_sketch(target: Report, images: Vec<(usize, Handle)>) -> Result<()> {
-    on_worker(move || transfer_sketch(&target, &images)).await
+pub(crate) async fn send_sketch(
+    target: Report,
+    images: Vec<(usize, Handle)>,
+    areas: Option<AreaTransfer>,
+) -> Result<()> {
+    on_worker(move || transfer_sketch(&target, &images, areas.as_ref())).await
 }
 
 pub(crate) async fn render_pages(pages: Vec<(usize, String)>) -> Result<Vec<(usize, Handle)>> {
@@ -494,12 +595,125 @@ fn inspect_report() -> Result<ReportStatus> {
         return Err("Appraise-It Pro closed before its report could be checked.".into());
     }
     let _transaction = Transaction::begin(&session)?;
-    Ok(session
-        .report()?
-        .map_or(ReportStatus::NoReport, ReportStatus::Open))
+    let Some(report) = session.report()? else {
+        return Ok(ReportStatus::NoReport);
+    };
+    let area_target = report.transfer_availability().and_then(|()| {
+        let (_store, subject) = report_data(&session)?;
+        unit_area_fields(&report, &subject).map(|(target, _)| target)
+    });
+    Ok(ReportStatus::Open(report, area_target))
 }
 
-fn transfer_sketch(target: &Report, images: &[(usize, Handle)]) -> Result<()> {
+fn report_data(session: &Session) -> Result<(ComObject, ComObject)> {
+    let store = session
+        .call(w!("GetDataStore"), "opening the report data store", &mut [])?
+        .required_object("the report data store")?;
+    let report = store
+        .call(w!("GetReportFields"), "reading the subject", &mut [])?
+        .required_object("the subject")?;
+    Ok((store, report))
+}
+
+fn unit_area_fields(report: &Report, subject: &ComObject) -> Result<(AreaTarget, ComObject)> {
+    let single_unit =
+        "Area totals require a UAD 3.6 URAR with one dwelling, one living unit and no ADUs.";
+    if report.primary_form != "FNMA-URAR-0924"
+        || subject
+            .call(w!("StructureCount"), "counting subject dwellings", &mut [])?
+            .integer("StructureCount")?
+            != 1
+    {
+        return Err(single_unit.into());
+    }
+    let dwelling = subject
+        .call(
+            w!("GetStructure"),
+            "opening the subject dwelling",
+            &mut [Value::from_i32(0)],
+        )?
+        .required_object("the subject dwelling")?;
+    if dwelling
+        .call(w!("LivingUnitCount"), "counting living units", &mut [])?
+        .integer("LivingUnitCount")?
+        != 1
+        || dwelling
+            .call(w!("AduCount"), "counting ADUs", &mut [])?
+            .integer("AduCount")?
+            != 0
+    {
+        return Err(single_unit.into());
+    }
+    let unit = dwelling
+        .call(
+            w!("GetLivingUnit"),
+            "opening the subject living unit",
+            &mut [Value::from_i32(0)],
+        )?
+        .required_object("the subject living unit")?;
+    let fields = unit
+        .call(w!("GetFields"), "opening the living unit fields", &mut [])?
+        .required_object("the living unit fields")?;
+    let mut values = [String::new(), String::new(), String::new()];
+    for ((id, name), value) in AREA_FIELDS.iter().zip(&mut values) {
+        let field = fields
+            .call(
+                w!("GetTextField"),
+                "finding the unit area field",
+                &mut [Value::from_text("None"), Value::from_text(id)],
+            )?
+            .object(name)?
+            .ok_or_else(|| format!("The living unit has no {name} field."))?;
+        if field
+            .call(
+                w!("IsHidden"),
+                "checking unit area field visibility",
+                &mut [],
+            )?
+            .boolean("IsHidden")?
+        {
+            return Err(format!("The living unit's {name} field is hidden."));
+        }
+        *value = field
+            .call(w!("GetPlaintext"), "reading the unit area", &mut [])?
+            .text("GetPlaintext")?;
+    }
+    let name = |object: &ComObject, fallback: &str| -> Result<String> {
+        let name = object
+            .call(w!("GetName"), "identifying the area destination", &mut [])?
+            .text("GetName")?;
+        Ok(if name.trim().is_empty() {
+            fallback.into()
+        } else {
+            name
+        })
+    };
+    let target = AreaTarget {
+        dwelling: name(&dwelling, "1")?,
+        unit: name(&unit, "1")?,
+        values,
+    };
+    Ok((target, fields))
+}
+
+fn write_area(fields: &ComObject, index: usize, value: &str) -> Result<()> {
+    fields.call(
+        w!("SetTextFieldText"),
+        &format!("setting {}", AREA_FIELDS[index].1),
+        &mut [
+            Value::from_text("None"),
+            Value::from_text(value),
+            Value::from_text(AREA_FIELDS[index].0),
+        ],
+    )?;
+    Ok(())
+}
+
+fn transfer_sketch(
+    target: &Report,
+    images: &[(usize, Handle)],
+    areas: Option<&AreaTransfer>,
+) -> Result<()> {
     target.transfer_availability()?;
     if images.is_empty() {
         return Err("There are no sketch images to transfer.".into());
@@ -527,13 +741,8 @@ fn transfer_sketch(target: &Report, images: &[(usize, Handle)]) -> Result<()> {
             "The reviewed report has changed or closed. Check the open report again.".into(),
         );
     }
-    let store = session
-        .call(w!("GetDataStore"), "opening the report data store", &mut [])?
-        .required_object("the report data store")?;
-    let report = store
-        .call(w!("GetReportFields"), "reading the subject", &mut [])?
-        .required_object("the subject")?;
-    let fields = report
+    let (store, subject) = report_data(&session)?;
+    let fields = subject
         .call(w!("GetFields"), "reading the subject fields", &mut [])?
         .required_object("the subject fields")?;
     let sketches = fields
@@ -547,7 +756,50 @@ fn transfer_sketch(target: &Report, images: &[(usize, Handle)]) -> Result<()> {
         )?
         .object("the Additional Sketches field")?
         .ok_or("This report has no Additional Sketches field.")?;
-    append_sketches(&store, &sketches, pages)
+    let Some(areas) = areas else {
+        return append_sketches(&store, &sketches, pages);
+    };
+    let (current, unit) = unit_area_fields(target, &subject)?;
+    if current != areas.target {
+        return Err("The reviewed unit or its area values changed. Check the report again.".into());
+    }
+    let mut changed = Vec::new();
+    let result = (|| {
+        for (index, value) in areas.square_feet.iter().enumerate() {
+            if let Some(value) = value {
+                changed.push(index);
+                write_area(&unit, index, &value.to_string())?;
+                let actual = unit
+                    .call(
+                        w!("GetTextFieldText"),
+                        "verifying the written unit area",
+                        &mut [
+                            Value::from_text("None"),
+                            Value::from_text(AREA_FIELDS[index].0),
+                        ],
+                    )?
+                    .text("GetTextFieldText")?;
+                if actual.parse::<u64>().ok() != Some(*value) {
+                    return Err(format!(
+                        "Appraise-It Pro did not accept the proposed {} value.",
+                        AREA_FIELDS[index].1
+                    ));
+                }
+            }
+        }
+        append_sketches(&store, &sketches, pages)
+    })();
+    if let Err(mut error) = result {
+        for index in changed.into_iter().rev() {
+            if let Err(restore) = write_area(&unit, index, &current.values[index]) {
+                error.push_str(&format!(
+                    "\n{restore}\nCheck the living unit's area fields before retrying."
+                ));
+            }
+        }
+        return Err(error);
+    }
+    Ok(())
 }
 
 fn append_sketches(
@@ -618,4 +870,41 @@ fn append_sketches(
         };
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn combines_net_areas_across_pages_before_rounding() {
+        let page = |entries: &[(&str, f64)]| {
+            entries
+                .iter()
+                .map(|&(code, area)| (code.to_owned(), area))
+                .collect()
+        };
+        let totals = AreaTransfer::calculated_totals([
+            page(&[("GLA1", 120.25), ("GBA1", 500.0), ("BSMT", 54.6)]),
+            page(&[
+                ("GLA1", 35.1),
+                ("GLA2", 40.25),
+                ("BSMT2", 20.3),
+                ("GAR", 150.0),
+            ]),
+        ])
+        .unwrap();
+        assert_eq!(totals, [Some(196), Some(55), Some(20)]);
+    }
+
+    #[test]
+    fn only_sends_positive_supported_totals() {
+        let totals = BTreeMap::from([("GLA1".into(), 100.0), ("BSMT".into(), 0.4)]);
+        assert_eq!(unit_area_totals(&totals).unwrap(), [Some(100), None, None]);
+        let unclassified = BTreeMap::from([("SKETCHY".into(), 120.0), ("GBA1".into(), 300.0)]);
+        assert!(unit_area_totals(&unclassified).is_err());
+        for invalid in [-1.0, f64::NAN, f64::INFINITY] {
+            assert!(unit_area_totals(&BTreeMap::from([("GLA1".into(), invalid)])).is_err());
+        }
+    }
 }
