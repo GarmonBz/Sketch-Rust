@@ -32,13 +32,19 @@ panel (`F4`).
 
 ### Appraise-It Pro reports
 
+On Windows, open a saved, editable UAD 3.6 report in Appraise-It Pro. In Sketch
+Rust, choose **Help > Appraise-It Reports > Check open report**, select the report
+in SFREP's session picker, then choose **Preview sketch** and **Send sketch images**.
+Sketch Rust adds each nonblank page to the report's **Additional Sketch(es)**.
+Review the result in Appraise-It Pro and save the report there.
+
 Keep the editable sketch in Sketchy or SKX. Use **File > Export as PNG** or
 **File > Export as PDF** for a report attachment where your form supports it,
 and enter the area totals in Appraise-It Pro. AXF files can be opened with
 the licensed Apex application.
 
-See the [Appraise-It Pro integration plan](docs/APPRAISE_IT_PRO_INTEGRATION.md)
-for the proposed SFREP connection and guidance for users of older previews.
+See the [Appraise-It Pro integration guide](docs/APPRAISE_IT_PRO_INTEGRATION.md)
+for requirements and guidance for users of older previews.
 
 ## Build from source
 

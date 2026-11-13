@@ -22,6 +22,8 @@
 // Native GUI executables should not allocate a Windows console.
 #![cfg_attr(all(target_os = "windows", not(test)), windows_subsystem = "windows")]
 
+#[cfg(windows)]
+mod appraise_it;
 mod area_dialog;
 mod area_props;
 mod area_repair;
@@ -54,6 +56,7 @@ mod exporter;
 mod file_dialogs;
 mod filter;
 mod format;
+mod guide;
 mod handles;
 mod icons;
 mod input;
@@ -86,7 +89,6 @@ mod room_shapes;
 mod select_menu;
 mod selection;
 mod shapes;
-mod guide;
 mod shortcuts;
 mod sketch_canvas;
 mod sketchy;
@@ -3338,10 +3340,12 @@ impl App {
                 Task::none()
             }
             Message::About => self.open_dialog(dialog::Dialog::alert(&about_text())),
-            Message::Guide(m) => {
-                self.guide.update(m);
-                Task::none()
+            #[cfg(windows)]
+            Message::Guide(guide::GuideMsg::PreviewSketch) => {
+                let pages = self.appraise_it_sketch_pages();
+                self.guide.preview_sketch(pages)
             }
+            Message::Guide(m) => self.guide.update(m),
             Message::GeoLoadMap => {
                 self.geo_menu.close();
                 self.photo_load()
@@ -4835,6 +4839,45 @@ impl App {
         })
     }
 
+    fn drawing_for_report_page(&self, index: usize) -> drawing::Drawing {
+        let mut drawing = self.drawing.clone();
+        if index != self.pages.current {
+            let page = &self.pages.pages[index];
+            drawing.lines = page.lines.clone();
+            drawing.polygons = page.polygons.clone();
+            drawing.texts = page.labels.clone();
+            drawing.symbols = page.symbols.clone();
+            drawing.dimension_chains = page.dimension_chains.clone();
+        }
+        drawing
+    }
+
+    #[cfg(windows)]
+    fn appraise_it_sketch_pages(&self) -> Vec<(usize, String)> {
+        exporter::build_export_pages(&self.drawing, &self.pages, &self.area_codes)
+            .iter()
+            .enumerate()
+            .filter(|(_, page)| {
+                !(page.lines.is_empty()
+                    && page.polygons.is_empty()
+                    && page.labels.is_empty()
+                    && page.symbols.is_empty())
+            })
+            .map(|(index, page)| {
+                let drawing = self.drawing_for_report_page(index);
+                let svg = report_sketch::svg(
+                    &drawing,
+                    page,
+                    &self.area_codes,
+                    &self.symbols_lib().library,
+                    540.0,
+                    0.0,
+                );
+                (index + 1, svg)
+            })
+            .collect()
+    }
+
     /// `exportPdf` - the one-page report bytes; the paper choice is Page
     /// Layout's (`layout.paperSize`, Legal by default).
     fn report_pdf(&self) -> Vec<u8> {
@@ -4848,15 +4891,7 @@ impl App {
             .iter()
             .enumerate()
             .map(|(index, page)| {
-                let mut drawing = self.drawing.clone();
-                if index != self.pages.current {
-                    let p = &self.pages.pages[index];
-                    drawing.lines = p.lines.clone();
-                    drawing.polygons = p.polygons.clone();
-                    drawing.texts = p.labels.clone();
-                    drawing.symbols = p.symbols.clone();
-                    drawing.dimension_chains = p.dimension_chains.clone();
-                }
+                let drawing = self.drawing_for_report_page(index);
                 let height = sketch_core::export_pdf::report_sketch_height(
                     page,
                     &self.area_codes,

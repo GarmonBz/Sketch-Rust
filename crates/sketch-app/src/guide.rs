@@ -6,10 +6,15 @@
 //! inside the exe and always matches the build.
 
 use iced::widget::{button, column, container, mouse_area, opaque, row, scrollable, text, Space};
-use iced::{Background, Border, Color, Element, Length};
+use iced::{Background, Border, Color, Element, Length, Task};
 
 use crate::theme::*;
 use crate::Message;
+
+#[cfg(windows)]
+use crate::appraise_it::{self, Report, ReportStatus};
+#[cfg(windows)]
+use iced::widget::image::Handle;
 
 /// One piece of a topic's body.
 pub enum Block {
@@ -165,7 +170,7 @@ pub const TOPICS: &[Topic] = &[
     Topic {
         title: "Appraise-It reports",
         blocks: &[
-            Para("Keep the editable drawing in a Sketchy or SKX file. Use an exported sketch image when working with an Appraise-It Pro report."),
+            Para("Keep the editable drawing in a Sketchy or SKX file. On Windows, send sketch images to an editable UAD 3.6 report using the controls above."),
             Heading("Export a sketch for your report"),
             Steps(&[
                 "Use File > Export as PNG for a sketch image or File > Export as PDF for a document with calculations.",
@@ -182,27 +187,150 @@ pub const TOPICS: &[Topic] = &[
 pub struct Guide {
     pub open: bool,
     pub topic: usize,
+    #[cfg(windows)]
+    report_busy: bool,
+    #[cfg(windows)]
+    report_status: Option<String>,
+    #[cfg(windows)]
+    report_target: Option<Report>,
+    #[cfg(windows)]
+    sketch_preview: Vec<(usize, Handle)>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum GuideMsg {
     /// Open at a topic (the Help tab's two buttons).
     Open(usize),
     /// Switch topic from the list.
     Topic(usize),
     Close,
+    #[cfg(windows)]
+    CheckReport,
+    #[cfg(windows)]
+    ReportChecked(Result<ReportStatus, String>),
+    #[cfg(windows)]
+    PreviewSketch,
+    #[cfg(windows)]
+    SketchRendered(Result<Vec<(usize, Handle)>, String>),
+    #[cfg(windows)]
+    SendSketch,
+    #[cfg(windows)]
+    SketchSent(Result<(), String>),
 }
 
 impl Guide {
-    pub fn update(&mut self, msg: GuideMsg) {
+    #[cfg(windows)]
+    pub fn preview_sketch(&mut self, pages: Vec<(usize, String)>) -> Task<Message> {
+        let Some(report) = self.report_target.as_ref() else {
+            return Task::none();
+        };
+        if self.report_busy {
+            return Task::none();
+        }
+        if pages.is_empty() {
+            self.report_status = Some(format!(
+                "{}\nDraw or open a sketch to preview it for transfer.",
+                report.summary()
+            ));
+            return Task::none();
+        }
+        self.report_busy = true;
+        self.report_status = Some(report.summary());
+        Task::perform(appraise_it::render_pages(pages), |result| {
+            Message::Guide(GuideMsg::SketchRendered(result))
+        })
+    }
+
+    pub fn update(&mut self, msg: GuideMsg) -> Task<Message> {
         match msg {
             GuideMsg::Open(topic) => {
                 self.open = true;
                 self.topic = topic.min(TOPICS.len() - 1);
             }
             GuideMsg::Topic(topic) => self.topic = topic.min(TOPICS.len() - 1),
-            GuideMsg::Close => self.open = false,
+            GuideMsg::Close => {
+                self.open = false;
+                #[cfg(windows)]
+                {
+                    self.report_target = None;
+                    self.sketch_preview.clear();
+                    if !self.report_busy {
+                        self.report_status = None;
+                    }
+                }
+            }
+            #[cfg(windows)]
+            GuideMsg::CheckReport => {
+                if !self.report_busy {
+                    self.report_busy = true;
+                    self.report_target = None;
+                    self.sketch_preview.clear();
+                    self.report_status = None;
+                    return Task::perform(appraise_it::check_report(), |result| {
+                        Message::Guide(GuideMsg::ReportChecked(result))
+                    });
+                }
+            }
+            #[cfg(windows)]
+            GuideMsg::ReportChecked(result) => {
+                self.report_busy = false;
+                if self.open && self.topic == INTEGRATION_TOPIC {
+                    self.report_status = Some(match result {
+                        Ok(ReportStatus::Open(report)) => {
+                            let summary = report.summary();
+                            match report.transfer_availability() {
+                                Ok(()) => {
+                                    self.report_target = Some(report);
+                                    summary
+                                }
+                                Err(reason) => format!("{summary}\n{reason}"),
+                            }
+                        }
+                        Ok(status) => status.summary(),
+                        Err(error) => error,
+                    });
+                }
+            }
+            #[cfg(windows)]
+            GuideMsg::PreviewSketch => {}
+            #[cfg(windows)]
+            GuideMsg::SketchRendered(result) => {
+                self.report_busy = false;
+                if let Some(report) = &self.report_target {
+                    match result {
+                        Ok(pages) => self.sketch_preview = pages,
+                        Err(error) => {
+                            self.report_status = Some(format!("{}\n{error}", report.summary()));
+                        }
+                    }
+                }
+            }
+            #[cfg(windows)]
+            GuideMsg::SendSketch => {
+                if !self.report_busy && !self.sketch_preview.is_empty() {
+                    if let Some(target) = self.report_target.take() {
+                        let images = std::mem::take(&mut self.sketch_preview);
+                        self.report_busy = true;
+                        self.report_status = Some("Sending sketch to Appraise-It Pro…".into());
+                        return Task::perform(appraise_it::send_sketch(target, images), |result| {
+                            Message::Guide(GuideMsg::SketchSent(result))
+                        });
+                    }
+                }
+            }
+            #[cfg(windows)]
+            GuideMsg::SketchSent(result) => {
+                self.report_busy = false;
+                self.report_status = Some(result.map_or_else(
+                    |error| error,
+                    |()| {
+                        "Sketch added. Review Additional Sketches in Appraise-It Pro and save the report."
+                            .into()
+                    },
+                ));
+            }
         }
+        Task::none()
     }
 }
 
@@ -325,17 +453,68 @@ pub fn layer(guide: &Guide, size: iced::Size) -> Option<Element<'static, Message
         right: 16.0,
         ..iced::Padding::ZERO
     });
+    #[cfg(windows)]
+    if current == INTEGRATION_TOPIC {
+        body = body.push(para(
+            "Select an Appraise-It Pro session to choose the destination report.",
+            text_main(),
+        ));
+        body = body.push(
+            button(text("Check open report").font(SEGOE).size(BODY)).on_press_maybe(
+                (!guide.report_busy).then_some(Message::Guide(GuideMsg::CheckReport)),
+            ),
+        );
+        if let Some(status) = &guide.report_status {
+            body = body.push(
+                text(status.clone())
+                    .font(SEGOE)
+                    .size(BODY)
+                    .color(text_main())
+                    .width(Length::Fill),
+            );
+        }
+        if guide.report_target.is_some() && guide.sketch_preview.is_empty() {
+            let label = if guide.report_busy {
+                "Rendering sketch…"
+            } else {
+                "Preview sketch"
+            };
+            body = body.push(button(text(label).font(SEGOE).size(BODY)).on_press_maybe(
+                (!guide.report_busy).then_some(Message::Guide(GuideMsg::PreviewSketch)),
+            ));
+        }
+        if !guide.sketch_preview.is_empty() {
+            body = body.push(para(
+                "Review each page below. Sending adds these images to Additional Sketches.",
+                text_main(),
+            ));
+            for (number, image) in &guide.sketch_preview {
+                body = body
+                    .push(text(format!("Sketch page {number}")).font(SEGOE).size(BODY))
+                    .push(
+                        iced::widget::image(image.clone())
+                            .width(Length::Fill)
+                            .height(260),
+                    );
+            }
+            body = body.push(
+                button(text("Send sketch images").font(SEGOE).size(BODY))
+                    .on_press(Message::Guide(GuideMsg::SendSketch)),
+            );
+        }
+    }
     for b in topic.blocks {
         body = body.push(block(b));
     }
 
-    let close = button(container(text("Close").font(SEGOE).size(12.0).color(WHITE)).padding([5, 12]))
-        .padding(0)
-        .on_press(Message::Guide(GuideMsg::Close))
-        .style(move |_, _| button::Style {
-            background: Some(Background::Color(accent())),
-            ..button::Style::default()
-        });
+    let close =
+        button(container(text("Close").font(SEGOE).size(12.0).color(WHITE)).padding([5, 12]))
+            .padding(0)
+            .on_press(Message::Guide(GuideMsg::Close))
+            .style(move |_, _| button::Style {
+                background: Some(Background::Color(accent())),
+                ..button::Style::default()
+            });
 
     let reading = column![
         scrollable(body).width(Length::Fill).height(Length::Fill),
@@ -406,12 +585,12 @@ mod tests {
     #[test]
     fn open_picks_the_topic_and_out_of_range_is_clamped() {
         let mut guide = Guide::default();
-        guide.update(GuideMsg::Open(INTEGRATION_TOPIC));
+        let _ = guide.update(GuideMsg::Open(INTEGRATION_TOPIC));
         assert!(guide.open);
         assert_eq!(guide.topic, INTEGRATION_TOPIC);
-        guide.update(GuideMsg::Topic(999));
+        let _ = guide.update(GuideMsg::Topic(999));
         assert_eq!(guide.topic, TOPICS.len() - 1);
-        guide.update(GuideMsg::Close);
+        let _ = guide.update(GuideMsg::Close);
         assert!(!guide.open);
     }
 }
