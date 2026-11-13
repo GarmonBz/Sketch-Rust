@@ -36,7 +36,9 @@ On Windows, open a saved, editable UAD 3.6 report in Appraise-It Pro. In Sketch
 Rust, choose **Help > Appraise-It Reports > Check open report**, select the report
 in SFREP's session picker, then choose **Preview sketch** and **Send sketch images**.
 Sketch Rust adds each nonblank page to the report's **Additional Sketch(es)**.
-Review the result in Appraise-It Pro and save the report there.
+For an eligible single-unit report, turn on **Include area totals** and
+review the proposed living-unit values. Review the result in Appraise-It Pro
+and save the report there.
 
 Keep the editable sketch in Sketchy or SKX. Use **File > Export as PNG** or
 **File > Export as PDF** for a report attachment where your form supports it,
