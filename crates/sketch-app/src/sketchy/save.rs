@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
-use super::{units, Converted, Frame, Point, Result};
+use super::{bulge_sign, units, Converted, Frame, Point, Result, CURRENT_VERSION};
 
 const NAMESPACE: &str = "app.sketchrust";
 const WORKFILE: &str = "app.sketchrust.workfile";
@@ -45,6 +45,7 @@ pub(super) enum Entity {
     Space { area: i64, holes: Vec<i64> },
     OpenSpace(Vec<i64>),
     Void(i64),
+    VoidWithHoles { area: i64, holes: Vec<i64> },
     Wall(Vec<i64>),
     Opening(i64),
     Feature(i64),
@@ -59,7 +60,7 @@ impl Entity {
     fn collection(&self) -> &'static str {
         match self {
             Self::Space { .. } | Self::OpenSpace(_) => "spaces",
-            Self::Void(_) => "voids",
+            Self::Void(_) | Self::VoidWithHoles { .. } => "voids",
             Self::Wall(_) => "walls",
             Self::Opening(_) => "openings",
             Self::Feature(_) => "features",
@@ -89,6 +90,13 @@ pub struct Backing {
 }
 
 impl Backing {
+    pub fn revision_id(&self) -> Option<&str> {
+        self.source["revision"]["id"].as_str()
+    }
+
+    pub fn revision_hash(&self) -> Option<&str> {
+        self.source["revision"]["content_hash"].as_str()
+    }
     pub fn from_model(model: &Value) -> Option<Self> {
         let backing = Self::deserialize(model.get("sketchyBacking")?).ok()?;
         (super::recognizes(&backing.source) && backing.source["structures"].is_array())
@@ -232,7 +240,7 @@ pub fn prepare_save(
     }
     let page_keys = assign_keys(&mut model)?;
     let mut source = backing.map(|state| state.source.clone()).unwrap_or_else(|| json!({
-        "format": "sketchy", "format_version": "0.1", "id": new_id(), "title": title,
+        "format": "sketchy", "format_version": CURRENT_VERSION, "id": new_id(), "title": title,
         "length_unit": if model.pointer("/settings/options/unitSystem").and_then(Value::as_str) == Some("metric") { "m" } else { "ft" },
         "structures": []
     }));
@@ -241,6 +249,7 @@ pub fn prepare_save(
         feet,
         position: [0.0; 2],
         rotation: 0.0,
+        bulge_sign: bulge_sign(source["format_version"].as_str().unwrap_or_default())?,
     };
     let mut removed = HashSet::new();
     let mut bindings = Vec::new();
@@ -405,6 +414,10 @@ pub fn prepare_save(
     });
     if changed || fork {
         revise(&mut source, fork);
+        source
+            .as_object_mut()
+            .expect("Sketchy document object")
+            .remove("results");
     }
 
     let workfile = Workfile {
@@ -413,6 +426,9 @@ pub fn prepare_save(
     };
     let mut output = source.clone();
     output["extras"][WORKFILE] = json!(workfile);
+    let hash = super::store::content_hash(&output)?;
+    output["revision"]["content_hash"] = json!(hash);
+    source["revision"]["content_hash"] = json!(hash);
     let mut bytes = serde_json::to_vec_pretty(&output).map_err(|e| e.to_string())?;
     bytes.push(b'\n');
     Ok(Prepared {
@@ -668,12 +684,17 @@ fn annotation(id: &str, kind: &str, key: &PageKey) -> Value {
 impl PageEdit<'_> {
     fn update(&self, item: &mut Value, entity: &mut Entity) -> Result<bool> {
         match entity {
-            Entity::Space { area, holes } => {
+            Entity::Space { .. } | Entity::VoidWithHoles { .. } => {
+                let (area, holes, is_void) = match entity {
+                    Entity::Space { area, holes } => (area, holes, false),
+                    Entity::VoidWithHoles { area, holes } => (area, holes, true),
+                    _ => unreachable!(),
+                };
                 let Some(poly) = self.areas.get(area) else {
                     return Ok(false);
                 };
                 let old = self.old_areas.get(area).copied().unwrap_or(&Value::Null);
-                self.update_area(item, poly, old, false)?;
+                self.update_area(item, poly, old, is_void)?;
                 let original = array(&item["shape"]["holes"]);
                 let mut rings = Vec::new();
                 let mut changed = false;
@@ -684,7 +705,11 @@ impl PageEdit<'_> {
                             ring,
                             self.old_areas.get(id).copied().unwrap_or(&Value::Null),
                         ) {
-                            self.write_ring(&mut raw, ring)?;
+                            let old_ring = self.old_areas.get(id).copied().unwrap_or(&Value::Null);
+                            let mut geometry = json!({});
+                            self.write_ring(&mut geometry, ring)?;
+                            remap_ring_metadata(&raw, &mut geometry, ring, old_ring);
+                            replace_shape(&mut raw, geometry);
                             changed = true;
                         }
                         rings.push(raw);
@@ -820,6 +845,7 @@ impl PageEdit<'_> {
             let shape = &mut item["shape"];
             let mut ring = json!({"type": "polygon"});
             self.write_ring(&mut ring, area)?;
+            remap_ring_metadata(shape, &mut ring, area, old);
             replace_shape(shape, ring);
         }
         if is_void {
@@ -880,8 +906,11 @@ impl PageEdit<'_> {
             .map(|point| self.frame.local_point(point))
             .collect::<Vec<_>>());
         let edges = array(&area["edges"]);
-        let bulges =
-            (0..points.len()).map(|i| edges.get(i).map_or(0.0, |e| bulge(number(&e["bowAngle"]))));
+        let bulges = (0..points.len()).map(|i| {
+            edges
+                .get(i)
+                .map_or(0.0, |e| self.bulge(number(&e["bowAngle"])))
+        });
         write_bulges(ring, bulges.collect());
         Ok(())
     }
@@ -890,7 +919,7 @@ impl PageEdit<'_> {
         if all || changed(line, old, &["start", "end", "bowAngle"]) {
             item["start"] = json!(self.frame.local_point(&line["start"]));
             item["end"] = json!(self.frame.local_point(&line["end"]));
-            set_optional(item, "bulge", (bow != 0.0).then(|| json!(bulge(bow))));
+            set_optional(item, "bulge", (bow != 0.0).then(|| json!(self.bulge(bow))));
         }
         if all || changed(line, old, &["thickness"]) {
             set_optional(
@@ -928,7 +957,7 @@ impl PageEdit<'_> {
                 return Err("path was interrupted".into());
             };
             points.push(self.frame.local_point(to));
-            bulges.push(sign * bulge(number(&line["bowAngle"])));
+            bulges.push(sign * self.bulge(number(&line["bowAngle"])));
             from = to;
         }
         if closed {
@@ -945,6 +974,10 @@ impl PageEdit<'_> {
 
     fn rotation(&self, angle: &Value) -> f64 {
         (-number(angle) - self.frame.rotation).rem_euclid(360.0)
+    }
+
+    fn bulge(&self, bow: f64) -> f64 {
+        self.frame.bulge_sign * (bow.to_radians() / 4.0).tan()
     }
 
     fn write_text(&self, item: &mut Value, text: &Value) {
@@ -978,16 +1011,62 @@ fn near_point(a: &Value, b: &Value) -> bool {
     (number(&a["x"]) - number(&b["x"])).hypot(number(&a["y"]) - number(&b["y"])) < 1e-7
 }
 
-fn bulge(bow: f64) -> f64 {
-    (bow.to_radians() / 4.0).tan()
-}
-
 fn write_bulges(path: &mut Value, bulges: Vec<f64>) {
     set_optional(
         path,
         "bulges",
         bulges.iter().any(|b| *b != 0.0).then(|| json!(bulges)),
     );
+}
+
+fn remap_ring_metadata(source: &Value, output: &mut Value, current: &Value, old: &Value) {
+    let before = array(&old["edges"]);
+    let after = array(&current["edges"]);
+    for (key, default) in [
+        ("edges", json!("physical")),
+        ("edge_measured_to", Value::Null),
+    ] {
+        let Some(values) = source[key].as_array() else {
+            continue;
+        };
+        if values.len() != before.len() {
+            continue;
+        }
+        let fields: Vec<_> = after
+            .iter()
+            .enumerate()
+            .map(|(i, edge)| {
+                let same_endpoints = |a: usize, b: usize| {
+                    let current_points = array(&current["points"]);
+                    let previous_points = array(&old["points"]);
+                    if current_points.len() != after.len() || previous_points.len() != before.len()
+                    {
+                        return false;
+                    }
+                    let a1 = &current_points[a];
+                    let a2 = &current_points[(a + 1) % current_points.len()];
+                    let b1 = &previous_points[b];
+                    let b2 = &previous_points[(b + 1) % previous_points.len()];
+                    (near_point(a1, b1) && near_point(a2, b2))
+                        || (near_point(a1, b2) && near_point(a2, b1))
+                };
+                let previous = edge["lineId"]
+                    .as_i64()
+                    .and_then(|id| {
+                        before
+                            .iter()
+                            .position(|prior| prior["lineId"].as_i64() == Some(id))
+                    })
+                    .or_else(|| (0..before.len()).find(|&j| same_endpoints(i, j)))
+                    .or_else(|| (after.len() == before.len()).then_some(i));
+                previous
+                    .and_then(|i| values.get(i))
+                    .cloned()
+                    .unwrap_or_else(|| default.clone())
+            })
+            .collect();
+        output[key] = json!(fields);
+    }
 }
 
 fn replace_shape(shape: &mut Value, geometry: Value) {
@@ -1003,6 +1082,8 @@ fn replace_shape(shape: &mut Value, geometry: Value) {
         "rotation",
         "start_angle",
         "end_angle",
+        "edges",
+        "edge_measured_to",
     ] {
         result.remove(key);
     }
@@ -1040,6 +1121,13 @@ fn prune_references(source: &mut Value, removed: &mut HashSet<String>) {
                     }
                 });
             }
+            if let Some(openings) = level.get_mut("openings").and_then(Value::as_array_mut) {
+                for opening in openings {
+                    if references(&opening["swing_into"], removed) {
+                        set_optional(opening, "swing_into", None);
+                    }
+                }
+            }
             prune_subdivisions(level, removed);
             if let Some(walls) = level.get_mut("walls").and_then(Value::as_array_mut) {
                 for wall in walls {
@@ -1050,7 +1138,7 @@ fn prune_references(source: &mut Value, removed: &mut HashSet<String>) {
             }
             if let Some(features) = level.get_mut("features").and_then(Value::as_array_mut) {
                 for feature in features {
-                    for key in ["connects_to", "counted_on"] {
+                    for key in ["connects_to", "counted_on", "well"] {
                         if references(&feature[key], removed) {
                             set_optional(feature, key, None);
                         }

@@ -23,7 +23,8 @@ pub fn save_sketch(default_name: &str, preferred: &str) -> Option<PathBuf> {
     {
         let filters = [
             ("Sketch", "skx"),
-            ("Sketchy", "sketchy.json"),
+            ("Sketchy JSON", "sketchy.json"),
+            ("Sketchy Store", "sketchy"),
             ("Sketch JSON", "json"),
         ];
         let mut dialog = rfd::FileDialog::new().set_file_name(default_name);

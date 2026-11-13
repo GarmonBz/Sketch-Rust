@@ -485,7 +485,7 @@ pub enum Message {
 /// The QAT's history button (`list-bullets`): 28x28, at x 20 + 28*3, y 1 —
 /// the undo-history popup anchors under it.
 /// `#file-open-input` / `#file-import-input` `accept=".skx,.apx,.json,.sketch"`.
-const SKETCH_OPEN_EXTENSIONS: &[&str] = &["skx", "apx", "json", "sketch"];
+const SKETCH_OPEN_EXTENSIONS: &[&str] = &["skx", "apx", "json", "sketch", "sketchy"];
 
 /// A sketch file named on the command line, opened once the window is up.
 static STARTUP_FILE: std::sync::Mutex<Option<std::path::PathBuf>> = std::sync::Mutex::new(None);
@@ -512,6 +512,35 @@ enum SketchFileFormat {
     Skx,
     Json,
     Sketchy,
+    SketchyStore,
+}
+
+impl SketchFileFormat {
+    fn is_sketchy(self) -> bool {
+        matches!(self, Self::Sketchy | Self::SketchyStore)
+    }
+}
+
+fn read_sketch_path(
+    path: &std::path::Path,
+) -> Result<(serde_json::Value, SketchFileFormat, bool), String> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut bytes = Vec::new();
+    (&mut file)
+        .take(16)
+        .read_to_end(&mut bytes)
+        .map_err(|e| e.to_string())?;
+    if sketchy::store::is_sqlite(&bytes) {
+        let converted = sketchy::convert(sketchy::store::read(path)?)?;
+        return Ok((
+            converted.model,
+            SketchFileFormat::SketchyStore,
+            converted.omitted,
+        ));
+    }
+    file.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+    read_sketch_model(&bytes)
 }
 
 fn read_sketch_model(bytes: &[u8]) -> Result<(serde_json::Value, SketchFileFormat, bool), String> {
@@ -566,8 +595,7 @@ fn sketch_destination(
     if file_name.ends_with(".sketchy.json") {
         (path, SketchFileFormat::Sketchy)
     } else if file_name.ends_with(".sketchy") {
-        path.set_extension("sketchy.json");
-        (path, SketchFileFormat::Sketchy)
+        (path, SketchFileFormat::SketchyStore)
     } else if file_name.ends_with(".json") {
         (path, SketchFileFormat::Json)
     } else {
@@ -897,6 +925,8 @@ impl App {
             .hash(&mut hasher);
         for poly in &self.drawing.polygons {
             poly.id.hash(&mut hasher);
+            poly.attributes.get("sketchy.area_rule").hash(&mut hasher);
+            poly.attributes.get("sketchy.void").hash(&mut hasher);
             poly.kind.hash(&mut hasher);
             poly.name.hash(&mut hasher);
             poly.measure_to.hash(&mut hasher);
@@ -7678,7 +7708,7 @@ impl App {
             if self
                 .current_file
                 .as_ref()
-                .is_some_and(|file| file.format == SketchFileFormat::Sketchy)
+                .is_some_and(|file| file.format.is_sketchy())
             {
                 self.view.center_and_fit(self.sketch_view_bounds());
             }
@@ -8132,14 +8162,12 @@ impl App {
     }
 
     fn import_sketch_path(&mut self, path: &std::path::Path) -> Task<Message> {
-        let read = std::fs::read(path)
-            .map_err(|e| e.to_string())
-            .and_then(|bytes| read_sketch_model(&bytes));
+        let read = read_sketch_path(path);
         let (mut model, format, omitted) = match read {
             Ok(read) => read,
             Err(e) => return self.toasts.show(format!("Error importing file: {e}")),
         };
-        if format != SketchFileFormat::Sketchy {
+        if !format.is_sketchy() {
             return self.import_state(&model, &path.to_string_lossy());
         }
         // Import merges a single page. Open preserves the structure/level pages.
@@ -8180,18 +8208,14 @@ impl App {
             Ok(path) => path,
             Err(e) => return self.toasts.show(format!("Could not open sketch: {e}")),
         };
-        let bytes = match std::fs::read(&path) {
-            Ok(bytes) => bytes,
-            Err(e) => return self.toasts.show(format!("Could not open sketch: {e}")),
-        };
-        let (model, format, omitted) = match read_sketch_model(&bytes) {
+        let (model, format, omitted) = match read_sketch_path(&path) {
             Ok(read) => read,
             Err(e) => return self.toasts.show(e),
         };
         if model.get("pages").and_then(|v| v.as_array()).is_none() {
             return self.toasts.show("Invalid sketch file format.".into());
         }
-        let stem = if format == SketchFileFormat::Sketchy {
+        let stem = if format.is_sketchy() {
             sketchy_file_stem(&path)
         } else {
             path.file_stem().and_then(|s| s.to_str()).unwrap_or("")
@@ -8204,7 +8228,7 @@ impl App {
             .to_owned();
         self.current_file = Some(CurrentFile { path, format });
         self.record_recent(&name, &model.to_string());
-        if format == SketchFileFormat::Sketchy {
+        if format.is_sketchy() {
             self.view.center_and_fit(self.sketch_view_bounds());
             if omitted {
                 return self.toasts.show(
@@ -8226,10 +8250,18 @@ impl App {
             let prefer_sketchy = self
                 .current_file
                 .as_ref()
-                .is_some_and(|file| file.format == SketchFileFormat::Sketchy)
+                .is_some_and(|file| file.format.is_sketchy())
                 || (self.current_file.is_none() && self.sketchy_backing.is_some());
             let ext = if prefer_sketchy {
-                "sketchy.json"
+                if self
+                    .current_file
+                    .as_ref()
+                    .is_some_and(|file| file.format == SketchFileFormat::SketchyStore)
+                {
+                    "sketchy"
+                } else {
+                    "sketchy.json"
+                }
             } else {
                 match sketch_core::skx::write(&model, &Default::default()) {
                     Ok(_) => "skx",
@@ -8244,7 +8276,7 @@ impl App {
             let name = self
                 .current_file
                 .as_ref()
-                .filter(|file| file.format == SketchFileFormat::Sketchy)
+                .filter(|file| file.format.is_sketchy())
                 .map(|file| sketchy_file_stem(&file.path))
                 .filter(|stem| !stem.is_empty())
                 .unwrap_or(&self.file_name);
@@ -8270,12 +8302,12 @@ impl App {
             .current_file
             .as_ref()
             .is_some_and(|file| same_sketch_path(&file.path, &target.path));
-        if target.format == SketchFileFormat::Sketchy {
+        if target.format.is_sketchy() {
             self.ensure_area_layers();
             self.recalculate_if_needed();
             model = self.build_save_model();
         }
-        let name = if target.format == SketchFileFormat::Sketchy {
+        let name = if target.format.is_sketchy() {
             if same_target {
                 self.file_name.clone()
             } else {
@@ -8296,7 +8328,7 @@ impl App {
                 sketch_core::skx::write(&model, &Default::default()).map_err(|e| e.to_string())
             }
             SketchFileFormat::Json => serde_json::to_vec_pretty(&model).map_err(|e| e.to_string()),
-            SketchFileFormat::Sketchy => sketchy::prepare_save(
+            SketchFileFormat::Sketchy | SketchFileFormat::SketchyStore => sketchy::prepare_save(
                 model.clone(),
                 self.sketchy_backing.as_ref(),
                 &name,
@@ -8312,7 +8344,28 @@ impl App {
             Ok(bytes) => bytes,
             Err(e) => return self.toasts.show(format!("Could not save sketch: {e}")),
         };
-        if let Err(e) = autosave::atomic_write(&target.path, &bytes) {
+        let result = if target.format == SketchFileFormat::SketchyStore {
+            let previous = if same_target {
+                match self
+                    .sketchy_backing
+                    .as_ref()
+                    .and_then(|backing| backing.revision_id().zip(backing.revision_hash()))
+                {
+                    Some(id) => Some(id),
+                    None => {
+                        return self.toasts.show(
+                            "Could not save Sketchy store: missing original revision.".into(),
+                        )
+                    }
+                }
+            } else {
+                None
+            };
+            sketchy::store::write(&target.path, &bytes, previous)
+        } else {
+            autosave::atomic_write(&target.path, &bytes).map_err(|e| e.to_string())
+        };
+        if let Err(e) = result {
             return self.toasts.show(format!("Could not save sketch: {e}"));
         }
         if let Some(save) = prepared {
@@ -9723,7 +9776,7 @@ fn main() -> iced::Result {
             if !app
                 .current_file
                 .as_ref()
-                .is_some_and(|file| file.format == SketchFileFormat::Sketchy)
+                .is_some_and(|file| file.format.is_sketchy())
             {
                 return Err(app
                     .toasts
@@ -9739,9 +9792,12 @@ fn main() -> iced::Result {
             const EDIT: &str = "Package check: edited area";
             area.name = EDIT.into();
             let _ = app.update(Message::SaveFile);
-            let bytes = std::fs::read(&sample).map_err(|e| e.to_string())?;
-            let mut saved: serde_json::Value =
-                serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+            let mut saved: serde_json::Value = if app.current_file.as_ref().is_some_and(|file| file.format == SketchFileFormat::SketchyStore) {
+                sketchy::store::read(&sample)?
+            } else {
+                let bytes = std::fs::read(&sample).map_err(|e| e.to_string())?;
+                serde_json::from_slice(&bytes).map_err(|e| e.to_string())?
+            };
             if let Some(extras) = saved
                 .get_mut("extras")
                 .and_then(|value| value.as_object_mut())
