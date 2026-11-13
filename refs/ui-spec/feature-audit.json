@@ -17180,27 +17180,5 @@
         "e2e_breakdown_dialog_opens_and_reports_gla1"
       ]
     }
-  ],
-  "native_apex_compatibility": {
-    "status": "development-preview",
-    "audit": "APEX-COMPATIBILITY.md",
-    "single_sketch_process": true,
-    "companion_executable": false,
-    "verified": [
-      "Native AXF populated layouts 1–38 accepted by installed reader",
-      "Genuine-writer fixtures edited and reopened",
-      "462 native symbol blocks",
-      "Actual SDK IPC against Rust editor model, including Save/New/Open/Load/Base64, tags, georeferences, images and Close",
-      "Legacy file-mode edit/return without SDK transport",
-      "Metric source-unit save/return; nested/reflected/nonuniform CAD, points and drawable blocks",
-      "Recursive child-net factors; face boundaries with centerline restoration",
-      "Unfinished native drafts in layouts 1–38",
-      "Native code-table HTTP/HTTPS/file loading; independent multiple-file sessions"
-    ],
-    "remaining": [
-      "Actual Appraise-It Pro legacy/UAD 3.6 and other host report-field round trips",
-      "Additional hardcoded host registration routes",
-      "Exact Apex print templates and exhaustive CAD font/style fidelity"
-    ]
-  }
+  ]
 }

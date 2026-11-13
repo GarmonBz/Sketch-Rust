@@ -1,5 +1,6 @@
 param([Parameter(Mandatory)][string]$InstallerPath)
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'assert-release-executable.ps1')
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $msi = (Resolve-Path -LiteralPath $InstallerPath).Path
 $work = Join-Path $repoRoot "target\sketchy-msi-check\$PID"
@@ -56,6 +57,7 @@ while ($record = $files.Fetch()) {
     Move-Item -LiteralPath (Join-Path $unpacked $id) -Destination (Join-Path $unpacked $name)
 }
 $files.Close()
+Assert-ReleaseExecutable (Join-Path $unpacked 'sketch-app.exe')
 $manifest = Get-Content -LiteralPath (Join-Path $unpacked 'manifest.json') -Raw | ConvertFrom-Json
 foreach ($entry in $manifest.files) {
     if ((Get-FileHash -LiteralPath (Join-Path $unpacked $entry.name) -Algorithm SHA256).Hash -ne $entry.sha256) {

@@ -1,4 +1,4 @@
-//! The in-app User Guide (Help > User Guide / Integration Guide).
+//! The in-app User Guide (Help > User Guide / Appraise-It Reports).
 //!
 //! Not in the original web app: a topic list on the left, the chosen topic's
 //! text on the right, in the same card/backdrop dress as the Keyboard
@@ -31,7 +31,7 @@ pub struct Topic {
 }
 
 /// The index of the Appraise-It topic, opened directly by Help >
-/// Integration Guide.
+/// Appraise-It Reports.
 pub const INTEGRATION_TOPIC: usize = 6;
 
 use Block::{Heading, Note, Para, Points, Steps};
@@ -163,43 +163,16 @@ pub const TOPICS: &[Topic] = &[
         ],
     },
     Topic {
-        title: "Appraise-It integration",
+        title: "Appraise-It reports",
         blocks: &[
-            Para("Sketch can stand in for Apex as the sketch program Appraise-It Pro opens. You start it from the report, draw, and the sketch, its measurements and the sketch images go back into the report."),
-            Heading("Set up (once per computer)"),
+            Para("Keep the editable drawing in a Sketchy or SKX file. Use an exported sketch image when working with an Appraise-It Pro report."),
+            Heading("Export a sketch for your report"),
             Steps(&[
-                "Put the whole Sketch folder where it will stay. The report opens Sketch from that exact location, so do not run setup from a download or temporary folder.",
-                "Start Sketch from that folder and open Help > Appraise-It Integration.",
-                "Check that the path shown is the copy of Sketch you want the report to open.",
-                "Click Enable integration. If Windows asks for administrator permission, allow it.",
-                "Wait for the panel to report success, then close it.",
-                "Close and restart Appraise-It Pro.",
+                "Use File > Export as PNG for a sketch image or File > Export as PDF for a document with calculations.",
+                "Attach the image or PDF using the controls available for your report type in Appraise-It Pro. Review the sketch and enter the area totals in the appropriate report fields.",
             ]),
-            Para("Setup changes the shared Apex launch setting on this computer. It does not change Appraise-It Pro's own files."),
-            Heading("Sketching from a report"),
-            Steps(&[
-                "In Appraise-It Pro, open the report and click its usual Apex sketch button. Sketch opens with that report's sketch, or an empty one.",
-                "Draw and define the areas as usual.",
-                "Close Sketch. It asks what to do with your work:",
-            ]),
-            Points(&[
-                "Save to report - sends the sketch, the area measurements and the sketch images to the report, then closes once the report confirms it received them.",
-                "Discard changes - closes without sending. The report keeps the sketch it had before.",
-                "Cancel - returns to the drawing.",
-            ]),
-            Para("For a UAD 3.6 report, Appraise-It Pro then shows its own Transfer sketches window. Finish that window, or the images are not stored in the report."),
-            Heading("After updating or moving Sketch"),
-            Para("The report opens the copy of Sketch that was registered. If you install a new version in a different folder, or move the folder, open Help > Appraise-It Integration in the new copy and click Enable integration again, then restart Appraise-It Pro."),
-            Heading("Going back to Apex"),
-            Para("Open Help > Appraise-It Integration and click Restore previous provider, then restart Appraise-It Pro. The report's sketch button opens the program it used before."),
-            Heading("If something goes wrong"),
-            Points(&[
-                "The report still opens Apex: restart Appraise-It Pro, then check that the integration panel says it is enabled for this copy of Sketch.",
-                "Setup was not completed: the Windows permission prompt was probably declined. Click Enable integration again and allow it.",
-                "Sketch stays open after Save to report: the report did not confirm the transfer. Your drawing is still there - check the report is still open, then save to the report again.",
-                "The report shows no sketch images (UAD): the Transfer sketches window in Appraise-It Pro was not completed.",
-            ]),
-            Note("This is a development preview. It has been checked with Appraise-It Pro legacy and UAD 3.6 reports; other host programs have not been validated. Keep a backup of important reports until you trust the round trip."),
+            Heading("If you used a previous preview with Appraise-It Pro"),
+            Para("Ask SFREP or Apex support to restore the original sketch provider if the report button still points to Sketch Rust. Open existing AXF workfiles in the licensed Apex app."),
         ],
     },
 ];
@@ -410,7 +383,7 @@ mod tests {
 
     #[test]
     fn the_integration_shortcut_points_at_the_integration_topic() {
-        assert_eq!(TOPICS[INTEGRATION_TOPIC].title, "Appraise-It integration");
+        assert_eq!(TOPICS[INTEGRATION_TOPIC].title, "Appraise-It reports");
     }
 
     #[test]

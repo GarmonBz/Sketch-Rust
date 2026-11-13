@@ -2,12 +2,7 @@
 
 A native Windows floor-plan sketching program for appraisers: draw walls to scale,
 define areas, and get living-area and building-area calculations. It is a Rust port
-of the browser-based Appraisal Sketch app, and can stand in for Apex as the sketch
-program Appraise-It Pro opens.
-
-> **Status: development preview.** Appraise-It integration has been checked with
-> Appraise-It Pro legacy and UAD 3.6 reports only. See
-> [docs/APEX_REPLACEMENT.md](docs/APEX_REPLACEMENT.md) for what is and is not covered.
+of the browser-based Appraisal Sketch app.
 
 ## Install
 
@@ -29,22 +24,21 @@ Requires 64-bit Windows 10 or 11.
 ## Using it
 
 Help is built in: **Help > User Guide** covers drawing, areas, symbols, printing and
-saving; **Help > Keyboard Shortcuts** (F1) lists every key; **Help > Integration
-Guide** explains Appraise-It setup and use.
+saving. **Help > Keyboard Shortcuts** (F1) lists the keyboard shortcuts.
 
 Quick start: press `E`, click a start point, type a length and press an arrow key for
 each wall, press `A` to close the area, then pick what the area is in the Define Area
 panel (`F4`).
 
-### Appraise-It integration
+### Appraise-It Pro reports
 
-1. Install Sketch where it will stay.
-2. Open **Help > Appraise-It Integration** and click **Enable integration**. Allow the
-   Windows administrator prompt if one appears.
-3. Restart Appraise-It Pro and use its usual Apex sketch button.
+Keep the editable sketch in Sketchy or SKX. Use **File > Export as PNG** or
+**File > Export as PDF** for a report attachment where your form supports it,
+and enter the area totals in Appraise-It Pro. AXF files can be opened with
+the licensed Apex application.
 
-**Restore previous provider** in the same panel switches the report back to Apex.
-Setup changes the shared Apex launch setting; it does not modify Appraise-It Pro.
+See the [Appraise-It Pro integration plan](docs/APPRAISE_IT_PRO_INTEGRATION.md)
+for the proposed SFREP connection and guidance for users of older previews.
 
 ## Build from source
 
@@ -65,11 +59,11 @@ cargo test --workspace
 | Path | What it is |
 |---|---|
 | `crates/sketch-core` | Geometry, calculations, file formats, symbol import |
-| `crates/sketch-app` | The application (iced UI), Appraise-It/Apex compatibility |
+| `crates/sketch-app` | The desktop application (iced UI) |
 | `installer/` | The WiX source of the Windows installer |
 | `assets/` | Symbol library, icons, cursors |
 | `refs/` | The original web app's source and UI measurements the port is checked against |
-| `docs/` | Release notes, build validation, compatibility and symbol-library notes |
+| `docs/` | Release notes, build validation, the Appraise-It Pro plan and symbol-library notes |
 | `tools/` | Packaging and test scripts |
 
 `STATUS.md` is the running change ledger; `ACCEPTANCE.md` records the parity checks

@@ -60,7 +60,6 @@ pub enum Action {
     GeoCoordinate,
     GeoAddress,
     /// Save the linked sketch to the report and close after acknowledgment.
-    ReturnToReport,
     /// Closing with unsaved changes: Save (then close), Don't save, Cancel.
     SaveAndExit,
     /// Open the sketch file dropped on the window, discarding the changes.
@@ -93,16 +92,6 @@ impl Dialog {
             has_cancel: true,
             on_ok,
             ..Dialog::alert(message)
-        }
-    }
-
-    pub fn report_close() -> Self {
-        Self {
-            title: "Close sketch".into(),
-            ..Self::confirm(
-                "Save this sketch and its measurements to the report before closing?",
-                Action::ReturnToReport,
-            )
         }
     }
 
@@ -244,21 +233,12 @@ pub fn layer<'a>(d: &Dialog) -> Element<'a, Message> {
     if d.has_cancel {
         actions = actions.push(dialog_button("Cancel", false, DialogMsg::Cancel));
     }
-    let report_close = d.on_ok == Action::ReturnToReport;
     let save_close = d.on_ok == Action::SaveAndExit;
-    if report_close {
-        actions = actions.push(dialog_button("Discard changes", false, DialogMsg::Discard));
-    } else if save_close {
+    if save_close {
         actions = actions.push(dialog_button("Don't save", false, DialogMsg::Discard));
     }
     actions = actions.push(dialog_button(
-        if report_close {
-            "Save to report"
-        } else if save_close {
-            "Save"
-        } else {
-            "OK"
-        },
+        if save_close { "Save" } else { "OK" },
         true,
         DialogMsg::Ok,
     ));
@@ -271,7 +251,7 @@ pub fn layer<'a>(d: &Dialog) -> Element<'a, Message> {
             left: 17.0,
             right: 17.0,
         })
-        .width(if report_close { 480 } else { 380 })
+        .width(380)
         .style(|_| container::Style {
             background: Some(bg_panel().into()),
             border: Border {

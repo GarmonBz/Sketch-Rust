@@ -7112,81 +7112,6 @@ fn e2e_print_buttons_use_the_preview_pdf_with_summary_and_breakdown() {
 }
 
 #[test]
-fn e2e_integration_setup_help_buttons_enable_restore_and_report_errors() {
-    let mut h = harness();
-    h.script(&["click \"Help\"", "click (148, 91)"]);
-    assert!(h.shows("Appraise-It Pro integration"));
-    assert!(h.shows("Enable integration"));
-    h.screenshot("integration-setup-open");
-    // Screenshots suppress the emulator's physical cursor. Start a fresh
-    // harness before further input so widget hit-testing stays independent.
-    let mut h = harness();
-    h.script(&["click \"Help\"", "click (148, 91)"]);
-    let (_, requests) =
-        crate::integration_setup::with_result(Ok("Host launch enabled.".into()), || {
-            h.script(&["click \"Enable integration\""]);
-            h.wait(50);
-        });
-    assert_eq!(requests, [true]);
-    assert!(
-        h.shows("Host launch enabled.\nRestart Appraise-It Pro to use the updated launch setting.")
-    );
-    assert!(!state(h).integration_setup.busy);
-    let mut h = harness();
-    h.script(&["click \"Help\"", "click (148, 91)"]);
-    let (_, requests) =
-        crate::integration_setup::with_result(Ok("Previous provider restored.".into()), || {
-            h.script(&["click \"Restore previous provider\""]);
-            h.wait(50);
-        });
-    assert_eq!(requests, [false]);
-    assert!(h.shows(
-        "Previous provider restored.\nRestart Appraise-It Pro to use the updated launch setting."
-    ));
-    let mut h = harness();
-    h.script(&["click \"Help\"", "click (148, 91)"]);
-    let (_, requests) = crate::integration_setup::with_result(
-        Err("Windows permission was cancelled.".into()),
-        || {
-            h.script(&["click \"Enable integration\""]);
-            h.wait(50);
-        },
-    );
-    assert_eq!(requests, [true]);
-    assert!(h.shows("Setup was not completed: Windows permission was cancelled."));
-    h.screenshot("integration-setup-error");
-}
-
-#[test]
-fn e2e_integration_setup_close_escape_and_modal_shortcuts_leave_the_sketch_unchanged() {
-    for close in ["click \"Close\"", "type escape"] {
-        let mut h = defined_square();
-        h.script(&["type escape"]);
-        h.send(Message::SelectAll);
-        h.script(&["click \"Help\"", "click (148, 91)"]);
-        h.send(Message::Key(crate::input::KeyCmd::Delete));
-        assert!(h.shows("Enable integration"));
-        h.script(&[close]);
-        let app = state(h);
-        assert!(!app.integration_setup.open);
-        assert!(
-            app.dialog.is_none(),
-            "Delete must not open an underlying deletion confirmation"
-        );
-        assert_eq!(app.selection.lines.len(), 4);
-        assert_eq!(app.drawing.polygons.len(), 1);
-        assert_eq!(app.drawing.polygons[0].kind, "GLA1");
-        assert_eq!(app.drawing.lines.len(), 4);
-    }
-    let mut h = Harness::boot_at_size(program(1.0), iced::Size::new(420.0, 620.0));
-    h.send(Message::WindowResized(iced::Size::new(420.0, 620.0)));
-    h.script(&["click \"Help\"", "click (148, 91)"]);
-    assert!(h.shows("Enable integration"));
-    assert!(h.shows("Restore previous provider"));
-    h.screenshot("integration-setup-small");
-}
-
-#[test]
 fn e2e_print_preview_opens_and_closes() {
     // S11-055: the overlay's toolbar reads `N page(s) · Paper portrait`;
     // Close Preview and Escape both dismiss it.
@@ -9127,56 +9052,6 @@ fn e2e_redraw_deleted_boundary_with_remaining_curved_wall_recloses_area() {
 }
 
 #[test]
-fn e2e_report_close_buttons_cancel_discard_and_save_error() {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/report-close-022/widget-blocked");
-    std::fs::create_dir_all(root.parent().unwrap()).unwrap();
-    std::fs::write(&root, b"Blocked report session").unwrap();
-    let make = || {
-        let root = root.clone();
-        Harness::boot(iced::application(
-            move || {
-                let (mut app, task) = App::boot(1.);
-                app.apex_session = Some(root.clone());
-                (app, task)
-            },
-            App::update,
-            App::view,
-        ))
-    };
-    let mut h = make();
-    h.send(Message::Close);
-    for label in ["Save to report", "Discard changes", "Cancel"] {
-        assert!(h.shows(label));
-    }
-    h.script(&["click \"Cancel\""]);
-    assert!(!h.shows("Save to report"));
-    h.send(Message::Close);
-    h.script(&["type escape"]);
-    assert!(!h.shows("Save to report"));
-    h.send(Message::Close);
-    h.script(&["click \"Save to report\""]);
-    let app = state(h);
-    assert!(!app.apex_returning);
-    assert!(
-        app.toasts.text().is_some(),
-        "Save invokes host transfer and reports the I/O failure"
-    );
-    let mut h = make();
-    h.send(Message::Close);
-    h.screenshot("report-close-options");
-    let mut h = make();
-    h.send(Message::Close);
-    h.script(&["click \"Discard changes\""]);
-    let app = state(h);
-    assert!(app
-        .toasts
-        .text()
-        .unwrap()
-        .contains("Could not close the report session"));
-}
-
-#[test]
 fn e2e_category_deletion_fire_uses_visible_confirmation_and_refreshes() {
     crate::symlib::with_temp_library(|| {
         use crate::symbol_manager::Msg as S;
@@ -9247,7 +9122,7 @@ fn e2e_recent_files_list_renders_with_an_entry() {
 }
 
 #[test]
-fn e2e_help_tab_opens_the_user_guide_and_the_integration_topic() {
+fn e2e_help_tab_opens_the_user_guide_and_the_appraise_it_topic() {
     use crate::guide::{GuideMsg, INTEGRATION_TOPIC};
     // Both guide buttons are on the Help tab, with the actions they run.
     let opens: Vec<usize> = crate::ribbon_tabs::help()
@@ -9267,13 +9142,13 @@ fn e2e_help_tab_opens_the_user_guide_and_the_integration_topic() {
     h.send(Message::Guide(GuideMsg::Open(0)));
     assert!(h.shows("USER GUIDE") && h.shows("A first sketch"));
     // The topic list switches the page.
-    h.script(&["click \"Appraise-It integration\""]);
-    assert!(h.shows("Set up (once per computer)") && !h.shows("A first sketch"));
+    h.script(&["click \"Appraise-It reports\""]);
+    assert!(h.shows("Export a sketch for your report") && !h.shows("A first sketch"));
     // Escape closes it, like the shortcuts sheet.
     h.script(&["type escape"]);
     assert!(!h.shows("USER GUIDE"));
     h.send(Message::Guide(GuideMsg::Open(INTEGRATION_TOPIC)));
-    assert!(h.shows("Going back to Apex"));
+    assert!(h.shows("If you used a previous preview with Appraise-It Pro"));
     let app = state(h);
     assert!(app.guide.open && app.guide.topic == INTEGRATION_TOPIC);
 

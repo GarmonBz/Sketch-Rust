@@ -4,8 +4,10 @@ param(
     [string]$WixDirectory
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'assert-release-executable.ps1')
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $stage = (Resolve-Path -LiteralPath $StageDirectory).Path
+Assert-ReleaseExecutable (Join-Path $stage 'sketch-app.exe')
 $manifest = Get-Content -LiteralPath (Join-Path $stage 'manifest.json') -Raw | ConvertFrom-Json
 if (-not $OutputPath) {
     $OutputPath = Join-Path $repoRoot "dist\SketchRust-$($manifest.version)-sketchy-preview-x64.msi"

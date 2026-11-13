@@ -1,4 +1,8 @@
-# Build validation — 0.1.29 native compatibility preview
+# Historical build validation through 0.1.29
+
+These results describe earlier builds. Sketch Rust 0.1.30 removed the Apex
+compatibility runtime, AXF file handling and provider setup. See
+[the Appraise-It Pro plan](APPRAISE_IT_PRO_INTEGRATION.md).
 
 0.1.29 User Guide and installer (2026-11-11):
 
@@ -6,7 +10,7 @@
   crates/sketch-app/src/guide.rs). Headless screenshots of the Help tab and
   two topics were reviewed; the guide was not clicked through in the running
   app. The integration steps follow the behavior documented in
-  APEX-COMPATIBILITY.md and were not re-run against Appraise-It Pro.
+  the 0.1.29 release and were not re-run against Appraise-It Pro.
 - Automated: 626 app and 178 core tests passed, 0 failed.
 - Installer: tools/installer.ps1 builds SketchRust-<version>-x64.msi (WiX 5.0.2).
   Its -Test installs silently into a scratch folder, checks the program files,

@@ -1,4 +1,4 @@
-Sketch Rust 0.1.29 - Windows x64 native compatibility development build, 2026-11-11
+Sketch Rust 0.1.30 - Windows x64 preview
 
 Sketchy preview: File > Open accepts draft 0.1 and 0.2 .sketchy.json workfiles
 and .sketchy revision stores. Save writes edits to the open workfile. Save As
@@ -9,14 +9,11 @@ See LICENSE.txt for the Sketch Rust Free Use License. Paid appraisal work is
 permitted. Selling or monetizing the program or modified versions is prohibited.
 See PHOSPHOR-LICENSE.txt and SYMBOL-LIBRARY.md for third-party materials.
 
-Native Apex compatibility is in development. This package is NOT a completed
-universal Apex replacement. Read APEX-COMPATIBILITY.md for supported interfaces,
-verification and remaining gaps before changing a host's sketch provider.
+0.1.30 removes AXF and the former Apex-based Appraise-It Pro integration.
+Help > Appraise-It Reports describes the manual export workflow. See
+APPRAISE_IT_PRO_INTEGRATION.md for the planned SFREP connection and older-preview guidance.
 
-0.1.29 adds built-in help. Help > User Guide covers drawing walls, areas and
-calculations, symbols and text, pages and printing, and saving. Help >
-Integration Guide explains how to set up and use Appraise-It integration, how
-to go back to Apex, and what to check when something goes wrong.
+Help > User Guide covers drawing, area calculations, symbols, printing and saving.
 A Windows installer (SketchRust-<version>-x64.msi) is available next to this
 zip: it installs for the current user without administrator rights, offers a
 choice of folder and an optional desktop shortcut, upgrades older installer
@@ -73,36 +70,6 @@ the manager returns to All instead of retaining a deleted filter. Empty
 categories can also be removed. In 0.1.25, Delete category permanently updates
 symbols.json and keeps symbols.json.bak.
 
-0.1.22 adds a report-aware close prompt in integrated mode:
-- Save to report transfers the current sketch, measurements and report images,
-  then closes only after the host acknowledges success.
-- Discard changes closes without sending further edits to the report.
-- Cancel (or Escape) returns to editing.
-The title-bar close button, File > Exit and Alt+F4 use the same prompt. Closing
-is blocked during a pending transfer, and transfer failures keep Sketch open.
-Standalone closing retains its existing confirmation.
-
-0.1.21 keeps the desktop host compatibility runtime inside Sketch without an
-apex-compat.dll console window. Both the main EXE and embedded managed entry
-assembly use the Windows GUI subsystem. PDF/email opening uses the native
-Windows shell, without launching cmd.exe.
-Live report-image refreshes render on a background thread and reuse unchanged
-snapshots. Host idle polls preserve the cached drawing. Late renders cannot
-replace a newer explicit Save/Return. Rapid mouse events redraw the live pointer
-and drawing guides locally, coalescing full HUD updates to a frame interval.
-To update an existing Pro integration, open this 0.1.21 EXE, choose Help >
-Appraise-It Integration > Enable integration, then restart Appraise-It Pro.
-
-0.1.20 adds Help > Appraise-It Integration. Keep the complete extracted build
-in a permanent folder, open that panel and click Enable integration. Approve
-Windows administrator permission if requested, wait for success, then restart
-Appraise-It Pro and use its existing Apex button. No terminal command or EXE
-rename is needed. Restore previous provider reverses the registration.
-The panel shows the current host target, success/errors and the Sketch EXE it
-will register. Setup runs in the background inside this EXE. It changes the
-shared Apex launch configuration, not Appraise-It Pro's program files. Protected
-upgrades retain the prior registration record so an elevated retry succeeds.
-
 0.1.19 adds side-by-side AREA CALCULATIONS SUMMARY and AREA CALCULATIONS
 BREAKDOWN boxes at the bottom of Print Preview, Print and PDF export. Both
 boxes are centered within the printable page, with area codes, factors, net
@@ -143,55 +110,6 @@ two-line captions. Regression checks reject enabled controls with no action.
 Center preserves zoom; Center & Fit uses the current canvas size and sketch
 bounds, including curved walls. Empty pages are unchanged; other pages are
 excluded. Imported polygons without wall records can also be centered.
-
-0.1.13 fixes stretched report images by matching the native host's fixed canvas
-aspect ratio. The 10 x 10 test area stays square in the actual legacy report
-rendering and UAD stored image. Summary/Breakdown boxes remain centered and compact.
-
-The EXE transfers a complete report image: the floorplan above side-by-side
-AREA CALCULATIONS SUMMARY and AREA CALCULATIONS BREAKDOWN sections. These include
-area codes/names, factors, sizes, perimeters, net totals, calculation pieces and
-Net LIVABLE totals. Tables grow to retain all rows. This applies to default and
-integration images for host returns and saves, independently of print settings.
-No copyright notice or branding logo is appended to the transferred image.
-The boxes have equal side margins and compact heights based on their contents.
-The native EMF export fixes asymmetric padding at scaled Windows display DPIs.
-Both actual legacy and UAD 3.6 stored report images were read back and verified.
-For UAD 3.6, finish Pro's Transfer sketches dialog to apply the images; the SDK
-return receipt alone does not mean that Pro has committed them to the report.
-
-0.1.10 verifies actual Appraise-It Pro legacy and UAD 3.6 disposable-report
-measurement/image transfers, including a repeated native reopen/return.
-It fixes missing finished-basement measurements and reentrant host shutdown.
-See BUILD_VALIDATION.md for exact checked fields and remaining qualification.
-
-Compatibility code and the host transport are embedded in sketch-app.exe and
-run inside that process. No bridge EXE or service is used. Windows .NET Framework
-4.8 is required for native host/file compatibility; a genuine Apex drawing engine
-is not used at runtime. The symbol library below remains editable external data.
-
-SDK hosts: shared launch redirection uses --enable-apex-compat; exact restoration
-uses --restore-apex-launch. Setup is built into the EXE and may require Windows
-administrator rights. Choose a permanent extracted folder before setup. Shared
-SDK configuration is only one host registration route; this does not configure
-every legacy application automatically. This package does not activate setup.
-If Windows protects the shared configuration, setup requests administrator
-permission using this same EXE. Windows permission prompts must be approved by
-the user. Setup and restoration show a visible success/error dialog; no console
-or bridge program is required. --apex-registration-quiet suppresses that result
-dialog for scripted use; it does not suppress a required Windows permission prompt.
-
-When a host launches a linked sketch, Save/Ctrl+S saves back without closing.
-Return to host saves and closes. Close can discard further changes after its
-confirmation. Native file launch accepts an AX2 through AX7 filename. Multiple native filenames open separate sketch windows with independent saves.
-/areacodetableurl accepts native Apex XML over HTTP/HTTPS or a local/file URL.
-Host codes, signed factors, categories, colors and wall defaults are loaded for
-the session. Metric files keep their native unit on save/return; the editor UI
-uses feet. Unfinished native drafts and editable face measurements now preserve
-their repair/centerline history inside AXF. Nested/nonuniform/reflected native
-blocks and point entities are supported. Older
-TOTAL/WinTOTAL command-line entry modes are implemented but unverified against
-the actual host software on this PC.
 
 Area labels: automatic measurement placement has an extra 6px gap at normal scale.
 The gap scales with the label; manually positioned measurements keep their position.
@@ -262,7 +180,7 @@ native/reference differences. Parent-suite integration and physical DISTO
 testing remain deferred.
 
 manifest.json records the source revision, working-tree fingerprint and file
-SHA-256 hashes. This release includes the current uncommitted workspace changes.
+SHA-256 hashes.
 
 For a non-interactive installation check, run the executable from a terminal
 with --check-installation. It verifies the external library, constructs the
