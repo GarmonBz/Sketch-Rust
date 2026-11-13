@@ -1,4 +1,11 @@
-Sketch Rust 0.1.33 - Windows x64 preview
+Sketch Rust 0.1.34 - Windows x64 preview
+
+0.1.34 sends sketch pages to legacy Appraise-It Pro reports that support
+repeatable Sketch addenda. In Help > Appraise-It Reports, check the open
+report, preview the pages, and select Send sketch images. Review the
+new addenda and save the report in Appraise-It Pro. Enter legacy area
+totals in Appraise-It Pro.
+
 
 0.1.33 adds optional area totals to Appraise-It Pro sketch transfer. In
 Help > Appraise-It Reports, preview the sketch and select Include area totals
