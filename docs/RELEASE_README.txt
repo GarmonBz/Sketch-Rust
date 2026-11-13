@@ -1,4 +1,10 @@
-Sketch Rust 0.1.32 - Windows x64 preview
+Sketch Rust 0.1.33 - Windows x64 preview
+
+0.1.33 adds optional area totals to Appraise-It Pro sketch transfer. In
+Help > Appraise-It Reports, preview the sketch and select Include area totals
+to review the proposed standard finished above-grade, finished below-grade,
+and unfinished below-grade values. The option is available for UAD 3.6 URARs
+with one dwelling, one living unit, and no ADUs.
 
 0.1.32 transfers sketch page images to a saved, editable UAD 3.6 report
 using the installed SFREP COM server. Open Help > Appraise-It Reports to
