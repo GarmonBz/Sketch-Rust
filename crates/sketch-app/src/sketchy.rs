@@ -1,6 +1,6 @@
 //! Workfile support for the Property Hackers Sketchy 0.x draft.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -10,8 +10,21 @@ use sketch_core::model::{AutoPost, Polygon, SketchLine, WallType};
 use crate::{layers::Layer, pages::Page, placed_text::PlacedText};
 
 mod save;
+pub mod store;
 pub use save::{prepare_save, Backing, PageKey};
 use save::{Binding, Entity};
+
+const CURRENT_VERSION: &str = "0.2";
+
+fn bulge_sign(version: &str) -> Result<f64> {
+    match version {
+        "0.1" => Ok(1.0),
+        CURRENT_VERSION => Ok(-1.0),
+        _ => Err(format!(
+            "unsupported Sketchy version {version}; expected 0.1 or 0.2"
+        )),
+    }
+}
 
 type Result<T> = std::result::Result<T, String>;
 type Point = [f64; 2];
@@ -64,6 +77,7 @@ struct Level {
     name: Option<String>,
     grade: String,
     sequence: i64,
+    ceiling: Option<Ceiling>,
     #[serde(default)]
     spaces: Vec<Space>,
     #[serde(default)]
@@ -89,10 +103,46 @@ struct Space {
     subtract: bool,
     area_factor: Option<f64>,
     shape: Shape,
+    ceiling: Option<Ceiling>,
     #[serde(default)]
     attributes: BTreeMap<String, String>,
     #[serde(default)]
     classifications: Vec<Classification>,
+}
+
+#[derive(Deserialize)]
+struct Ceiling {
+    height: Option<f64>,
+    #[serde(default)]
+    zones: Vec<Value>,
+}
+
+fn validate_subdivisions(spaces: &[Space]) -> Result<()> {
+    let parents: HashMap<_, _> = spaces
+        .iter()
+        .map(|space| (space.id.as_str(), space.within.as_deref()))
+        .collect();
+    if parents.len() != spaces.len() {
+        return Err("duplicate space ID".into());
+    }
+    let mut checked = HashSet::new();
+    for space in spaces {
+        let mut visiting = HashSet::new();
+        let mut next = Some(space.id.as_str());
+        while let Some(id) = next {
+            if checked.contains(id) {
+                break;
+            }
+            if !visiting.insert(id) {
+                return Err(format!("cyclic space subdivision at {id}"));
+            }
+            next = *parents
+                .get(id)
+                .ok_or_else(|| format!("unknown parent space {id}"))?;
+        }
+        checked.extend(visiting);
+    }
+    Ok(())
 }
 
 #[derive(Deserialize)]
@@ -126,8 +176,10 @@ struct Opening {
     wall: Option<String>,
     space: Option<String>,
     edge: Option<usize>,
-    offset: f64,
-    width: f64,
+    hole: Option<usize>,
+    offset: Option<f64>,
+    width: Option<f64>,
+    shape: Option<Shape>,
     projection: Option<Shape>,
 }
 
@@ -140,6 +192,19 @@ struct Feature {
     rotation: Option<f64>,
     width: Option<f64>,
     length: Option<f64>,
+    shape: Option<Shape>,
+    stair: Option<Stair>,
+}
+
+#[derive(Deserialize)]
+struct Stair {
+    #[serde(default)]
+    landings: Vec<Landing>,
+}
+
+#[derive(Deserialize)]
+struct Landing {
+    shape: Shape,
 }
 
 #[derive(Deserialize)]
@@ -179,6 +244,8 @@ enum Shape {
 struct Path {
     points: Vec<Point>,
     bulges: Option<Vec<f64>>,
+    edges: Option<Vec<String>>,
+    edge_measured_to: Option<Vec<Option<String>>>,
 }
 
 #[derive(Default, Deserialize)]
@@ -243,9 +310,18 @@ struct Frame {
     feet: f64,
     position: Point,
     rotation: f64,
+    bulge_sign: f64,
 }
 
 impl Frame {
+    fn child(self, position: Point, rotation: f64) -> Result<Self> {
+        let origin = self.point(position)?;
+        Ok(Self {
+            position: [origin.x / self.feet, origin.y / self.feet],
+            rotation: self.rotation + rotation,
+            ..self
+        })
+    }
     fn point(self, [x, y]: Point) -> Result<Pt> {
         let (sin, cos) = self.rotation.rem_euclid(360.0).to_radians().sin_cos();
         // Both coordinates are in the native world's +y up frame.
@@ -371,7 +447,22 @@ impl Path {
             .iter()
             .map(|p| frame.point(*p))
             .collect::<Result<Vec<_>>>()?;
-        segments(&points, closed, self.bulges.as_deref())
+        let mut outline = segments(&points, closed, self.bulges.as_deref())?;
+        if self
+            .edges
+            .as_ref()
+            .is_some_and(|edges| edges.len() != outline.len())
+            || self
+                .edge_measured_to
+                .as_ref()
+                .is_some_and(|edges| edges.len() != outline.len())
+        {
+            return Err("per-edge data does not match edge count".into());
+        }
+        for edge in &mut outline {
+            edge.bulge *= frame.bulge_sign;
+        }
+        Ok(outline)
     }
 }
 
@@ -486,13 +577,7 @@ pub fn convert(mut source: Value) -> Result<Converted> {
     let version = source["format_version"]
         .as_str()
         .ok_or("missing format_version")?;
-    if !version.split_once('.').is_some_and(|(major, minor)| {
-        major == "0" && !minor.is_empty() && minor.bytes().all(|c| c.is_ascii_digit())
-    }) {
-        return Err(format!(
-            "unsupported Sketchy version {version}; expected 0.x"
-        ));
-    }
+    let bulge_sign = bulge_sign(version)?;
     let snapshot = save::take_snapshot(&mut source);
     let document: Document = Document::deserialize(&source).map_err(|e| e.to_string())?;
     if !document.extensions_required.is_empty() {
@@ -545,6 +630,9 @@ pub fn convert(mut source: Value) -> Result<Converted> {
             .iter()
             .any(|a| matches!(a.detail, AnnotationKind::Unsupported));
     let mut build = |frame: Frame, level: Option<&Level>, spaces: &[Space], name| -> Result<()> {
+        if frame.bulge_sign < 0.0 {
+            validate_subdivisions(spaces)?;
+        }
         let mut builder = PageBuilder {
             page: Page {
                 name,
@@ -560,6 +648,7 @@ pub fn convert(mut source: Value) -> Result<Converted> {
             presentation,
             wall_segments: HashMap::new(),
             space_segments: HashMap::new(),
+            hole_segments: HashMap::new(),
             edge_ids: HashMap::new(),
             area_indices: HashMap::new(),
             label_layers: HashMap::new(),
@@ -580,7 +669,11 @@ pub fn convert(mut source: Value) -> Result<Converted> {
         }
         for space in spaces {
             builder
-                .space(space, document.measured_to.as_deref())
+                .space(
+                    space,
+                    document.measured_to.as_deref(),
+                    level.and_then(|level| level.ceiling.as_ref()),
+                )
                 .map_err(|e| format!("space {}: {e}", space.id))?;
         }
         for space in spaces.iter().filter(|s| s.within.is_some()) {
@@ -607,9 +700,19 @@ pub fn convert(mut source: Value) -> Result<Converted> {
                     .void(cutout)
                     .map_err(|e| format!("void {}: {e}", cutout.id))?;
                 if let Some(area) = builder.page.polygons.get(first) {
-                    builder
-                        .bindings
-                        .push(Binding::new(&cutout.id, Entity::Void(area.id)));
+                    let holes = builder.page.polygons[first + 1..]
+                        .iter()
+                        .map(|hole| hole.id)
+                        .collect::<Vec<_>>();
+                    let entity = if holes.is_empty() {
+                        Entity::Void(area.id)
+                    } else {
+                        Entity::VoidWithHoles {
+                            area: area.id,
+                            holes,
+                        }
+                    };
+                    builder.bindings.push(Binding::new(&cutout.id, entity));
                 }
             }
             for opening in &level.openings {
@@ -703,6 +806,7 @@ pub fn convert(mut source: Value) -> Result<Converted> {
             feet,
             position: structure.position.unwrap_or_default(),
             rotation: structure.rotation.unwrap_or_default(),
+            bulge_sign,
         };
         for level in &structure.levels {
             let level_name = level
@@ -736,6 +840,7 @@ pub fn convert(mut source: Value) -> Result<Converted> {
                 feet,
                 position: [0.0; 2],
                 rotation: 0.0,
+                bulge_sign,
             },
             None,
             &document.site.spaces,
@@ -775,6 +880,7 @@ struct PageBuilder<'a> {
     presentation: &'a Presentation,
     wall_segments: HashMap<&'a str, Segment>,
     space_segments: HashMap<&'a str, Vec<Segment>>,
+    hole_segments: HashMap<(&'a str, usize), Vec<Segment>>,
     edge_ids: HashMap<[u64; 5], i64>,
     area_indices: HashMap<&'a str, usize>,
     label_layers: HashMap<i64, String>,
@@ -863,7 +969,7 @@ impl<'a> PageBuilder<'a> {
         let segment = Segment {
             start: self.frame.point(wall.start)?,
             end: self.frame.point(wall.end)?,
-            bulge: wall.bulge,
+            bulge: wall.bulge * self.frame.bulge_sign,
         };
         if segment.chord() == 0.0 {
             return Err("wall has coincident endpoints".into());
@@ -881,7 +987,7 @@ impl<'a> PageBuilder<'a> {
         let style = LineStyle {
             kind: if matches!(
                 wall.kind.as_deref(),
-                Some("interior" | "party" | "half_wall")
+                Some("interior" | "party" | "half_wall" | "railing")
             ) {
                 WallType::Interior
             } else {
@@ -895,7 +1001,12 @@ impl<'a> PageBuilder<'a> {
         Ok(())
     }
 
-    fn space(&mut self, space: &'a Space, measured_to: Option<&str>) -> Result<()> {
+    fn space(
+        &mut self,
+        space: &'a Space,
+        measured_to: Option<&str>,
+        level_ceiling: Option<&Ceiling>,
+    ) -> Result<()> {
         let Some((closed, outline)) = space.shape.outline(self.frame)? else {
             *self.omitted = true;
             return Ok(());
@@ -923,7 +1034,11 @@ impl<'a> PageBuilder<'a> {
             return Ok(());
         }
         let index = self.page.polygons.len();
-        let mut area = self.area(&outline, &style, name, None)?;
+        let ring = match &space.shape {
+            Shape::Polygon { ring, .. } => Some(ring),
+            _ => None,
+        };
+        let mut area = self.area(&outline, &style, name, None, ring)?;
         area.kind = if detail { "UND" } else { AREA_CODE }.into();
         area.factor = space.area_factor.unwrap_or(1.0);
         area.factor_override = Some(area.factor);
@@ -941,7 +1056,7 @@ impl<'a> PageBuilder<'a> {
             .extend(space.attributes.iter().map(|(key, value)| {
                 // Never let foreign metadata activate native area calculations.
                 (
-                    if key.starts_with("apex.") {
+                    if key.starts_with("apex.") || key.starts_with("sketchy.") {
                         format!("sketchy.attribute.{key}")
                     } else {
                         key.clone()
@@ -951,12 +1066,35 @@ impl<'a> PageBuilder<'a> {
             }));
         area.attributes
             .insert("sketchy.id".into(), space.id.clone());
+        if self.frame.bulge_sign < 0.0 {
+            area.attributes
+                .insert("sketchy.area_rule".into(), "0.2".into());
+        }
         if let Some(kind) = &space.use_kind {
             area.attributes.insert("sketchy.use".into(), kind.clone());
         }
         if let Some(finished) = space.finished {
             area.attributes
                 .insert("sketchy.finished".into(), finished.to_string());
+        }
+        if let Some(height) = space
+            .ceiling
+            .as_ref()
+            .and_then(|ceiling| ceiling.height)
+            .or_else(|| level_ceiling.and_then(|ceiling| ceiling.height))
+        {
+            area.attributes.insert(
+                "sketchy.ceiling_height_ft".into(),
+                (height * self.frame.feet).to_string(),
+            );
+        }
+        if let Some(ceiling) = &space.ceiling {
+            if !ceiling.zones.is_empty() {
+                area.attributes.insert(
+                    "sketchy.ceiling_zones".into(),
+                    ceiling.zones.len().to_string(),
+                );
+            }
         }
         for c in &space.classifications {
             let entry = area
@@ -975,13 +1113,14 @@ impl<'a> PageBuilder<'a> {
             return Err("duplicate space ID".into());
         }
         if let Shape::Polygon { holes, .. } = &space.shape {
-            for hole in holes {
+            for (index, hole) in holes.iter().enumerate() {
                 let ring = hole.transform(self.frame, true)?;
                 let style = LineStyle {
                     hide_dimension: true,
                     ..style.clone()
                 };
-                let hole = self.area(&ring, &style, "Cutout", Some(id))?;
+                let hole = self.area(&ring, &style, "Cutout", Some(id), Some(hole))?;
+                self.hole_segments.insert((&space.id, index), ring);
                 self.page.polygons.push(hole);
             }
         }
@@ -1000,8 +1139,9 @@ impl<'a> PageBuilder<'a> {
         style: &LineStyle,
         name: &str,
         target: Option<i64>,
+        ring: Option<&Path>,
     ) -> Result<Polygon> {
-        let (points, edges) = self.trace(outline, style, true)?;
+        let (points, edges) = self.trace_ring(outline, style, ring)?;
         let gross = GeometryEngine::new().calculate_area(&points, &edges);
         if !gross.is_finite() || gross <= 0.0 {
             return Err("invalid closed area".into());
@@ -1014,6 +1154,29 @@ impl<'a> PageBuilder<'a> {
             "subtractTargetId": target,
             "autoPost": { "name": true, "dims": false, "calcs": true, "suffix": if self.metric { "m²" } else { "sf" } }
         })).map_err(|e| e.to_string())
+    }
+
+    fn trace_ring(
+        &mut self,
+        outline: &[Segment],
+        style: &LineStyle,
+        ring: Option<&Path>,
+    ) -> Result<(Vec<Pt>, Vec<Edge>)> {
+        let mut points = Vec::new();
+        let mut edges = Vec::new();
+        for (index, segment) in outline.iter().enumerate() {
+            let virtual_edge = ring
+                .and_then(|ring| ring.edges.as_ref())
+                .is_some_and(|kinds| kinds[index] == "virtual");
+            for part in segment.split()? {
+                points.push(part.start);
+                edges.push(Edge {
+                    line_id: (!virtual_edge).then(|| self.line(part, style, true)),
+                    bow_angle: part.bow(),
+                });
+            }
+        }
+        Ok((points, edges))
     }
 
     fn void(&mut self, void: &Void) -> Result<()> {
@@ -1031,30 +1194,48 @@ impl<'a> PageBuilder<'a> {
             &style,
             void.name.as_deref().unwrap_or("Void"),
             None,
+            match &void.shape {
+                Shape::Polygon { ring, .. } => Some(ring),
+                _ => None,
+            },
         )?;
-        let geo = GeometryEngine::new();
-        if let Some(parent) = self
-            .page
-            .polygons
-            .iter()
-            .filter(|p| {
-                p.kind == AREA_CODE
-                    && p.gross > area.gross
-                    && geo.polygon_contains(
-                        &p.points,
-                        &p.edges,
-                        &area.points,
-                        &area.edges,
-                        1e-4,
-                        0.01,
-                    )
-            })
-            .min_by(|a, b| a.gross.total_cmp(&b.gross))
-        {
-            area.subtract_mode = "always".into();
-            area.subtract_target_id = Some(parent.id);
+        if self.frame.bulge_sign > 0.0 {
+            let geo = GeometryEngine::new();
+            if let Some(parent) = self
+                .page
+                .polygons
+                .iter()
+                .filter(|p| {
+                    p.kind == AREA_CODE
+                        && p.gross > area.gross
+                        && geo.polygon_contains(
+                            &p.points,
+                            &p.edges,
+                            &area.points,
+                            &area.edges,
+                            1e-4,
+                            0.01,
+                        )
+                })
+                .min_by(|a, b| a.gross.total_cmp(&b.gross))
+            {
+                area.subtract_mode = "always".into();
+                area.subtract_target_id = Some(parent.id);
+            }
+        } else {
+            area.attributes.insert("sketchy.void".into(), "true".into());
         }
+        let id = area.id;
         self.page.polygons.push(area);
+        if self.frame.bulge_sign < 0.0 {
+            if let Shape::Polygon { holes, .. } = &void.shape {
+                for hole in holes {
+                    let ring = hole.transform(self.frame, true)?;
+                    let area = self.area(&ring, &style, "Void island", Some(id), Some(hole))?;
+                    self.page.polygons.push(area);
+                }
+            }
+        }
         Ok(())
     }
 
@@ -1066,7 +1247,14 @@ impl<'a> PageBuilder<'a> {
                 .space
                 .as_deref()
                 .zip(opening.edge)
-                .and_then(|(space, index)| self.space_segments.get(space)?.get(index).copied())
+                .and_then(|(space, index)| {
+                    let ring = if let Some(hole) = opening.hole {
+                        self.hole_segments.get(&(space, hole))
+                    } else {
+                        self.space_segments.get(space)
+                    }?;
+                    ring.get(index).copied()
+                })
         };
         let style = LineStyle {
             layer: self.layer(&opening.id),
@@ -1074,14 +1262,16 @@ impl<'a> PageBuilder<'a> {
             color: Some("#2563eb"),
             ..LineStyle::default()
         };
-        if let Some(host) = host {
+        if let Some(shape) = &opening.shape {
+            self.shape_lines(shape, &style)?;
+        } else if let Some((host, (offset, width))) = host.zip(opening.offset.zip(opening.width)) {
             let length: f64 = host
                 .split()?
                 .iter()
                 .map(|s| GeometryEngine::new().arc_length(s.start, s.end, s.bow()))
                 .sum();
-            let start = opening.offset * self.frame.feet;
-            let width = opening.width * self.frame.feet;
+            let start = offset * self.frame.feet;
+            let width = width * self.frame.feet;
             let end = start + width;
             if start >= 0.0 && width > 0.0 && end <= length + 0.0001 {
                 let (t0, t1) = ((start / length).min(1.0), (end / length).min(1.0));
@@ -1128,7 +1318,14 @@ impl<'a> PageBuilder<'a> {
             color: Some("#64748b"),
             ..LineStyle::default()
         };
-        if let Some((w, l)) = feature
+        if let Some(shape) = &feature.shape {
+            self.shape_lines_in(
+                shape,
+                &style,
+                self.frame
+                    .child(feature.position, feature.rotation.unwrap_or_default())?,
+            )?;
+        } else if let Some((w, l)) = feature
             .width
             .zip(feature.length)
             .filter(|(w, l)| *w > 0.0 && *l > 0.0)
@@ -1151,6 +1348,11 @@ impl<'a> PageBuilder<'a> {
                 .collect::<Result<Vec<_>>>()?;
             self.trace(&segments(&points, true, None)?, &style, false)?;
         }
+        if let Some(stair) = &feature.stair {
+            for landing in &stair.landings {
+                self.shape_lines(&landing.shape, &style)?;
+            }
+        }
         self.label(
             feature
                 .name
@@ -1165,11 +1367,15 @@ impl<'a> PageBuilder<'a> {
     }
 
     fn shape_lines(&mut self, shape: &Shape, style: &LineStyle) -> Result<()> {
-        if let Some((_, outline)) = shape.outline(self.frame)? {
+        self.shape_lines_in(shape, style, self.frame)
+    }
+
+    fn shape_lines_in(&mut self, shape: &Shape, style: &LineStyle, frame: Frame) -> Result<()> {
+        if let Some((_, outline)) = shape.outline(frame)? {
             self.trace(&outline, style, false)?;
             if let Shape::Polygon { holes, .. } = shape {
                 for hole in holes {
-                    self.trace(&hole.transform(self.frame, true)?, style, false)?;
+                    self.trace(&hole.transform(frame, true)?, style, false)?;
                 }
             }
         } else {
@@ -1363,7 +1569,7 @@ mod tests {
         assert!(read_sketch_model(source.to_string().as_bytes())
             .unwrap_err()
             .contains("unsupported Sketchy version"));
-        source["format_version"] = json!("0.3");
+        source["format_version"] = json!("0.2");
         source["extensions_required"] = json!(["org.example.required"]);
         assert!(read_sketch_model(source.to_string().as_bytes())
             .unwrap_err()
@@ -1387,6 +1593,92 @@ mod tests {
         assert_eq!(read_sketch_model(native).unwrap().1, SketchFileFormat::Json);
         let skx = sketch_core::skx::write(&json!({"pages":[{}]}), &Default::default()).unwrap();
         assert_eq!(read_sketch_model(&skx).unwrap().1, SketchFileFormat::Skx);
+    }
+
+    #[test]
+    fn sketchy_02_bulges_and_cutout_union_round_trip() {
+        let source = json!({"format":"sketchy", "format_version":"0.2", "id":"test", "length_unit":"ft",
+        "structures":[{"id":"house","levels":[{"id":"floor","grade":"above","sequence":1,
+            "spaces":[{"id":"room", "shape":{"type":"polygon","points":[[0,0],[10,0],[10,10],[0,10]],
+                "bulges":[1,0,0,0],"edges":["physical","virtual","physical","physical"],
+                "edge_measured_to":[null,"centerline",null,null],
+                "holes":[{"points":[[2,2],[4,2],[4,4],[2,4]]}]}}],
+            "walls":[{"id":"curve","start":[0,0],"end":[10,0],"bulge":1}],
+            "voids":[{"id":"cut","shape":{"type":"polygon","points":[[3,2],[12,2],[12,4],[3,4]]}}],
+            "openings":[{"id":"light","kind":"skylight","space":"room","shape":{"type":"circle","center":[5,6],"radius":1}},
+                {"id":"courtyard","kind":"door","space":"room","hole":0,"edge":0,"offset":0.5,"width":1}],
+            "features":[{"id":"column","kind":"column","position":[6,6],"rotation":90,
+                "shape":{"type":"circle","center":[1,0],"radius":0.5}}]
+        }]}]});
+        let converted = convert(source).unwrap();
+        assert!(!converted.omitted);
+        let page: Page = serde_json::from_value(converted.model["pages"][0].clone()).unwrap();
+        assert_eq!(page.lines[0].bow_angle, -180.0);
+        assert_eq!(page.polygons[0].edges[1].line_id, None);
+        assert!(page
+            .lines
+            .iter()
+            .any(|line| line.color.as_deref() == Some("#64748b")
+                && (line.start.y - 7.5).abs() < 1e-7));
+        let result = sketch_core::area_calc::recalculate(
+            &page.polygons,
+            &[area_code()],
+            &GeometryEngine::new(),
+        );
+        near(result.polygons[0].subtracted, 16.0);
+        near(
+            result.totals.total_all_areas,
+            100.0 + 12.5 * std::f64::consts::PI - 16.0,
+        );
+        let backing = Backing::from_model(&converted.model).unwrap();
+        let mut edited = converted.model;
+        edited["pages"][0]["lines"][0]["bowAngle"] = json!(-90);
+        let written = prepare_save(edited, Some(&backing), "Test", false).unwrap();
+        let raw: Value = serde_json::from_slice(&written.bytes).unwrap();
+        near(
+            raw["structures"][0]["levels"][0]["walls"][0]["bulge"]
+                .as_f64()
+                .unwrap(),
+            0.414213562373095,
+        );
+    }
+
+    #[test]
+    fn sketchy_store_saves_through_app_and_rejects_stale_updates() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/sketchy-tests")
+            .join(format!("store-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("work.sketchy");
+        let mut first = fixture();
+        first["format_version"] = json!("0.2");
+        let model = convert(first).unwrap();
+        let first = prepare_save(model.model, None, "Work", false).unwrap();
+        store::write(&path, &first.bytes, None).unwrap();
+        let initial = store::read(&path).unwrap();
+        let initial_id = initial["revision"]["id"].as_str().unwrap();
+        let (mut app, _) = App::boot(1.0);
+        let _ = app.open_sketch_path(path.clone());
+        assert_eq!(
+            app.current_file.as_ref().unwrap().format,
+            SketchFileFormat::SketchyStore
+        );
+        app.drawing.polygons[0].name = "Updated floor".into();
+        let _ = app.update(Message::SaveFile);
+        let head = store::read(&path).unwrap();
+        assert_eq!(head["revision"]["parents"], json!([initial_id]));
+        let _ = app.update(Message::SaveFile);
+        assert_eq!(store::read(&path).unwrap(), head);
+        let initial_hash = initial["revision"]["content_hash"].as_str().unwrap();
+        assert!(store::write(&path, &first.bytes, Some((initial_id, initial_hash))).is_err());
+        let connection = rusqlite::Connection::open(&path).unwrap();
+        let count: i64 = connection
+            .query_row("SELECT count(*) FROM revisions", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 2);
+        let (mut reopened, _) = App::boot(1.0);
+        let _ = reopened.open_sketch_path(path);
+        assert_eq!(reopened.drawing.polygons[0].name, "Updated floor");
     }
 
     #[test]
@@ -1641,6 +1933,45 @@ mod tests {
                             .any(|area| area["name"] == "Edited in Sketch")
                     }),
                 "{name}"
+            );
+        }
+    }
+
+    #[test]
+    #[ignore = "requires the draft 0.2 upstream examples in SKETCHY_02_FIXTURE_DIR"]
+    fn sketchy_02_roundtrips_updated_upstream_examples() {
+        let dir = std::path::PathBuf::from(std::env::var_os("SKETCHY_02_FIXTURE_DIR").unwrap());
+        for (name, pages) in [
+            ("single-family", 5),
+            ("condo-unit", 1),
+            ("commercial-building", 4),
+        ] {
+            let raw: Value = serde_json::from_slice(
+                &std::fs::read(dir.join(format!("{name}.sketchy.json"))).unwrap(),
+            )
+            .unwrap();
+            let converted = convert(raw.clone()).unwrap_or_else(|error| panic!("{name}: {error}"));
+            assert_eq!(
+                converted.model["pages"].as_array().unwrap().len(),
+                pages,
+                "{name}"
+            );
+            let backing = Backing::from_model(&converted.model).unwrap();
+            let mut model = converted.model;
+            model["pages"][0]["polygons"][0]["name"] = json!("Edited in Sketch");
+            let saved = prepare_save(model, Some(&backing), name, false).unwrap();
+            let mut saved: Value = serde_json::from_slice(&saved.bytes).unwrap();
+            assert_eq!(saved["format_version"], "0.2");
+            assert_eq!(saved["presentation"], raw["presentation"]);
+            assert!(saved.get("results").is_none());
+            saved["extras"]
+                .as_object_mut()
+                .unwrap()
+                .remove("app.sketchrust.workfile");
+            let reopened = convert(saved).unwrap_or_else(|error| panic!("{name}: {error}"));
+            assert_eq!(
+                reopened.model["pages"][0]["polygons"][0]["name"],
+                "Edited in Sketch"
             );
         }
     }
