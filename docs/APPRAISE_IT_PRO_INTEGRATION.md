@@ -1,46 +1,41 @@
-# Appraise-It Pro integration plan
+# Appraise-It Pro integration
 
-## Current workflow
+## Transfer sketch images on Windows
 
-Keep the editable drawing in a Sketchy workfile or SKX. Export a PNG sketch
-image or a PDF with calculations using the File menu. Attach the output where
-the Appraise-It Pro report supports it, then review and enter the area totals
-in the report. Use the licensed Apex application for existing AXF files. If
-an older Sketch Rust preview changed your report's sketch button, ask SFREP
-or Apex support to restore the original provider before upgrading.
+1. Open a saved, editable UAD 3.6 report with an **Additional Sketch(es)**
+   field in Appraise-It Pro. Open or draw the sketch in Sketch Rust.
+2. Choose **Help > Appraise-It Reports > Check open report** in Sketch Rust.
+   Select the session in SFREP's picker and verify the report path and form.
+3. Choose **Preview sketch**. Review the nonblank pages and select **Send
+   sketch images**.
+4. In Appraise-It Pro, open **Sketch > Additional Sketch(es)** and review the
+   images. Save the report in Appraise-It Pro.
 
-## Proposed desktop connection
+Each send submits one PNG per nonblank page in sketch page order. Appraise-It Pro stores the images as report exhibits.
+Existing exhibits remain in the list. Keep the editable drawing in a Sketchy
+or SKX file and review and enter any area totals in Appraise-It Pro.
 
-1. Use [SFREP's published COM API](https://api.sfrep.com/comdocs/intro.html)
-   from the standalone Windows app. Resolve the installed COM server at
-   runtime and keep the installer independent of both vendors' binaries.
-   Use the documented dynamic report interface on supported UAD 3.6 builds.
-2. Ask SFREP to confirm the supported way to attach sketch images and write
-   area totals for legacy and UAD 3.6 reports, and to confirm usage terms.
-   Its public API lists [sketch and area data types](https://api.sfrep.com/net/Sfrep.AppraiseIt.Client.Integration.Sketch.html).
-   A documented third-party launch and sketch-transfer workflow still needs
-   confirmation. Start with an explicit **Send to Appraise-It Pro** action in
-   Sketch Rust. Add launch from the report only if SFREP documents a provider
-   registration mechanism.
-3. Let the user select an open report and preview the destination, page images
-   and area totals before writing. Use Sketch Rust's existing rendering and
-   calculations. Recheck the report identity before a short transaction, close
-   the connection on success or failure, and preserve the local Sketchy or SKX
-   file. Keep the connector opt-in and limit it to documented SFREP interfaces.
-4. If the COM API does not cover the required fields or attachments, prototype
-   SFREP's [documented RPTI interchange](https://api.sfrep.com/rpti/intro.html)
-   on disposable reports. Verify its import and merge behavior before using it
-   with an existing report. Continue offering manual image and PDF exports for
-   report types or fields without a verified transfer path.
-5. Verify against licensed copies of Appraise-It Pro on disposable legacy and
-   UAD 3.6 reports. Reopen the reports and verify images, page order, units,
-   totals, and preservation of unrelated data. Exercise cancellation, a
-   closed or switched report, a missing COM server, and repeated transfer.
+The connector uses Appraise-It Pro 3.5 or later and its COM registration for the
+matching Windows architecture. It rechecks the destination in the selected
+process immediately before writing. It calls SFREP's
+[dynamic report data store](https://api.sfrep.com/com/Sfrep.AppraiseIt.Client.Integration.Com.DataStore.DataStoreIntegrationCom.html)
+and [image-list API](https://api.sfrep.com/com/Sfrep.AppraiseIt.Client.Integration.Com.DataStore.Fields.DataStoreImageListFieldIntegrationCom.html)
+to append images to `SketchImageList`, the subject-level field identified in
+Appraise-It Pro's Field Details panel. The installed Appraise-It Pro application
+supplies the COM server.
 
-## Older releases
+## Verification on Appraise-It Pro 3.8.8
 
-Existing release assets, cached installers, and historical Git references are
-separate from this source change. Take down affected public downloads and
-review public tags, branches, pull request refs, and caches for older source.
-Coordinate any history rewrite with repository maintainers and GitHub Support.
-Rebuild replacement packages from the updated tree.
+A two-page Sketchy 0.2 drawing was transferred to a disposable copy of SFREP's
+UAD 3.6 single-family URAR sample. After saving, closing, and reopening the
+report, Additional Sketch(es) contained the original exhibit, page 1, and
+page 2 in that order. The original exhibit's checksum matched the baseline,
+and both added images matched their pre-save checksums. A comparison of 37
+numeric area-related fields in the MISMO 3.6 exports found no differences.
+
+## Other report types and older previews
+
+Use **File > Export as PNG** or **File > Export as PDF** for a manual attachment
+when the report has no Additional Sketch(es) field. Ask SFREP or Apex support to
+restore the original provider if an older Sketch Rust preview changed the report's
+sketch button. Open existing AXF workfiles in the licensed Apex application.
