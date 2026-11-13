@@ -1,4 +1,9 @@
-Sketch Rust 0.1.31 - Windows x64 preview
+Sketch Rust 0.1.32 - Windows x64 preview
+
+0.1.32 transfers sketch page images to a saved, editable UAD 3.6 report
+using the installed SFREP COM server. Open Help > Appraise-It Reports to
+select the report, preview the pages, and add them to Additional Sketch(es).
+Review the images and save the report in Appraise-It Pro.
 
 0.1.31 opens Sketchy 0.2 JSON files and SQLite stores as Saved. Editing
 marks the file Unsaved, and saving returns it to Saved.
@@ -13,8 +18,7 @@ permitted. Selling or monetizing the program or modified versions is prohibited.
 See PHOSPHOR-LICENSE.txt and SYMBOL-LIBRARY.md for third-party materials.
 
 0.1.30 removes AXF and the former Apex-based Appraise-It Pro integration.
-Help > Appraise-It Reports describes the manual export workflow. See
-APPRAISE_IT_PRO_INTEGRATION.md for the planned SFREP connection and older-preview guidance.
+See APPRAISE_IT_PRO_INTEGRATION.md for SFREP transfer requirements and older-preview guidance.
 
 Help > User Guide covers drawing, area calculations, symbols, printing and saving.
 A Windows installer (SketchRust-<version>-x64.msi) is available next to this
