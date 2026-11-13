@@ -1,0 +1,36 @@
+{
+  "format": "sketchy",
+  "format_version": "0.1",
+  "id": "a1711760-30bd-4b7d-8160-80b2bfb57260",
+  "title": "Sketchy Sample",
+  "length_unit": "ft",
+  "structures": [
+    {
+      "id": "house",
+      "kind": "dwelling",
+      "levels": [
+        {
+          "id": "ground",
+          "name": "Ground floor",
+          "grade": "above",
+          "sequence": 1,
+          "spaces": [
+            {
+              "id": "living",
+              "name": "Living area",
+              "use": "living",
+              "finished": true,
+              "shape": { "type": "polygon", "points": [[0, 0], [28, 0], [28, 20], [0, 20]] }
+            },
+            {
+              "id": "porch",
+              "name": "Porch",
+              "use": "porch",
+              "shape": { "type": "polygon", "points": [[4, -6], [24, -6], [24, 0], [4, 0]] }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

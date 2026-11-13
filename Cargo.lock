@@ -3915,6 +3915,7 @@ name = "sketch-app"
 version = "0.1.29"
 dependencies = [
  "btleplug",
+ "getrandom 0.3.4",
  "iced",
  "iced_runtime",
  "iced_test",
@@ -3926,6 +3927,7 @@ dependencies = [
  "serde_json",
  "sketch-core",
  "tokio",
+ "uuid",
  "windows 0.61.3",
 ]
 

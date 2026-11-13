@@ -17,6 +17,10 @@ use sketch_core::model::{Polygon, SketchLine};
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Page {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sketchy_page: Option<crate::sketchy::PageKey>,
     #[serde(default)]
     pub geo_reference_points: Vec<GeoPoint>,
     #[serde(default)]
@@ -83,6 +87,15 @@ impl Pages {
 
     pub fn page(&self) -> &Page {
         &self.pages[self.current]
+    }
+
+    pub fn page_name(&self, index: usize) -> String {
+        let name = &self.pages[index].name;
+        if name.is_empty() {
+            format!("Page {}", index + 1)
+        } else {
+            name.clone()
+        }
     }
 
     /// `#page-display`: "N of M".

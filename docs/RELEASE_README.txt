@@ -1,5 +1,10 @@
 Sketch Rust 0.1.29 - Windows x64 native compatibility development build, 2026-11-11
 
+Sketchy preview, 2026-11-12: File > Open opens .sketchy.json workfiles. Save
+writes edits to the open workfile. Save As offers Sketchy for new files and
+copies. To try it, copy try-sketchy.sketchy.json to Documents, open the copy,
+move a wall, save, and reopen it. See SKETCHY.md for format details.
+
 See LICENSE.txt for the Sketch Rust Free Use License. Paid appraisal work is
 permitted. Selling or monetizing the program or modified versions is prohibited.
 See PHOSPHOR-LICENSE.txt and SYMBOL-LIBRARY.md for third-party materials.

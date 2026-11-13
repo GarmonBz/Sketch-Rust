@@ -96,6 +96,7 @@ mod shapes;
 mod guide;
 mod shortcuts;
 mod sketch_canvas;
+mod sketchy;
 mod snap;
 mod statusbar;
 mod subject_info;
@@ -510,6 +511,68 @@ fn is_sketch_file(path: &std::path::Path) -> bool {
 enum SketchFileFormat {
     Skx,
     Json,
+    Sketchy,
+}
+
+fn read_sketch_model(bytes: &[u8]) -> Result<(serde_json::Value, SketchFileFormat, bool), String> {
+    if sketch_core::skx::is_zip_bytes(bytes) {
+        let read = sketch_core::skx::read(bytes).map_err(|e| e.to_string())?;
+        return Ok((read.model, SketchFileFormat::Skx, false));
+    }
+    let model: serde_json::Value =
+        serde_json::from_slice(bytes).map_err(|_| "Invalid sketch file format.".to_string())?;
+    if sketchy::recognizes(&model) {
+        let converted =
+            sketchy::convert(model).map_err(|e| format!("Could not open Sketchy file: {e}"))?;
+        Ok((
+            converted.model,
+            SketchFileFormat::Sketchy,
+            converted.omitted,
+        ))
+    } else {
+        Ok((model, SketchFileFormat::Json, false))
+    }
+}
+
+fn sketchy_file_stem(path: &std::path::Path) -> &str {
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    if stem.to_ascii_lowercase().ends_with(".sketchy") {
+        &stem[..stem.len() - ".sketchy".len()]
+    } else {
+        stem
+    }
+}
+
+fn same_sketch_path(a: &std::path::Path, b: &std::path::Path) -> bool {
+    a == b
+        || std::fs::canonicalize(a)
+            .ok()
+            .zip(std::fs::canonicalize(b).ok())
+            .is_some_and(|(a, b)| a == b)
+}
+
+fn sketch_destination(
+    mut path: std::path::PathBuf,
+    default_ext: &str,
+) -> (std::path::PathBuf, SketchFileFormat) {
+    if path.extension().is_none() {
+        path.set_extension(default_ext);
+    }
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if file_name.ends_with(".sketchy.json") {
+        (path, SketchFileFormat::Sketchy)
+    } else if file_name.ends_with(".sketchy") {
+        path.set_extension("sketchy.json");
+        (path, SketchFileFormat::Sketchy)
+    } else if file_name.ends_with(".json") {
+        (path, SketchFileFormat::Json)
+    } else {
+        (path, SketchFileFormat::Skx)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -720,6 +783,7 @@ pub struct App {
     file_name: String,
     /// Session-only destination; never embedded in portable sketch data.
     current_file: Option<CurrentFile>,
+    sketchy_backing: Option<sketchy::Backing>,
     /// `state.subjectInfoAutoFilled`.
     subject_auto_filled: bool,
     /// `state.extendedData` (the suite sets it; carried verbatim here).
@@ -1046,6 +1110,7 @@ impl App {
                     default_comments: String::new(),
                     file_name: "Untitled".to_string(),
                     current_file: None,
+                    sketchy_backing: None,
                     subject_auto_filled: false,
                     extended_data: String::new(),
                     native_apex: serde_json::Value::Null,
@@ -2670,6 +2735,7 @@ impl App {
                 self.pages = pages::Pages::default();
                 self.file_name = "Untitled".to_string();
                 self.current_file = None;
+                self.sketchy_backing = None;
                 self.subject_info = subject_info::SubjectInfo::default();
                 self.subject_auto_filled = false;
                 self.extended_data = String::new();
@@ -3531,19 +3597,7 @@ impl App {
                     .add_filter("Sketch", SKETCH_OPEN_EXTENSIONS)
                     .pick_file()
                 {
-                    let read = std::fs::read(&path).ok().and_then(|bytes| {
-                        if let Ok(skk) = sketch_core::skx::read(&bytes) {
-                            Some(skk.model)
-                        } else {
-                            serde_json::from_slice::<serde_json::Value>(&bytes).ok()
-                        }
-                    });
-                    let Some(model) = read else {
-                        return self
-                            .toasts
-                            .show("Error importing file: could not read the sketch.".to_string());
-                    };
-                    return self.import_state(&model, &path.to_string_lossy());
+                    return self.import_sketch_path(&path);
                 }
                 Task::none()
             }
@@ -7621,6 +7675,13 @@ impl App {
         if self.pages.go_to(index) {
             self.load_page_data();
             self.page_loaded();
+            if self
+                .current_file
+                .as_ref()
+                .is_some_and(|file| file.format == SketchFileFormat::Sketchy)
+            {
+                self.view.center_and_fit(self.sketch_view_bounds());
+            }
         }
     }
 
@@ -7789,6 +7850,7 @@ impl App {
         self.pages = pages::Pages::default();
         self.file_name = "Untitled".to_string();
         self.current_file = None;
+        self.sketchy_backing = None;
         let _ = self.set_mode(view_state::Mode::Select);
         self.sync_edit_tools();
         self.autosave.path = None;
@@ -7957,7 +8019,7 @@ impl App {
             "apexDocument": self.native_apex,
             "customSymbols": self.portable_custom_symbols(),
         });
-        serde_json::json!({
+        let mut model = serde_json::json!({
             "version": "Sketch-Web",
             "areaModelVersion": 1,
             "fileName": self.file_name,
@@ -7973,7 +8035,11 @@ impl App {
             "extendedData": self.extended_data,
             "settings": settings,
             "savedAt": iso_now(),
-        })
+        });
+        if let Some(backing) = &self.sketchy_backing {
+            model["sketchyBacking"] = serde_json::json!(backing);
+        }
+        model
     }
 
     /// The saved entity `layerId` is a layer NAME; the placed
@@ -8065,7 +8131,50 @@ impl App {
         page
     }
 
-    /// Load a real file and bind Save to that exact path and container format.
+    fn import_sketch_path(&mut self, path: &std::path::Path) -> Task<Message> {
+        let read = std::fs::read(path)
+            .map_err(|e| e.to_string())
+            .and_then(|bytes| read_sketch_model(&bytes));
+        let (mut model, format, omitted) = match read {
+            Ok(read) => read,
+            Err(e) => return self.toasts.show(format!("Error importing file: {e}")),
+        };
+        if format != SketchFileFormat::Sketchy {
+            return self.import_state(&model, &path.to_string_lossy());
+        }
+        // Import merges a single page. Open preserves the structure/level pages.
+        if model["pages"].as_array().is_some_and(|p| p.len() > 1) {
+            return self
+                .toasts
+                .show("Use File > Open to load all pages of this Sketchy file.".into());
+        }
+        let page = &mut model["pages"][0];
+        // Imported shapes get the current document's layers. Source layer IDs
+        // are local to the Sketchy file and may collide with the current ones.
+        for key in ["lines", "polygons", "labels"] {
+            if let Some(items) = page[key].as_array_mut() {
+                for item in items {
+                    if let Some(entity) = item.as_object_mut() {
+                        entity.remove("layerId");
+                    }
+                }
+            }
+        }
+        if !self.area_codes.iter().any(|c| c.code == sketchy::AREA_CODE) {
+            self.area_codes.push(sketchy::area_code());
+            self.dock.area_codes = self.area_codes.clone();
+        }
+        let imported = self.import_state(&model, &path.to_string_lossy());
+        if omitted {
+            self.toasts.show(
+                "Imported Sketchy geometry. Some drawing details could not be imported.".into(),
+            )
+        } else {
+            imported
+        }
+    }
+
+    /// Load an editable file and bind Save to its original format and path.
     fn open_sketch_path(&mut self, path: std::path::PathBuf) -> Task<Message> {
         let path = match std::path::absolute(path) {
             Ok(path) => path,
@@ -8075,29 +8184,34 @@ impl App {
             Ok(bytes) => bytes,
             Err(e) => return self.toasts.show(format!("Could not open sketch: {e}")),
         };
-        let (model, format) = if let Ok(read) = sketch_core::skx::read(&bytes) {
-            (read.model, SketchFileFormat::Skx)
-        } else if let Ok(model) = serde_json::from_slice::<serde_json::Value>(&bytes) {
-            (model, SketchFileFormat::Json)
-        } else {
-            return self.toasts.show("Invalid sketch file format.".into());
+        let (model, format, omitted) = match read_sketch_model(&bytes) {
+            Ok(read) => read,
+            Err(e) => return self.toasts.show(e),
         };
         if model.get("pages").and_then(|v| v.as_array()).is_none() {
             return self.toasts.show("Invalid sketch file format.".into());
         }
-        let stem = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_owned();
-        let task = self.apply_model(&model, &stem);
+        let stem = if format == SketchFileFormat::Sketchy {
+            sketchy_file_stem(&path)
+        } else {
+            path.file_stem().and_then(|s| s.to_str()).unwrap_or("")
+        };
+        let task = self.apply_model(&model, stem);
         let name = path
             .file_name()
             .and_then(|s| s.to_str())
-            .unwrap_or(&stem)
+            .unwrap_or(stem)
             .to_owned();
         self.current_file = Some(CurrentFile { path, format });
         self.record_recent(&name, &model.to_string());
+        if format == SketchFileFormat::Sketchy {
+            self.view.center_and_fit(self.sketch_view_bounds());
+            if omitted {
+                return self.toasts.show(
+                    "Some Sketchy details are hidden in this view and retained in the file.".into(),
+                );
+            }
+        }
         task
     }
 
@@ -8106,17 +8220,18 @@ impl App {
     fn save_to_file(&mut self, save_as: bool) -> Task<Message> {
         let mut model = self.build_save_model();
         let mut fallback_toast = None;
-        let target = if !save_as {
-            self.current_file.clone()
+        let target = if let Some(target) = self.current_file.clone().filter(|_| !save_as) {
+            target
         } else {
-            None
-        };
-        let target = match target {
-            Some(target) => target,
-            None => {
-                // Offer a JSON destination if a new SKX cannot be encoded;
-                // never silently replace an existing SKX with JSON bytes.
-                let ext = match sketch_core::skx::write(&model, &Default::default()) {
+            let prefer_sketchy = self
+                .current_file
+                .as_ref()
+                .is_some_and(|file| file.format == SketchFileFormat::Sketchy)
+                || (self.current_file.is_none() && self.sketchy_backing.is_some());
+            let ext = if prefer_sketchy {
+                "sketchy.json"
+            } else {
+                match sketch_core::skx::write(&model, &Default::default()) {
                     Ok(_) => "skx",
                     Err(e) => {
                         fallback_toast = Some(format!(
@@ -8124,39 +8239,74 @@ impl App {
                         ));
                         "json"
                     }
-                };
-                let Some(path) = file_dialogs::save_sketch(&format!("{}.{}", self.file_name, ext))
-                else {
-                    return Task::none();
-                };
-                let path = match std::path::absolute(path) {
-                    Ok(path) => path,
-                    Err(e) => return self.toasts.show(format!("Could not save sketch: {e}")),
-                };
-                let format = if path
-                    .extension()
-                    .and_then(|s| s.to_str())
-                    .is_some_and(|s| s.eq_ignore_ascii_case("json"))
-                {
-                    SketchFileFormat::Json
-                } else {
-                    SketchFileFormat::Skx
-                };
-                CurrentFile { path, format }
-            }
+                }
+            };
+            let name = self
+                .current_file
+                .as_ref()
+                .filter(|file| file.format == SketchFileFormat::Sketchy)
+                .map(|file| sketchy_file_stem(&file.path))
+                .filter(|stem| !stem.is_empty())
+                .unwrap_or(&self.file_name);
+            let Some(path) = file_dialogs::save_sketch(&format!("{name}.{ext}"), ext) else {
+                return Task::none();
+            };
+            let path = match std::path::absolute(path) {
+                Ok(path) => path,
+                Err(e) => return self.toasts.show(format!("Could not save sketch: {e}")),
+            };
+            let same = self
+                .current_file
+                .as_ref()
+                .filter(|file| same_sketch_path(&file.path, &path));
+            let (path, format) = if let Some(file) = same {
+                (path, file.format)
+            } else {
+                sketch_destination(path, ext)
+            };
+            CurrentFile { path, format }
         };
-        let name = target
-            .path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or(&self.file_name)
-            .to_owned();
+        let same_target = self
+            .current_file
+            .as_ref()
+            .is_some_and(|file| same_sketch_path(&file.path, &target.path));
+        if target.format == SketchFileFormat::Sketchy {
+            self.ensure_area_layers();
+            self.recalculate_if_needed();
+            model = self.build_save_model();
+        }
+        let name = if target.format == SketchFileFormat::Sketchy {
+            if same_target {
+                self.file_name.clone()
+            } else {
+                sketchy_file_stem(&target.path).to_owned()
+            }
+        } else {
+            target
+                .path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or(&self.file_name)
+                .to_owned()
+        };
         model["fileName"] = name.clone().into();
+        let mut prepared = None;
         let bytes = match target.format {
             SketchFileFormat::Skx => {
                 sketch_core::skx::write(&model, &Default::default()).map_err(|e| e.to_string())
             }
             SketchFileFormat::Json => serde_json::to_vec_pretty(&model).map_err(|e| e.to_string()),
+            SketchFileFormat::Sketchy => sketchy::prepare_save(
+                model.clone(),
+                self.sketchy_backing.as_ref(),
+                &name,
+                self.sketchy_backing.is_some() && !same_target,
+            )
+            .map(|mut save| {
+                let bytes = std::mem::take(&mut save.bytes);
+                prepared = Some(save);
+                bytes
+            }),
         };
         let bytes = match bytes {
             Ok(bytes) => bytes,
@@ -8164,6 +8314,18 @@ impl App {
         };
         if let Err(e) = autosave::atomic_write(&target.path, &bytes) {
             return self.toasts.show(format!("Could not save sketch: {e}"));
+        }
+        if let Some(save) = prepared {
+            if let Some(pages) = model["pages"].as_array_mut() {
+                for ((page, cached), key) in
+                    self.pages.pages.iter_mut().zip(pages).zip(save.page_keys)
+                {
+                    cached["sketchyPage"] = serde_json::json!(key);
+                    page.sketchy_page = Some(key);
+                }
+            }
+            model["sketchyBacking"] = serde_json::json!(save.backing);
+            self.sketchy_backing = Some(save.backing);
         }
         let recent_name = target
             .path
@@ -8205,6 +8367,7 @@ impl App {
         }
         // Recovery and old cache-only recent entries have no trusted file path.
         self.current_file = None;
+        self.sketchy_backing = sketchy::Backing::from_model(&data);
         if let Some(custom) = data.pointer("/settings/customSymbols").and_then(|v| {
             serde_json::from_value::<
                     std::collections::BTreeMap<String, sketch_core::symbols::Symbol>,
@@ -9542,6 +9705,68 @@ fn main() -> iced::Result {
         };
         if let Err(error) = check() {
             eprintln!("Installation check failed: {error}");
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+    if std::env::args_os()
+        .nth(1)
+        .is_some_and(|arg| arg == "--check-sketchy-workfile")
+    {
+        let check = || -> Result<(), String> {
+            let sample = std::env::args_os()
+                .nth(2)
+                .ok_or("Provide a disposable Sketchy workfile.")?;
+            let sample = std::path::absolute(sample).map_err(|e| e.to_string())?;
+            let (mut app, _) = App::boot(1.0);
+            let _ = app.open_sketch_path(sample.clone());
+            if !app
+                .current_file
+                .as_ref()
+                .is_some_and(|file| file.format == SketchFileFormat::Sketchy)
+            {
+                return Err(app
+                    .toasts
+                    .text()
+                    .unwrap_or("Could not open Sketchy workfile")
+                    .into());
+            }
+            let area = app
+                .drawing
+                .polygons
+                .first_mut()
+                .ok_or("No editable area in the sample.")?;
+            const EDIT: &str = "Package check: edited area";
+            area.name = EDIT.into();
+            let _ = app.update(Message::SaveFile);
+            let bytes = std::fs::read(&sample).map_err(|e| e.to_string())?;
+            let mut saved: serde_json::Value =
+                serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+            if let Some(extras) = saved
+                .get_mut("extras")
+                .and_then(|value| value.as_object_mut())
+            {
+                extras.remove("app.sketchrust.workfile");
+            }
+            let core = sketchy::convert(saved)?;
+            if !core.model["pages"][0]["polygons"][0]["name"].eq(EDIT) {
+                return Err("Save did not update the standard Sketchy area.".into());
+            }
+            let (mut reopened, _) = App::boot(1.0);
+            let _ = reopened.open_sketch_path(sample);
+            if reopened
+                .drawing
+                .polygons
+                .first()
+                .is_none_or(|area| area.name != EDIT)
+            {
+                return Err("Reopened Sketchy workfile is missing the edit.".into());
+            }
+            println!("OK; Sketchy open, edit, save in place, and reopen.");
+            Ok(())
+        };
+        if let Err(error) = check() {
+            eprintln!("Sketchy workfile check failed: {error}");
             std::process::exit(1);
         }
         return Ok(());
