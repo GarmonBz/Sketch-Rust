@@ -1,5 +1,6 @@
 param([switch]$SkipBuild, [switch]$NativePreview, [string]$InstallDirectory)
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'assert-release-executable.ps1')
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 Push-Location $repoRoot
 try {
@@ -12,11 +13,13 @@ try {
     $channel = if ($NativePreview) {'-native-preview'} else {''}
     $packageDate = Get-Date -Format "yyyy-MM-dd"
     $packageName = "SketchRust-$version$channel-$packageDate-windows-x64"
-    $stage = Join-Path $repoRoot "target\package\$packageName"
+    $stage = Join-Path $repoRoot "target\package\$packageName-$([guid]::NewGuid().ToString('N'))"
     $dist = Join-Path $repoRoot 'dist'
     $install = if ($InstallDirectory) { [IO.Path]::GetFullPath((Join-Path $repoRoot $InstallDirectory)) } else { $dist }
+    $releaseExe = Join-Path $repoRoot 'target/release/sketch-app.exe'
+    Assert-ReleaseExecutable $releaseExe
     New-Item -ItemType Directory -Path $stage,$dist,$install -Force | Out-Null
-    Copy-Item -LiteralPath 'target/release/sketch-app.exe' -Destination (Join-Path $stage 'sketch-app.exe') -Force
+    Copy-Item -LiteralPath $releaseExe -Destination $stage
     Copy-Item -LiteralPath 'assets/symbols.json' -Destination (Join-Path $stage 'symbols.json') -Force
     Copy-Item -LiteralPath 'assets/symbols.previous.json' -Destination (Join-Path $stage 'symbols.previous.json') -Force
     Copy-Item -LiteralPath 'docs/SYMBOL_LIBRARY.md' -Destination (Join-Path $stage 'SYMBOL-LIBRARY.md') -Force
@@ -27,7 +30,7 @@ try {
     Copy-Item -LiteralPath 'docs/DISTO.md' -Destination (Join-Path $stage 'DISTO.md') -Force
     Copy-Item -LiteralPath 'docs/BUILD_VALIDATION.md' -Destination (Join-Path $stage 'BUILD_VALIDATION.md') -Force
     Copy-Item -LiteralPath 'docs/CONTROL_WIRING_AUDIT.md' -Destination (Join-Path $stage 'CONTROL_WIRING_AUDIT.md') -Force
-    Copy-Item -LiteralPath 'docs/APEX_REPLACEMENT.md' -Destination (Join-Path $stage 'APEX-COMPATIBILITY.md') -Force
+    Copy-Item -LiteralPath 'docs/APPRAISE_IT_PRO_INTEGRATION.md' -Destination $stage -Force
     Copy-Item -LiteralPath 'refs/ui-spec/PARITY.md' -Destination (Join-Path $stage 'FEATURE-AUDIT.md') -Force
     $packagedAudit = (Get-Content -LiteralPath (Join-Path $stage 'FEATURE-AUDIT.md') -Raw).Replace('../../ACCEPTANCE.md','ACCEPTANCE.md').Replace('docs/DISTO.md','DISTO.md')
     Set-Content -LiteralPath (Join-Path $stage 'FEATURE-AUDIT.md') -Value $packagedAudit -Encoding utf8
@@ -49,7 +52,6 @@ try {
         version=$version; packagedAtUtc=[DateTime]::UtcNow.ToString('o'); target='x86_64-pc-windows-msvc'
         sourceCommit=(git rev-parse HEAD).Trim(); includesUncommittedChanges=[bool](git status --porcelain)
         sourceSha256=$sourceHash; featureAuditDate=$audit.audit_date; distoHardware='Deferred at user request'
-        nativeApexCompatibility='Development preview; see APEX-COMPATIBILITY.md; not a completed universal replacement'
         files=$packageFiles
     }
     $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $stage 'manifest.json') -Encoding utf8

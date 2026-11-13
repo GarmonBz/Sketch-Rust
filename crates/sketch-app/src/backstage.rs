@@ -199,7 +199,7 @@ fn file_btn<'a>(
 }
 
 /// The backstage menu column itself (200 wide, fills its height).
-fn menu<'a>(connected: Option<&str>) -> Element<'a, Message> {
+fn menu<'a>() -> Element<'a, Message> {
     let mut list = stack![].width(MENU_W).height(Length::Fill);
     for it in items() {
         list = list.push(at(0.0, it.y - MENU_Y, menu_item(&it)));
@@ -207,7 +207,7 @@ fn menu<'a>(connected: Option<&str>) -> Element<'a, Message> {
     for y in DIVIDERS {
         list = list.push(at(0.0, y - MENU_Y, rect(MENU_W, 1.0, border())));
     }
-    let mut footer = column![
+    let footer = column![
         rect(MENU_W, 1.0, border()),
         stack![
             at(
@@ -230,18 +230,6 @@ fn menu<'a>(connected: Option<&str>) -> Element<'a, Message> {
         .width(MENU_W)
         .height(FOOTER_H - 1.0),
     ];
-    if let Some(target) = connected {
-        footer = column![
-            crate::tooltips::tip_below(
-                button(label("Return to host", 12.0, SEGOE, text_main(), 16.0))
-                    .padding([10, 8])
-                    .width(MENU_W)
-                    .on_press(Message::ApexReturn),
-                format!("Return to the originating report: {target}")
-            ),
-            footer
-        ];
-    }
     let panel = fill_bg(column![list, footer], bg_panel())
         .width(MENU_W)
         .height(Length::Fill);
@@ -257,9 +245,8 @@ fn menu<'a>(connected: Option<&str>) -> Element<'a, Message> {
 pub fn layer<'a>(
     recent_open: bool,
     recent: &[crate::recent::RecentFile],
-    connected: Option<&str>,
 ) -> Element<'a, Message> {
-    let mut columns = row![container(menu(connected))
+    let mut columns = row![container(menu())
         .width(MENU_W)
         .height(Length::Fill)];
     if recent_open {

@@ -15,6 +15,7 @@
 # shortcut and an entry under Settings > Apps for this user.
 param([switch]$FetchWix, [switch]$Test, [switch]$SkipPackage)
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'assert-release-executable.ps1')
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 Push-Location $repoRoot
 try {
@@ -47,23 +48,26 @@ try {
 
     $version = [regex]::Match((Get-Content -LiteralPath 'Cargo.toml' -Raw), 'version\s*=\s*"([^"]+)"').Groups[1].Value
     if (-not $SkipPackage) {
-        try { & (Join-Path $PSScriptRoot 'package.ps1') -NativePreview | Out-Null }
-        catch { Write-Warning "package.ps1: $($_.Exception.Message)" }
+        & (Join-Path $PSScriptRoot 'package.ps1') -NativePreview | Out-Null
     }
     $stage = Get-ChildItem -LiteralPath 'target\package' -Directory -Filter "SketchRust-$version-*" |
+        Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'manifest.json') -PathType Leaf } |
         Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if (-not $stage) { throw "No staged package for $version under target\package. Run tools\package.ps1 first." }
 
+    Assert-ReleaseExecutable (Join-Path $stage.FullName 'sketch-app.exe')
+
     # Everything generated for the build goes here.
-    $work = Join-Path $repoRoot 'target\msi'
-    if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }
+    $work = Join-Path $repoRoot "target\msi\$PID"
     New-Item -ItemType Directory -Path $work -Force | Out-Null
 
     # Files.wxs: one component per staged file.
     $lines = @('<?xml version="1.0" encoding="utf-8"?>',
         '<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">', '  <Fragment>',
         '    <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">')
-    foreach ($file in Get-ChildItem -LiteralPath $stage.FullName -File | Sort-Object Name) {
+    $manifest = Get-Content -LiteralPath (Join-Path $stage.FullName 'manifest.json') -Raw | ConvertFrom-Json
+    foreach ($fileName in @($manifest.files.name) + @('manifest.json')) {
+        $file = Get-Item -LiteralPath (Join-Path $stage.FullName $fileName)
         $id = 'F_' + ($file.Name -replace '[^A-Za-z0-9]', '_')
         $src = [Security.SecurityElement]::Escape($file.FullName)
         $name = [Security.SecurityElement]::Escape($file.Name)

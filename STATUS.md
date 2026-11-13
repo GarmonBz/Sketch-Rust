@@ -1,5 +1,10 @@
 # Sketch Rust — STATUS ledger
 
+0.1.30 removes the Apex-based host integration and AXF support. Sketchy and
+SKX remain the editable formats. See the
+[Appraise-It Pro integration plan](docs/APPRAISE_IT_PRO_INTEGRATION.md).
+Entries below describe earlier builds.
+
 Standalone native Windows port of `Appraisal Sketch 1.1`
 (`00) sketch standalone.html`, the attached 10.3 MB HTML app).
 
@@ -53,7 +58,7 @@ rendering off the input thread. Unchanged reads reuse images; late jobs cannot
 replace newer saves. High-frequency pointer events redraw locally while HUD
 updates are coalesced to frame intervals. Integration remains embedded in Sketch.
 
-Current release: **0.1.29** (2026-11-11). Help > Appraise-It Integration exposes
+Previous release: **0.1.29** (2026-11-11). Help > Appraise-It Integration exposes
 Enable integration and Restore previous provider without terminal commands.
 It uses the embedded registration backend and handles protected-version upgrades.
 Print Preview, Print and PDF export
@@ -1657,8 +1662,7 @@ a vendor-contract question, not a claim that partner registration is impossible.
 No developer documentation is available from the user. The supported desktop
 launch/registration and legacy sketch exchange contracts still need SFREP
 confirmation before implementing an Apex-equivalent connector. Requirements,
-acceptance cases and sources are in docs/APPRAISE_IT_PRO_INTEGRATION.md. An
-unsent SDK request is in docs/SFREP_DESKTOP_INTEGRATION_REQUEST.txt. No app
+acceptance cases and sources are in docs/APPRAISE_IT_PRO_INTEGRATION.md. No app
 connector or report mutation was made; the working 0.1.7 build is unchanged.
 
 
@@ -1672,7 +1676,7 @@ passed an actual same-process PID check and an isolated SDK round trip (subject,
 two pages, 200 sf, EMF, save/close events). Four native model/export tests and
 the ordinary backstage regression pass. Complete file/API compatibility is
 still in development. Current scope, verified capabilities, remaining gaps and
-acceptance gates are in docs/APEX_REPLACEMENT.md. No global registration has
+acceptance gates are in the 0.1.29 source history. No global registration has
 been activated and no production report has been modified.
 
 
@@ -1681,7 +1685,7 @@ been activated and no production report has been modified.
 The target is a complete replacement across Apex-compatible hosts, inside the
 sketch executable, with no companion runtime program. The Appraise-It-only
 caller restriction has been removed. This is still development work, not a
-complete replacement release. See docs/APEX_REPLACEMENT.md for the gap matrix.
+complete replacement release. See the 0.1.29 source history for the gap matrix.
 
 Current focused checks: six Rust model tests, 48 embedded-component contract
 assertions, Clippy with warnings denied, formatting, and a rebuilt-executable
@@ -1710,7 +1714,7 @@ symbol-library entries export as native blocks. Native Save/Save As/Base64/Load,
 live fields/tags/areas, deletion, zoom, breakdown, callbacks and georeference
 operations are implemented inside the sketch EXE. The host transport is embedded;
 legacy file and TOTAL/WinTOTAL XML/COM modes use the same EXE. Production Apex
-configuration and reports remain unchanged. See docs/APEX_REPLACEMENT.md for
+configuration and reports remain unchanged. See the 0.1.29 source history for
 explicit limitations and the real-host verification gates. This must not be
 called a completed universal replacement. Current release work is a development
 compatibility preview with package-level smoke checks.

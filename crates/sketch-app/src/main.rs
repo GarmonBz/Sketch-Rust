@@ -22,12 +22,6 @@
 // Native GUI executables should not allocate a Windows console.
 #![cfg_attr(all(target_os = "windows", not(test)), windows_subsystem = "windows")]
 
-mod apex_compat;
-#[cfg(test)]
-mod apex_compat_tests;
-#[cfg(windows)]
-mod apex_registration;
-mod apex_startup;
 mod area_dialog;
 mod area_props;
 mod area_repair;
@@ -63,7 +57,6 @@ mod format;
 mod handles;
 mod icons;
 mod input;
-mod integration_setup;
 mod layer_io;
 mod layers;
 #[cfg(test)]
@@ -130,12 +123,6 @@ const WINDOW_H: f32 = 860.0;
 pub enum Message {
     /// A visual-only control was clicked (no behavior on this screen).
     Noop,
-    ApexReturn,
-    ApexPoll,
-    ApexSnapshotReady(apex_compat::SnapshotReady),
-    ApexReturned(Result<(), String>),
-    ApexSaved(Result<(), String>),
-    IntegrationSetup(integration_setup::Msg),
     SymbolManager(symbol_manager::Msg),
     ImportLayer,
     AutoSaveTick,
@@ -494,7 +481,7 @@ static STARTUP_FILE: std::sync::Mutex<Option<std::path::PathBuf>> = std::sync::M
 fn about_text() -> String {
     format!(
         "Sketch Rust {}
-Windows x64 native compatibility preview",
+Windows x64 preview",
         env!("CARGO_PKG_VERSION")
     )
 }
@@ -525,6 +512,12 @@ fn read_sketch_path(
     path: &std::path::Path,
 ) -> Result<(serde_json::Value, SketchFileFormat, bool), String> {
     use std::io::Read;
+    if path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("axf"))
+    {
+        return Err("AXF files are no longer supported.".into());
+    }
     let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
     let mut bytes = Vec::new();
     (&mut file)
@@ -638,17 +631,6 @@ struct DockDrag {
 }
 
 pub struct App {
-    apex_snapshot_epoch: u64,
-    apex_snapshot_busy: bool,
-    apex_snapshot_replies: Vec<std::path::PathBuf>,
-    apex_check_pending: bool,
-    apex_last_signature: u64,
-    apex_pending_signature: u64,
-    apex_changed_at: std::time::Instant,
-    apex_geo_pending: Option<(usize, Vec<sketch_core::geometry::Pt>)>,
-    apex_session: Option<std::path::PathBuf>,
-    apex_target: String,
-    apex_returning: bool,
     symbol_changes: symbol_manager::Changes,
     symbol_manager: symbol_manager::Manager,
     autosave: autosave::State,
@@ -745,7 +727,6 @@ pub struct App {
     guide: guide::Guide,
     /// The Print Preview overlay (S11-055).
     print_preview: print::PrintPreview,
-    integration_setup: integration_setup::Setup,
     /// The Mini-Map's snapshot while it is open (S12-018).
     mini_map: Option<iced::widget::image::Handle>,
     /// The open ribbon popup menu (Flip / Canvas background / Interface).
@@ -816,7 +797,6 @@ pub struct App {
     subject_auto_filled: bool,
     /// `state.extendedData` (the suite sets it; carried verbatim here).
     extended_data: String,
-    native_apex: serde_json::Value,
     /// Settings keys this port does not yet model (`pageLayout`,
     /// `canvasTheme`, `autoPost` defaults, `symbolFavorites`,
     /// `dimensionsEnabled`, `dimensionPlacement`): read on `applySaveModel`
@@ -1050,17 +1030,6 @@ impl App {
             // env main() sets.
             {
                 let mut app = App {
-                    apex_snapshot_epoch: 0,
-                    apex_snapshot_busy: false,
-                    apex_snapshot_replies: Vec::new(),
-                    apex_check_pending: true,
-                    apex_last_signature: 0,
-                    apex_pending_signature: 0,
-                    apex_changed_at: std::time::Instant::now(),
-                    apex_geo_pending: None,
-                    apex_session: None,
-                    apex_target: String::new(),
-                    apex_returning: false,
                     symbol_changes: Default::default(),
                     symbol_manager: Default::default(),
                     autosave: Default::default(),
@@ -1114,7 +1083,6 @@ impl App {
                     shortcuts: shortcuts::Shortcuts::default(),
                     guide: guide::Guide::default(),
                     print_preview: print::PrintPreview::default(),
-                    integration_setup: integration_setup::Setup::default(),
                     mini_map: None,
                     popup_menu: popup_menu::PopupMenu::default(),
                     disto: disto::Disto::default(),
@@ -1143,7 +1111,6 @@ impl App {
                     sketchy_backing: None,
                     subject_auto_filled: false,
                     extended_data: String::new(),
-                    native_apex: serde_json::Value::Null,
                     settings_extra: std::collections::BTreeMap::new(),
                     status_scroll: false,
                     scale_edit: None,
@@ -1181,15 +1148,7 @@ impl App {
                 app.load_stored_settings();
                 app.symbol_changes = persist::read_json("symbol-library.json").unwrap_or_default();
                 app.rebuild_symbols();
-                if let Err(error) = app.apply_host_codes() {
-                    let _ = app.toasts.show(error);
-                }
                 app.autosave_boot();
-                if let Some(root) = std::env::var_os("SKETCH_APEX_SESSION") {
-                    if let Err(error) = app.load_apex_context(std::path::Path::new(&root)) {
-                        let _ = app.toasts.show(error);
-                    }
-                }
                 app
             },
             window::latest().map(Message::WindowReady),
@@ -1606,8 +1565,8 @@ impl App {
     fn update(&mut self, message: Message) -> Task<Message> {
         // Window bookkeeping arrives on its own schedule (at startup, while
         // the window is dragged) and never touches the document: keep it
-        // off the path below, which ends a pending dock click, repaints the
-        // canvas and marks a host session as changed.
+        // off the path below, which ends a pending dock click and repaints
+        // the canvas.
         match &message {
             Message::Maximized(_) | Message::WindowMoved(_) => {
                 return self.update_inner(message);
@@ -1625,18 +1584,6 @@ impl App {
                 return Task::none();
             }
             _ => {}
-        }
-        if let Message::ApexSnapshotReady(ready) = message {
-            return self.apex_snapshot_completed(ready);
-        }
-        if matches!(message, Message::ApexPoll) && self.apex_poll_is_read_only() {
-            return self.apex_poll();
-        }
-        if self.apex_session.is_some()
-            && !matches!(message, Message::ApexPoll | Message::CanvasHover(..))
-        {
-            self.apex_check_pending = true;
-            self.apex_changed_at = std::time::Instant::now();
         }
         // A pending dock click lives only until the next message: the tap's
         // release and the item's release come from one event.
@@ -1901,36 +1848,7 @@ impl App {
             },
             // `exitApp` (S11-080): the confirm first ("Close this sketch?
             // Save your work first if needed."), then the close.
-            Message::ApexPoll => self.apex_poll(),
-            Message::ApexSnapshotReady(ready) => self.apex_snapshot_completed(ready),
-            Message::IntegrationSetup(msg) => self.integration_setup.update(msg),
-            Message::ApexReturn => self.return_to_host(),
-            Message::ApexSaved(result) => {
-                self.apex_returning = false;
-                match result {
-                    Ok(()) => self
-                        .toasts
-                        .show("Sketch and measurements saved back to the host.".into()),
-                    Err(error) => self.toasts.show(error),
-                }
-            }
-            Message::ApexReturned(result) => {
-                self.apex_returning = false;
-                match result {
-                    Ok(()) => self.exit(),
-                    Err(error) => self.toasts.show(error),
-                }
-            }
-            Message::Close if self.integration_setup.busy => self
-                .toasts
-                .show("Finish integration setup before closing Sketch.".into()),
-            Message::Close if self.apex_returning => self
-                .toasts
-                .show("Wait for the report transfer to finish before closing Sketch.".into()),
             Message::Close => {
-                if self.apex_session.is_some() {
-                    return self.open_dialog(dialog::Dialog::report_close());
-                }
                 // Nothing to lose: close without asking. Otherwise offer
                 // Save / Don't save / Cancel.
                 self.refresh_dirty();
@@ -1959,11 +1877,6 @@ impl App {
                 Task::none()
             }
             Message::Escape => {
-                if self.apex_geo_pending.take().is_some() {
-                    return self
-                        .toasts
-                        .show("Reference-point selection cancelled.".into());
-                }
                 if self.symbol_manager.open {
                     if self.symbol_manager.enlarged {
                         self.symbol_manager.enlarged = false;
@@ -2206,27 +2119,6 @@ impl App {
             }
             Message::CanvasPress(x, y) => {
                 let world = self.world(x, y);
-                if let Some((page, points)) = self.apex_geo_pending.as_mut() {
-                    points.push(world);
-                    if points.len() == 2 {
-                        self.pages.pages[*page].geo_reference_points = points
-                            .iter()
-                            .map(|p| pages::GeoPoint {
-                                x: p.x,
-                                y: p.y,
-                                coordinates: String::new(),
-                            })
-                            .collect();
-                        self.apex_geo_pending = None;
-                        if let Some(root) = self.apex_session.clone() {
-                            if let Err(error) = self.write_apex_snapshot(&root, false) {
-                                return self.toasts.show(error);
-                            }
-                        }
-                        return self.toasts.show("Reference points selected.".into());
-                    }
-                    return self.toasts.show("Click the second reference point.".into());
-                }
                 // Image Edit Mode's press starts the photo drag
                 // (canvas-engine.js:846: `dragState = {type:'photo'}`).
                 if self.bg_image.edit_mode {
@@ -2769,7 +2661,6 @@ impl App {
                 self.subject_info = subject_info::SubjectInfo::default();
                 self.subject_auto_filled = false;
                 self.extended_data = String::new();
-                self.native_apex = serde_json::Value::Null;
                 self.layers = layers::Layers::default();
                 // `resetToBlank` leaves the area-code table alone.
                 self.settings_extra.clear();
@@ -2783,12 +2674,7 @@ impl App {
                 }
                 Task::none()
             }
-            Message::SaveFile => {
-                if self.apex_session.is_some() {
-                    return self.save_to_host();
-                }
-                self.save_to_file(false)
-            }
+            Message::SaveFile => self.save_to_file(false),
             Message::SaveFileAs => self.save_to_file(true),
             Message::ExportPng => {
                 if let Some(path) = rfd::FileDialog::new()
@@ -5371,12 +5257,6 @@ impl App {
 
     /// InputController's shortcuts.
     fn key(&mut self, cmd: input::KeyCmd) -> Task<Message> {
-        if self.integration_setup.open {
-            if matches!(cmd, input::KeyCmd::Escape) {
-                return self.integration_setup.update(integration_setup::Msg::Close);
-            }
-            return Task::none();
-        }
         if self.symbol_manager.open || self.autosave_prompt {
             if matches!(cmd, input::KeyCmd::Escape) {
                 if self.symbol_manager.open && self.symbol_manager.confirm > 0 {
@@ -7554,11 +7434,7 @@ impl App {
                     }
                     return self.exit();
                 }
-                if d.on_ok != Action::ReturnToReport || self.apex_returning {
-                    return Task::none();
-                }
-                self.dialog = None;
-                return self.discard_host_changes();
+                return Task::none();
             }
             DialogMsg::Cancel => false,
             DialogMsg::Dismiss => !d.has_cancel,
@@ -7624,7 +7500,6 @@ impl App {
                 }
                 return task;
             }
-            Action::ReturnToReport => return self.return_to_host(),
             Action::PhotoRemove => {
                 self.bg_image = reference_image::BgImage::default();
             }
@@ -7694,13 +7569,6 @@ impl App {
     }
 
     fn go_to_page(&mut self, index: usize) {
-        if self
-            .apex_geo_pending
-            .as_ref()
-            .is_some_and(|(page, _)| *page != index)
-        {
-            self.apex_geo_pending = None;
-        }
         self.save_current_page();
         if self.pages.go_to(index) {
             self.load_page_data();
@@ -8013,7 +7881,6 @@ impl App {
 
     /// Build a save model mirroring buildSaveModel (refs/sketch-app.js:5211).
     fn build_save_model(&mut self) -> serde_json::Value {
-        self.apply_host_code_properties();
         // saveCurrentPage()
         self.save_current_page();
         let pages: Vec<serde_json::Value> = self
@@ -8046,7 +7913,6 @@ impl App {
                 None => serde_json::Value::Null,
             },
             "options": options,
-            "apexDocument": self.native_apex,
             "customSymbols": self.portable_custom_symbols(),
         });
         let mut model = serde_json::json!({
@@ -8409,10 +8275,6 @@ impl App {
         self.invalidate_canvas();
         self.workflow_close();
         self.workflow = Default::default();
-        self.native_apex = model
-            .pointer("/settings/apexDocument")
-            .cloned()
-            .unwrap_or(serde_json::Value::Null);
         // One working copy: layer names convert before the typed parse.
         let mut data = model.clone();
         if !data.get("pages").and_then(|v| v.as_array()).is_some() {
@@ -8683,7 +8545,6 @@ impl App {
                 || self.command_palette_open
                 || self.file_menu
                 || self.print_preview.open
-                || self.integration_setup.open
                 || self.line_length_edit.is_some()
                 || self.scale_edit.is_some()
                 || self.dock.layer_rename.is_some()
@@ -8816,13 +8677,7 @@ impl App {
                 .map(|_| Message::ActivateWindow),
             None => Subscription::none(),
         };
-        let apex = if self.apex_session.is_some() {
-            Subscription::run(apex_compat::ticks).map(|_| Message::ApexPoll)
-        } else {
-            Subscription::none()
-        };
         Subscription::batch([
-            apex,
             trace,
             autosave::subscription(self.drawing.options.auto_save_enabled),
             resize,
@@ -9068,13 +8923,7 @@ impl App {
         // that closes the menu and the release that clicks a tab belong to
         // the same button (ui-manager.js lets that press through).
         let overlay: Element<'_, Message> = if self.file_menu {
-            backstage::layer(
-                self.recent_open,
-                &self.recent,
-                self.apex_session
-                    .as_ref()
-                    .map(|_| self.apex_target.as_str()),
-            )
+            backstage::layer(self.recent_open, &self.recent)
         } else {
             iced::widget::Space::new().into()
         };
@@ -9216,8 +9065,6 @@ impl App {
                 self.window_size
             )
             .unwrap_or_else(|| iced::widget::Space::new().into()),
-            integration_setup::layer(&self.integration_setup, self.window_size)
-                .unwrap_or_else(|| iced::widget::Space::new().into()),
             toast_layer,
             self.resize_layer()
         ]
@@ -9227,7 +9074,7 @@ impl App {
         // what someone is listening for: backstage close rules while the
         // File menu is open, pointer capture while the dock is resized.
         let mut tap = event_tap::EventTap::new(root).on_right_press(Message::RightPress);
-        let workflow_dialog = self.workflow.chooser.is_some() && !self.integration_setup.open;
+        let workflow_dialog = self.workflow.chooser.is_some();
         let workflow_escape = self.dialog.is_none()
             && !self.def_editor.open
             && !self.new_code.open
@@ -9235,8 +9082,7 @@ impl App {
                 || self.workflow.advanced
                 || self.workflow.menu.is_some()
                 || self.view.mode == view_state::Mode::DefineArea);
-        let management_modal =
-            self.symbol_manager.open || self.autosave_prompt || self.integration_setup.open;
+        let management_modal = self.symbol_manager.open || self.autosave_prompt;
         tap = tap.capture_key(move |key, mods| match key.as_ref() {
             iced::keyboard::Key::Named(iced::keyboard::key::Named::Tab) if workflow_dialog => Some(
                 Message::AreaWorkflow(area_workflow::Msg::Focus(mods.shift())),
@@ -9278,8 +9124,7 @@ impl App {
             tap = tap.on_escape(Message::Guide(guide::GuideMsg::Close));
         }
         // InputController.handleKeyDown / handleKeyUp (see input.rs).
-        let areas_keyboard =
-            self.dock.active == dock::DockTab::Areas && !self.integration_setup.open;
+        let areas_keyboard = self.dock.active == dock::DockTab::Areas;
         let ctx = input::KeyContext {
             drawing: self.view.mode.is_drawing(),
             dialog_open: dialog_open || workflow_dialog,
@@ -9438,303 +9283,6 @@ fn program(
 }
 
 fn main() -> iced::Result {
-    #[cfg(all(windows, debug_assertions))]
-    if let Some(index) = std::env::args().position(|arg| arg == "--check-native-draft") {
-        let args: Vec<_> = std::env::args().collect();
-        let checked = (|| -> Result<(), String> {
-            let session = apex_compat::Session::start_legacy(
-                "file",
-                std::path::Path::new(args.get(index + 1).ok_or("Missing native draft fixture")?),
-            )?;
-            let (mut app, _) = App::boot(1.);
-            app.load_apex_context(&session.root)?;
-            let original = app
-                .drawing
-                .reopened_areas
-                .first()
-                .ok_or("Missing native draft metadata")?
-                .original
-                .clone();
-            let missing = original
-                .edges
-                .iter()
-                .position(|edge| {
-                    !app.drawing
-                        .lines
-                        .iter()
-                        .any(|line| Some(line.id) == edge.line_id)
-                })
-                .ok_or("No missing boundary")?;
-            let _ = app.set_mode(view_state::Mode::DrawExterior);
-            let context = drawing::DrawCtx {
-                snap: false,
-                ..app.draw_ctx()
-            };
-            app.drawing.pen_down_at(original.points[missing], context);
-            let before = app.drawing.lines.last().map(|line| line.id);
-            app.drawing.click(
-                original.points[(missing + 1) % original.points.len()],
-                context,
-            );
-            app.finish_wall_commit(before);
-            let repaired = app
-                .drawing
-                .polygons
-                .iter()
-                .find(|area| area.id == original.id)
-                .ok_or("Native boundary did not restore its original area")?;
-            if repaired.name != original.name
-                || repaired.kind != original.kind
-                || repaired.factor_override != original.factor_override
-                || !app.drawing.reopened_areas.is_empty()
-            {
-                return Err("Native draft lost original area properties".into());
-            }
-            app.write_apex_return(&session.root)?;
-            let receipt =
-                session.wait_for("return-receipt.json", std::time::Duration::from_secs(30))?;
-            let value: serde_json::Value =
-                serde_json::from_slice(&std::fs::read(receipt).map_err(|e| e.to_string())?)
-                    .map_err(|e| e.to_string())?;
-            if value["ok"] != true {
-                return Err(value["error"]
-                    .as_str()
-                    .unwrap_or("Native repair save failed")
-                    .into());
-            }
-            session.cancel();
-            drop(app);
-            drop(session);
-            println!("PASS: native draft closed through real Rust drawing and saved with its name, code, factor and identity");
-            Ok(())
-        })();
-        if let Err(error) = checked {
-            eprintln!("{error}");
-            apex_compat::finish_process(1);
-        }
-        apex_compat::finish_process(0);
-    }
-
-    #[cfg(all(windows, debug_assertions))]
-    if std::env::args().any(|arg| arg == "--check-native-batch") {
-        let args: Vec<_> = std::env::args().collect();
-        let checked = (|| -> Result<(), String> {
-            let options = apex_startup::parse(&args)?;
-            if options.files.len() < 2 {
-                return Err("Two native fixtures are required".into());
-            }
-            let mut children = apex_startup::launch_files(&options, 0, true)?;
-            let mut pids = Vec::new();
-            for child in &mut children {
-                pids.push(child.id());
-                let started = std::time::Instant::now();
-                loop {
-                    if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
-                        if !status.success() {
-                            return Err(format!("Native file fixture failed: {status}"));
-                        }
-                        break;
-                    }
-                    if started.elapsed() > std::time::Duration::from_secs(30) {
-                        let _ = child.kill();
-                        return Err("Native file fixture timed out".into());
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(50));
-                }
-            }
-            if pids[0] == pids[1] {
-                return Err("Native files shared one process".into());
-            }
-            println!("PASS: independent native file sessions launched by sketch EXE: {pids:?}");
-            Ok(())
-        })();
-        if let Err(error) = checked {
-            eprintln!("{error}");
-            std::process::exit(1);
-        }
-        return Ok(());
-    }
-
-    #[cfg(all(windows, debug_assertions))]
-    if let Some(index) = std::env::args().position(|arg| arg == "--check-host-codes") {
-        let args: Vec<_> = std::env::args().collect();
-        let checked = (|| -> Result<(), String> {
-            let path =
-                apex_compat::load_host_codes(args.get(index + 1).ok_or("Missing code table URL")?)?;
-            std::fs::copy(path, args.get(index + 2).ok_or("Missing output path")?)
-                .map_err(|e| e.to_string())?;
-            Ok(())
-        })();
-        if let Err(error) = checked {
-            eprintln!("{error}");
-            apex_compat::finish_process(1);
-        }
-        apex_compat::finish_process(0);
-    }
-
-    #[cfg(all(windows, debug_assertions))]
-    if let Some(index) = std::env::args().position(|arg| arg == "--check-apex-legacy") {
-        let args: Vec<_> = std::env::args().collect();
-        let result = (|| -> Result<(), String> {
-            let path = std::path::Path::new(args.get(index + 1).ok_or("Missing native fixture")?);
-            let session = apex_compat::Session::start_legacy("file", path)?;
-            let (mut app, _) = App::boot(1.);
-            app.load_apex_context(&session.root)?;
-            app.write_apex_return(&session.root)?;
-            let receipt =
-                session.wait_for("return-receipt.json", std::time::Duration::from_secs(30))?;
-            let value: serde_json::Value =
-                serde_json::from_slice(&std::fs::read(receipt).map_err(|e| e.to_string())?)
-                    .map_err(|e| e.to_string())?;
-            if value["ok"] != true {
-                return Err(value["error"]
-                    .as_str()
-                    .unwrap_or("Native return failed")
-                    .to_owned());
-            }
-            println!(
-                "{}",
-                std::fs::read_to_string(session.root.join("legacy-runtime.json"))
-                    .map_err(|e| e.to_string())?
-            );
-            session.cancel();
-            println!("PASS: native file launch/edit/return ran in the sketch EXE.");
-            Ok(())
-        })();
-        if let Err(error) = result {
-            eprintln!("{error}");
-            std::process::exit(1);
-        }
-        return Ok(());
-    }
-    #[cfg(all(windows, debug_assertions))]
-    if let Some(index) = std::env::args().position(|arg| arg == "--check-apex-live") {
-        let args: Vec<_> = std::env::args().collect();
-        let result = (|| -> Result<(), String> {
-            let config = args.get(index + 1).ok_or("Missing configuration")?;
-            let root = std::path::PathBuf::from(args.get(index + 2).ok_or("Missing test session")?);
-            let fixture = args.get(index + 3).ok_or("Missing editor fixture")?;
-            let session =
-                apex_compat::Session::start_mode(std::path::Path::new(config), root.clone(), true)?;
-            session.wait_for("context.json", std::time::Duration::from_secs(30))?;
-            let (mut app, _) = App::boot(1.);
-            app.load_apex_context(&root)?;
-            let model: serde_json::Value =
-                serde_json::from_slice(&std::fs::read(fixture).map_err(|e| e.to_string())?)
-                    .map_err(|e| e.to_string())?;
-            let _ = app.apply_model(&model, "Live SDK fixture");
-            let started = std::time::Instant::now();
-            while !root.join("host-closed").exists() && !root.join("return-receipt.json").exists() {
-                if started.elapsed() > std::time::Duration::from_secs(240) {
-                    session.cancel();
-                    return Err("Timed out in live SDK fixture".into());
-                }
-                if root.join("ui-save").exists() {
-                    let _ = std::fs::remove_file(root.join("ui-save"));
-                    let _ = app.save_to_host();
-                }
-                if app.apex_returning && root.join("save-receipt.json").exists() {
-                    let _ = app.update(Message::ApexSaved(Ok(())));
-                }
-                let _ = std::fs::write(root.join("check-progress"), "polling");
-                let _ = app.apex_poll();
-                let _ = std::fs::write(root.join("check-progress"), "poll complete");
-                std::thread::sleep(std::time::Duration::from_millis(10));
-            }
-            let _ = std::fs::write(root.join("check-progress"), "cancelling");
-            session.cancel();
-            let _ = std::fs::write(root.join("check-progress"), "cancelled");
-            drop(app);
-            let _ = std::fs::write(root.join("check-progress"), "app dropped");
-            drop(session);
-            let _ = std::fs::write(root.join("check-progress"), "session dropped");
-            let _ = std::fs::write(
-                root.join("check-progress"),
-                "PASS: live editor and host session closed",
-            );
-            apex_compat::finish_process(0);
-        })();
-        if let Err(error) = result {
-            eprintln!("{error}");
-            std::process::exit(1);
-        }
-        return Ok(());
-    }
-    #[cfg(windows)]
-    if let Some(enable) = std::env::args().find_map(|arg| match arg.as_str() {
-        "--enable-apex-compat" => Some(true),
-        "--restore-apex-launch" => Some(false),
-        _ => None,
-    }) {
-        let interactive = !std::env::args().any(|arg| {
-            matches!(
-                arg.as_str(),
-                "--apex-registration-elevated" | "--apex-registration-quiet"
-            )
-        });
-        match apex_registration::configure(enable) {
-            Ok(text) => {
-                println!("{text}");
-                if interactive {
-                    rfd::MessageDialog::new()
-                        .set_title("Sketch Rust - host launch setup")
-                        .set_description(text)
-                        .set_level(rfd::MessageLevel::Info)
-                        .show();
-                }
-            }
-            Err(error) => {
-                eprintln!("{error}");
-                if interactive {
-                    rfd::MessageDialog::new()
-                        .set_title("Sketch Rust - host launch setup")
-                        .set_description(error)
-                        .set_level(rfd::MessageLevel::Error)
-                        .show();
-                }
-                std::process::exit(1);
-            }
-        }
-        return Ok(());
-    }
-    #[cfg(all(windows, debug_assertions))]
-    if let Some(config) = std::env::args()
-        .skip_while(|a| a != "--check-apex-server")
-        .nth(1)
-    {
-        let root = std::env::args().next_back().expect("session directory");
-        let result = (|| -> Result<(), String> {
-            let session = apex_compat::Session::start_in(
-                std::path::Path::new(&config),
-                std::path::PathBuf::from(root),
-            )?;
-            session.wait_for("context.json", std::time::Duration::from_secs(45))?;
-            println!(
-                "Embedded sketch server accepted a document in process {}",
-                std::process::id()
-            );
-            let result =
-                session.wait_for("return-receipt.json", std::time::Duration::from_secs(45));
-            session.cancel();
-            result.map(|_| ())
-        })();
-        if let Err(error) = result {
-            eprintln!("{error}");
-            std::process::exit(1);
-        }
-        return Ok(());
-    }
-    #[cfg(windows)]
-    if std::env::args().any(|arg| arg == "--check-apex-inprocess") {
-        match apex_compat::probe() {
-            Ok(pid) => println!("Apex compatibility runs inside sketch-app.exe; process ID {pid}."),
-            Err(error) => {
-                eprintln!("Apex compatibility check failed: {error}");
-                std::process::exit(1);
-            }
-        }
-        return Ok(());
-    }
     if std::env::args().any(|arg| arg == "--check-installation") {
         let check = || -> Result<(), String> {
             let _ = app_icon();
@@ -9838,85 +9386,27 @@ fn main() -> iced::Result {
         .unwrap_or(system);
     let ui_scale = dpr / system;
 
-    #[cfg(windows)]
-    let integration = {
-        let args: Vec<_> = std::env::args().collect();
-        let launch = (|| -> Result<Option<apex_compat::Session>, String> {
-            let options = apex_startup::parse(&args)?;
-            if let Some(address) = &options.code_table {
-                let codes = apex_compat::load_host_codes(address)?;
-                std::env::set_var("SKETCH_APEX_CODES", codes);
-            }
-            if let Some(config) = &options.integration {
-                return apex_compat::start(config).map(Some);
-            }
-            if let Some(mode) = &options.legacy {
-                return apex_compat::Session::start_legacy(mode, std::path::Path::new(""))
-                    .map(Some);
-            }
-            if let Some(file) = options.files.first() {
-                for input in &options.files {
-                    if input.exists() && !input.is_file() {
-                        return Err(format!("Native sketch does not exist: {}", input.display()));
-                    }
-                }
-                apex_startup::open_additional(&options)?;
-                return apex_compat::Session::start_legacy("file", file).map(Some);
-            }
-            Ok(None)
-        })();
-        match launch {
-            Ok(session) => session,
-            Err(error) => {
-                rfd::MessageDialog::new()
-                    .set_title("Sketch Rust - native sketch")
-                    .set_description(error)
-                    .set_level(rfd::MessageLevel::Error)
-                    .show();
-                return Ok(());
-            }
-        }
-    };
-    // A sketch file on the command line (a double-click on an associated
-    // file, "Open with"): each file gets its own window, as the native files
-    // above do; a file some window already has open just comes forward.
-    #[cfg(windows)]
-    let host_session = integration.is_some();
-    #[cfg(not(windows))]
-    let host_session = false;
-    if !host_session {
-        let args: Vec<_> = std::env::args().collect();
-        let mut files = apex_startup::sketch_files(&args).into_iter();
-        let first = files.next();
-        if let Ok(executable) = std::env::current_exe() {
-            for extra in files {
-                let _ = std::process::Command::new(&executable).arg(extra).spawn();
-            }
-        }
-        if let Some(file) = first {
-            if platform::activate_existing(&file) {
-                return Ok(());
-            }
-            if let Ok(mut startup) = STARTUP_FILE.lock() {
-                *startup = Some(file);
-            }
+    // A file association or "Open with" passes sketch paths on the command line.
+    // Each file gets its own window, or activates the window that already has it.
+    let mut files = std::env::args_os()
+        .skip(1)
+        .map(std::path::PathBuf::from)
+        .filter(|path| is_sketch_file(path));
+    let first = files.next();
+    if let Ok(executable) = std::env::current_exe() {
+        for extra in files {
+            let _ = std::process::Command::new(&executable).arg(extra).spawn();
         }
     }
-    let result = program(ui_scale).run();
-    #[cfg(windows)]
-    if let Some(session) = integration {
-        session.cancel();
-        drop(session);
-        // The hosted CLR and Windows PDF engine retain native threads. After
-        // the editor and host session are closed, end the process explicitly
-        // rather than returning through the mixed CRT/CLR shutdown path.
-        if let Err(error) = result {
-            eprintln!("{error}");
-            apex_compat::finish_process(1);
+    if let Some(file) = first {
+        if platform::activate_existing(&file) {
+            return Ok(());
         }
-        apex_compat::finish_process(0);
+        if let Ok(mut startup) = STARTUP_FILE.lock() {
+            *startup = Some(file);
+        }
     }
-    result
+    program(ui_scale).run()
 }
 
 #[cfg(test)]
@@ -9925,6 +9415,16 @@ mod tests {
     use sketch_core::geometry::Pt;
     use sketch_core::model::WallType;
     use sketch_core::symbols::WallSnap;
+
+    #[test]
+    fn axf_paths_are_rejected_before_reading() {
+        let path = std::path::Path::new("previous-sketch.AXF");
+        assert!(!is_sketch_file(path));
+        assert_eq!(
+            read_sketch_path(path).unwrap_err(),
+            "AXF files are no longer supported."
+        );
+    }
 
     fn direct_save_fixture() -> (App, std::path::PathBuf) {
         let (mut app, _) = App::boot(1.);
