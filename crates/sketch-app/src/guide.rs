@@ -170,7 +170,7 @@ pub const TOPICS: &[Topic] = &[
     Topic {
         title: "Appraise-It reports",
         blocks: &[
-            Para("Keep the editable drawing in a Sketchy or SKX file. On Windows, send sketch images to an editable UAD 3.6 report using the controls above."),
+            Para("Keep the editable drawing in a Sketchy or SKX file. On Windows, use the controls above to send sketch pages to UAD 3.6 reports and legacy reports that support Sketch addenda."),
             Heading("Export a sketch for your report"),
             Steps(&[
                 "Use File > Export as PNG for a sketch image or File > Export as PDF for a document with calculations.",
@@ -223,7 +223,7 @@ pub enum GuideMsg {
     #[cfg(windows)]
     SendSketch,
     #[cfg(windows)]
-    SketchSent(Result<(), String>, bool),
+    SketchSent(Result<(), String>, bool, &'static str),
 }
 
 impl Guide {
@@ -344,25 +344,28 @@ impl Guide {
                             None
                         };
                         let included = areas.is_some();
+                        let destination = target.sketch_destination();
                         self.include_areas = false;
                         self.report_busy = true;
                         self.report_status = Some("Sending sketch to Appraise-It Pro…".into());
                         return Task::perform(
                             appraise_it::send_sketch(target, images, areas),
-                            move |result| Message::Guide(GuideMsg::SketchSent(result, included)),
+                            move |result| {
+                                Message::Guide(GuideMsg::SketchSent(result, included, destination))
+                            },
                         );
                     }
                 }
             }
             #[cfg(windows)]
-            GuideMsg::SketchSent(result, included) => {
+            GuideMsg::SketchSent(result, included, destination) => {
                 self.report_busy = false;
                 self.report_status = Some(result.map_or_else(
                     |error| error,
                     |()| if included {
                         "Sketch and area totals added. Review Additional Sketches and the living unit's area fields in Appraise-It Pro, then save.".into()
                     } else {
-                        "Sketch added. Review Additional Sketches in Appraise-It Pro and save the report.".into()
+                        format!("Sketch added. Review {destination} in Appraise-It Pro and save the report.")
                     },
                 ));
             }
@@ -520,11 +523,21 @@ pub fn layer(guide: &Guide, size: iced::Size) -> Option<Element<'static, Message
                 (!guide.report_busy).then_some(Message::Guide(GuideMsg::PreviewSketch)),
             ));
         }
-        if !guide.sketch_preview.is_empty() {
-            body = body.push(para(
-                "Review each page below. Sending adds these images to Additional Sketches.",
-                text_main(),
-            ));
+        if let Some(report) = guide
+            .report_target
+            .as_ref()
+            .filter(|_| !guide.sketch_preview.is_empty())
+        {
+            body = body.push(
+                text(format!(
+                    "Sending appends these pages to {}.",
+                    report.sketch_destination()
+                ))
+                .font(SEGOE)
+                .size(BODY)
+                .color(text_main())
+                .width(Length::Fill),
+            );
             for (number, image) in &guide.sketch_preview {
                 body = body
                     .push(text(format!("Sketch page {number}")).font(SEGOE).size(BODY))
