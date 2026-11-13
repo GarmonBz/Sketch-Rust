@@ -1,4 +1,7 @@
-Sketch Rust 0.1.30 - Windows x64 preview
+Sketch Rust 0.1.31 - Windows x64 preview
+
+0.1.31 opens Sketchy 0.2 JSON files and SQLite stores as Saved. Editing
+marks the file Unsaved, and saving returns it to Saved.
 
 Sketchy preview: File > Open accepts draft 0.1 and 0.2 .sketchy.json workfiles
 and .sketchy revision stores. Save writes edits to the open workfile. Save As
