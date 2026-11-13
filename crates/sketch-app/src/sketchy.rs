@@ -1644,6 +1644,86 @@ mod tests {
     }
 
     #[test]
+    fn sketchy_02_save_indicator_tracks_edits_for_json_and_sqlite() {
+        use crate::statusbar::StatusMsg;
+
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/sketchy-tests")
+            .join(format!("save-indicator-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut source: Value =
+            serde_json::from_str(include_str!("../../../examples/try-sketchy.sketchy.json"))
+                .unwrap();
+        source["structures"][0]["levels"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({
+                "id": "upper", "grade": "above", "sequence": 2,
+                "spaces": [{"id": "bedroom", "name": "Bedroom", "shape": {
+                    "type": "polygon", "points": [[0, 0], [12, 0], [12, 10], [0, 10]]
+                }}]
+            }));
+        let hash = store::content_hash(&source).unwrap();
+        source["revision"] = json!({
+            "id": "original", "sequence": 1, "parents": [],
+            "created_at": "2026-01-01T00:00:00Z", "status": "final", "content_hash": hash
+        });
+        let bytes = serde_json::to_vec(&source).unwrap();
+        let json_path = dir.join("plan.sketchy.json");
+        let store_path = dir.join("plan.sketchy");
+        std::fs::write(&json_path, &bytes).unwrap();
+        store::write(&store_path, &bytes, None).unwrap();
+
+        for (path, format) in [
+            (json_path, SketchFileFormat::Sketchy),
+            (store_path, SketchFileFormat::SketchyStore),
+        ] {
+            let (mut app, _) = App::boot(1.0);
+            let open = |app: &mut App| {
+                crate::file_dialogs::with_open_path(Some(path.clone()), || {
+                    let _ = app.update(Message::OpenFile);
+                });
+            };
+            let original = std::fs::read(&path).unwrap();
+            open(&mut app);
+            assert_eq!(app.current_file.as_ref().unwrap().format, format);
+            app.refresh_dirty();
+            assert_eq!(app.save_state(), "Saved", "{format:?} immediately after Open");
+
+            let _ = app.update(Message::Status(StatusMsg::ZoomIn));
+            let _ = app.update(Message::Status(StatusMsg::PageNext));
+            assert_eq!(app.pages.current, 1);
+            app.refresh_dirty();
+            assert_eq!(app.save_state(), "Saved", "{format:?} on first visit to page two");
+            let _ = app.update(Message::Status(StatusMsg::PagePrev));
+            app.refresh_dirty();
+            assert_eq!(app.save_state(), "Saved", "{format:?} after view navigation");
+            assert_eq!(std::fs::read(&path).unwrap(), original);
+
+            let id = app.drawing.polygons[0].id;
+            let rename = |app: &mut App| {
+                app.selection.area_labels.insert(id);
+                let _ = app.update(Message::SetSelectedTextStyle(
+                    "text".into(),
+                    "Edited living area".into(),
+                ));
+            };
+            rename(&mut app);
+            assert_eq!(app.save_state(), "Unsaved", "{format:?} after editing");
+            let _ = app.update(Message::Undo);
+            assert_eq!(app.save_state(), "Saved", "{format:?} after undoing the edit");
+
+            rename(&mut app);
+            let _ = app.update(Message::SaveFile);
+            assert_eq!(app.save_state(), "Saved", "{format:?} after saving");
+            open(&mut app);
+            app.refresh_dirty();
+            assert_eq!(app.save_state(), "Saved", "{format:?} after reopening");
+            assert_eq!(app.drawing.polygons[0].name, "Edited living area");
+        }
+    }
+
+    #[test]
     fn sketchy_store_saves_through_app_and_rejects_stale_updates() {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../target/sketchy-tests")
@@ -1704,7 +1784,7 @@ mod tests {
         assert_eq!(app.file_name, "Plan: 100 Example Lane");
         assert_eq!(app.subject_info.property_address, "100 Example Lane");
         assert_eq!(app.recent[0].path.as_ref(), Some(&source));
-        let front = app.drawing.lines[0].id;
+        let front = app.drawing.lines.iter().min_by_key(|line| line.id).unwrap().id;
         assert!(crate::transform::move_line_endpoint(
             &mut app.drawing,
             &mut app.selection,
@@ -1712,7 +1792,12 @@ mod tests {
             false,
             Pt::new(20.0, 21.0)
         ));
-        app.drawing.lines[0].thickness = Some(8.0);
+        app.drawing
+            .lines
+            .iter_mut()
+            .find(|line| line.id == front)
+            .unwrap()
+            .thickness = Some(8.0);
         app.drawing.polygons[0].name = "Renamed floor".into();
         app.drawing.texts[0].text = "Edited note".into();
         let (_, requests) = crate::file_dialogs::with_save_path(None, || {
@@ -1889,7 +1974,8 @@ mod tests {
                 }
                 "condo-unit" => {
                     near(app.drawing.polygons[0].gross * 0.3048f64.powi(2), 90.0);
-                    near(app.drawing.lines[0].thickness.unwrap() * 0.0254, 0.25);
+                    let first_wall = app.drawing.lines.iter().min_by_key(|line| line.id).unwrap();
+                    near(first_wall.thickness.unwrap() * 0.0254, 0.25);
                 }
                 "commercial-building" => {
                     app.go_to_page(1);

@@ -7796,6 +7796,7 @@ impl App {
     /// page's arrays (`self.pages.current` must already point at it).
     fn load_page_data(&mut self) {
         self.invalidate_canvas();
+        self.last_recalc_sig = 0;
         let page = self.pages.pages[self.pages.current].clone();
         self.drawing.lines = page.lines;
         self.drawing.polygons = page.polygons;
@@ -8385,9 +8386,21 @@ impl App {
             .unwrap_or_default()
             .to_string();
         self.apply_settings(data.get("settings"));
-        // loadPageData(pages[0]) + centerAndFit; the recalculation runs on
-        // the next paint (its signature guard sees the new polygon inputs).
+        if self.sketchy_backing.is_some() {
+            // Prepare every imported page before hashing the saved state.
+            // Otherwise the first visit to a page creates layers and updates
+            // calculated areas, which looks like a user edit.
+            for index in 0..self.pages.len() {
+                self.pages.current = index;
+                self.load_page_data();
+                self.ensure_area_layers();
+                self.recalculate_if_needed();
+                self.save_current_page();
+            }
+            self.pages.current = 0;
+        }
         self.load_page_data();
+        self.recalculate_if_needed();
         self.undo = undo::UndoStack::default();
         self.autosave.path = None;
         self.autosave.recovered = None;
