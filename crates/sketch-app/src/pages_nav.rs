@@ -60,7 +60,7 @@ pub fn choices(pages: &Pages) -> Vec<Choice> {
         if i != pages.current {
             out.push(Choice {
                 index: Some(i),
-                label: format!("Page {}", i + 1),
+                label: pages.page_name(i),
             });
         }
     }
@@ -106,7 +106,7 @@ fn tag<'a>(label: &'static str, on: bool, press: Option<Message>) -> Element<'a,
 fn page_row<'a>(pages: &Pages, index: usize, hover: Option<usize>) -> Element<'a, Message> {
     let current = index == pages.current;
     let ink = if current { accent() } else { text_main() };
-    let mut line = row![text(format!("Page {}", index + 1))
+    let mut line = row![text(pages.page_name(index))
         .font(if current { SEGOE_SEMIBOLD } else { SEGOE })
         .size(12.0)
         .color(ink)

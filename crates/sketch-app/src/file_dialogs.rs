@@ -18,16 +18,27 @@ pub fn open_sketch() -> Option<PathBuf> {
     })
 }
 
-pub fn save_sketch(default_name: &str) -> Option<PathBuf> {
+pub fn save_sketch(default_name: &str, preferred: &str) -> Option<PathBuf> {
     #[cfg(not(test))]
     {
-        rfd::FileDialog::new()
-            .add_filter("Sketch", &["skx", "json"])
-            .set_file_name(default_name)
-            .save_file()
+        let filters = [
+            ("Sketch", "skx"),
+            ("Sketchy", "sketchy.json"),
+            ("Sketch JSON", "json"),
+        ];
+        let mut dialog = rfd::FileDialog::new().set_file_name(default_name);
+        for (name, ext) in filters
+            .iter()
+            .filter(|(_, ext)| *ext == preferred)
+            .chain(filters.iter().filter(|(_, ext)| *ext != preferred))
+        {
+            dialog = dialog.add_filter(*name, &[*ext]);
+        }
+        dialog.save_file()
     }
     #[cfg(test)]
     TEST_PICKER.with(|state| {
+        let _ = preferred;
         let mut state = state.borrow_mut();
         state.requests.push(default_name.to_owned());
         state.destination.take()
