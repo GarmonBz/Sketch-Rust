@@ -32,12 +32,13 @@ panel (`F4`).
 
 ### Appraise-It Pro reports
 
-On Windows, open a saved, editable UAD 3.6 report in Appraise-It Pro. In Sketch
-Rust, choose **Help > Appraise-It Reports > Check open report**, select the report
+On Windows, open a saved, editable report in Appraise-It Pro. In Sketch Rust,
+choose **Help > Appraise-It Reports > Check open report**, select the report
 in SFREP's session picker, then choose **Preview sketch** and **Send sketch images**.
-Sketch Rust adds each nonblank page to the report's **Additional Sketch(es)**.
-For an eligible single-unit report, turn on **Include area totals** and
-review the proposed living-unit values. Review the result in Appraise-It Pro
+Sketch Rust adds each nonblank page to **Additional Sketch(es)** in UAD 3.6
+reports or to a new **Sketch** addendum in legacy reports that support them.
+You can also send living-unit area totals for an eligible UAD 3.6 report.
+Enter legacy area totals directly in Appraise-It Pro. Review the result
 and save the report there.
 
 Keep the editable sketch in Sketchy or SKX. Use **File > Export as PNG** or

@@ -1,12 +1,16 @@
 //! Sketch transfer through the locally installed SFREP COM server.
-use std::{collections::BTreeMap, mem::ManuallyDrop, ptr};
+use std::{
+    collections::{BTreeMap, HashSet},
+    mem::ManuallyDrop,
+    ptr,
+};
 
 use iced::widget::image::Handle;
 use image::{codecs::png::PngEncoder, ExtendedColorType, ImageEncoder};
 use windows::{
     core::{w, IUnknown, Interface, BSTR, GUID, PCWSTR},
     Win32::{
-        Foundation::{E_NOINTERFACE, REGDB_E_CLASSNOTREG},
+        Foundation::{E_NOINTERFACE, REGDB_E_CLASSNOTREG, VARIANT_FALSE},
         System::{
             Com::{
                 CoCreateInstance, CoInitializeEx, CoUninitialize, IDispatch, CLSCTX_INPROC_SERVER,
@@ -27,6 +31,8 @@ const INTEGRATION_COM: GUID = GUID::from_u128(0x83cb43e0_8001_4aa0_a57f_6b8b5fe0
 const INTEGRATION_COM_2: GUID = GUID::from_u128(0x05083112_becd_429b_ab12_da5cd3f6ff48);
 // The URAR's report-level Additional Sketch(es) field from SFREP's Field Details panel.
 const SKETCH_IMAGE_LIST: &str = "SketchImageList";
+const SKETCH_FORM: &str = "Sketch";
+const SKETCH_IMAGE: &str = "SketchImage";
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -141,20 +147,33 @@ pub struct Report {
     primary_form: String,
     dynamic: bool,
     read_only: bool,
+    repeatable_sketch_form: bool,
 }
 
 impl Report {
     pub(crate) fn transfer_availability(&self) -> Result<()> {
-        if !self.dynamic {
-            return Err("Sketch transfer requires a dynamic UAD 3.6 report.".into());
-        }
         if self.read_only {
             return Err("Open an editable copy of this report to transfer a sketch.".into());
         }
         if self.path.is_empty() {
             return Err("Save the report in Appraise-It Pro, then check it again.".into());
         }
+        if !self.dynamic && !self.repeatable_sketch_form {
+            return Err("This legacy report does not support repeatable Sketch addenda.".into());
+        }
         Ok(())
+    }
+
+    pub(crate) fn is_legacy(&self) -> bool {
+        !self.dynamic
+    }
+
+    pub(crate) fn sketch_destination(&self) -> &'static str {
+        if self.dynamic {
+            "Additional Sketches"
+        } else {
+            "the Sketch addenda"
+        }
     }
 
     pub(crate) fn summary(&self) -> String {
@@ -295,6 +314,17 @@ impl Value {
             let data = &mut *value.0.Anonymous.Anonymous;
             data.vt = VT_DISPATCH;
             data.Anonymous.pdispVal = ManuallyDrop::new(Some(dispatch));
+        }
+        value
+    }
+
+    fn false_value() -> Self {
+        let mut value = Self(VARIANT::default());
+        // SAFETY: initialize the union with the field identified by VT_BOOL.
+        unsafe {
+            let data = &mut *value.0.Anonymous.Anonymous;
+            data.vt = VT_BOOL;
+            data.Anonymous.boolVal = VARIANT_FALSE;
         }
         value
     }
@@ -488,6 +518,17 @@ impl Session {
         {
             return Ok(None);
         }
+        let dynamic = self
+            .call(w!("IsDynamicReport"), "checking the report type", &mut [])?
+            .boolean("IsDynamicReport")?;
+        let repeatable_sketch_form = !dynamic
+            && self
+                .call(
+                    w!("FormIsRepeatable"),
+                    "checking for repeatable Sketch addenda",
+                    &mut [Value::from_text(SKETCH_FORM)],
+                )?
+                .boolean("FormIsRepeatable")?;
         Ok(Some(Report {
             process_id: self
                 .call(w!("ProcessId"), "identifying the session", &mut [])?
@@ -498,12 +539,11 @@ impl Session {
             primary_form: self
                 .call(w!("PrimaryFormId"), "reading the primary form", &mut [])?
                 .text("PrimaryFormId")?,
-            dynamic: self
-                .call(w!("IsDynamicReport"), "checking the report type", &mut [])?
-                .boolean("IsDynamicReport")?,
+            dynamic,
             read_only: self
                 .call(w!("ReportIsReadOnly"), "checking report access", &mut [])?
                 .boolean("ReportIsReadOnly")?,
+            repeatable_sketch_form,
         }))
     }
 }
@@ -599,6 +639,9 @@ fn inspect_report() -> Result<ReportStatus> {
         return Ok(ReportStatus::NoReport);
     };
     let area_target = report.transfer_availability().and_then(|()| {
+        if report.is_legacy() {
+            return Err("Enter area totals in Appraise-It Pro for legacy reports.".into());
+        }
         let (_store, subject) = report_data(&session)?;
         unit_area_fields(&report, &subject).map(|(target, _)| target)
     });
@@ -741,6 +784,9 @@ fn transfer_sketch(
             "The reviewed report has changed or closed. Check the open report again.".into(),
         );
     }
+    if target.is_legacy() {
+        return transfer_legacy_sketch(&session, pages);
+    }
     let (store, subject) = report_data(&session)?;
     let fields = subject
         .call(w!("GetFields"), "reading the subject fields", &mut [])?
@@ -869,6 +915,91 @@ fn append_sketches(
             )),
         };
     }
+    Ok(())
+}
+
+fn static_field_args(form: &str, index: i32, field: &str) -> [Value; 7] {
+    [
+        Value::from_text(field),
+        Value::from_i32(0),
+        Value::from_i32(0),
+        Value::from_text("None"),
+        Value::from_text("None"),
+        Value::from_i32(index),
+        Value::from_text(form),
+    ]
+}
+
+fn static_field_title(session: &Session, form: &str, index: i32, field: &str) -> Result<String> {
+    session
+        .call(
+            w!("GetFieldTitle2"),
+            "checking the legacy form field",
+            &mut static_field_args(form, index, field),
+        )?
+        .text("GetFieldTitle2")
+}
+
+fn transfer_legacy_sketch(session: &Session, pages: Vec<(usize, Value)>) -> Result<()> {
+    let form_count = session
+        .call(w!("FormCount"), "counting legacy forms", &mut [])?
+        .integer("FormCount")?;
+    let mut existing = HashSet::new();
+    for position in 0..form_count {
+        let form = session
+            .call(
+                w!("GetFormId"),
+                "identifying the legacy form",
+                &mut [Value::from_i32(position)],
+            )?
+            .text("GetFormId")?;
+        if form == SKETCH_FORM {
+            let index = session
+                .call(
+                    w!("GetFormIndex"),
+                    "reading the existing Sketch addendum index",
+                    &mut [Value::from_i32(position)],
+                )?
+                .integer("GetFormIndex")?;
+            existing.insert(index);
+        }
+    }
+    if let Some(&index) = existing.iter().next() {
+        if static_field_title(session, SKETCH_FORM, index, SKETCH_IMAGE)?.is_empty() {
+            return Err("The legacy Sketch addendum has no sketch image field.".into());
+        }
+    }
+    for (number, png) in pages {
+        if let Err(error) = append_legacy_sketch(session, &mut existing, png) {
+            return Err(format!(
+                "Could not finish transferring sketch page {number}. {error}\nReview the Sketch addenda in Appraise-It Pro and remove any incomplete transfer before retrying."
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn append_legacy_sketch(session: &Session, existing: &mut HashSet<i32>, png: Value) -> Result<()> {
+    let index = session
+        .call(
+            w!("AddForm"),
+            "adding a Sketch addendum",
+            &mut [Value::false_value(), Value::from_text(SKETCH_FORM)],
+        )?
+        .integer("AddForm")?;
+    if index < 0 || !existing.insert(index) {
+        return Err("Appraise-It Pro did not return a new Sketch addendum.".into());
+    }
+    if static_field_title(session, SKETCH_FORM, index, SKETCH_IMAGE)?.is_empty() {
+        return Err("The new Sketch addendum has no sketch image field.".into());
+    }
+    let mut args = vec![Value::from_text(".png"), png];
+    args.extend(static_field_args(SKETCH_FORM, index, SKETCH_IMAGE));
+    session.call(
+        w!("SetImageFieldsValueForForm"),
+        "placing the image on the Sketch addendum",
+        &mut args,
+    )?;
     Ok(())
 }
 

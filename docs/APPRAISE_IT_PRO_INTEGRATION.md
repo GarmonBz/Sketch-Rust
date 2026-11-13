@@ -2,34 +2,40 @@
 
 ## Transfer sketch images on Windows
 
-1. Open a saved, editable UAD 3.6 report with an **Additional Sketch(es)**
-   field in Appraise-It Pro. Open or draw the sketch in Sketch Rust.
+1. Open a saved, editable report in Appraise-It Pro. Open or draw the sketch in
+   Sketch Rust.
 2. Choose **Help > Appraise-It Reports > Check open report** in Sketch Rust.
    Select the session in SFREP's picker and verify the report path and form.
 3. Choose **Preview sketch** and review the nonblank pages. Select **Send
-   sketch images**, or turn on **Include area totals**, review the replacements,
-   and select **Send sketch and area totals**.
-4. In Appraise-It Pro, review **Sketch > Additional Sketch(es)** and any
-   updated living-unit area fields. Save the report there.
+   sketch images**, or select the available area option and review the proposed
+   values before sending.
+4. In Appraise-It Pro, review **Additional Sketch(es)** for UAD 3.6 reports
+   or the new **Sketch** addenda for legacy reports. Review any updated area
+   fields and save the report there.
 
-Each send submits one PNG per nonblank page in sketch page order. Appraise-It Pro stores the images as report exhibits.
-Existing exhibits remain in the list. Keep the editable drawing in a Sketchy
-or SKX file.
+Each send submits one image per nonblank page in sketch page order and preserves
+existing sketches. Keep the editable drawing in a Sketchy or SKX file.
 
 The connector uses Appraise-It Pro 3.5 or later and its COM registration for the
 matching Windows architecture. It rechecks the destination in the selected
-process immediately before writing. It calls SFREP's
+process immediately before writing. For UAD 3.6, it calls SFREP's
 [dynamic report data store](https://api.sfrep.com/com/Sfrep.AppraiseIt.Client.Integration.Com.DataStore.DataStoreIntegrationCom.html)
 and [image-list API](https://api.sfrep.com/com/Sfrep.AppraiseIt.Client.Integration.Com.DataStore.Fields.DataStoreImageListFieldIntegrationCom.html)
 to append images to `SketchImageList`, the subject-level field identified in
-Appraise-It Pro's Field Details panel. The installed Appraise-It Pro application
-supplies the COM server.
+Appraise-It Pro's Field Details panel. For legacy reports that support repeatable
+**Sketch** addenda, it uses SFREP's
+[static-form COM API](https://api.sfrep.com/com/Sfrep.AppraiseIt.Client.Integration.Com.IntegrationCom.html)
+to add a new `Sketch` form per page and write its `SketchImage` field. If a send
+stops partway through, review the Sketch addenda and remove any incomplete
+transfer before retrying. The installed Appraise-It Pro application supplies
+the COM server.
 
 ## Optional area totals
 
-The option defaults to off. It is available on an editable UAD 3.6 URAR with
-one dwelling, one living unit, and no ADUs. Sketch Rust sums the calculated
-net areas across all pages, then rounds each total to whole square feet.
+**Include area totals** defaults to off and is available on an editable UAD 3.6
+URAR with one dwelling, one living unit, and no ADUs. Sketch Rust sums the
+calculated net areas across all pages, then rounds each total to whole square
+feet. Enter area totals directly in Appraise-It Pro for legacy reports.
 
 | Sketch Rust area codes | Appraise-It Pro living-unit field |
 | --- | --- |
@@ -60,9 +66,14 @@ retained both pages in order and the original exhibit. The living unit showed
 668 sq ft of standard finished area above grade, 180 sq ft of finished area
 below grade, and 70 sq ft of unfinished area below grade.
 
+On a disposable copy of SFREP's legacy 1004 sample, both added pages rendered
+in order. After reopening the autosaved report, all three images matched
+their pre-save checksums. A separate COM test on a disposable legacy 1073
+condo report also accepted both Sketch addenda in order.
+
 ## Other report types and older previews
 
 Use **File > Export as PNG** or **File > Export as PDF** for a manual attachment
-when the report has no Additional Sketch(es) field. Ask SFREP or Apex support to
+when the report lacks a supported sketch destination. Ask SFREP or Apex support to
 restore the original provider if an older Sketch Rust preview changed the report's
 sketch button. Open existing AXF workfiles in the licensed Apex application.
