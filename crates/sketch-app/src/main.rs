@@ -474,7 +474,7 @@ pub enum Message {
 /// The QAT's history button (`list-bullets`): 28x28, at x 20 + 28*3, y 1 —
 /// the undo-history popup anchors under it.
 /// `#file-open-input` / `#file-import-input` `accept=".skx,.apx,.json,.sketch"`.
-const SKETCH_OPEN_EXTENSIONS: &[&str] = &["skx", "apx", "json", "sketch", "sketchy"];
+const SKETCH_OPEN_EXTENSIONS: &[&str] = &["skx", "apx", "json", "sketch", "sketchie", "sketchy"];
 
 /// A sketch file named on the command line, opened once the window is up.
 static STARTUP_FILE: std::sync::Mutex<Option<std::path::PathBuf>> = std::sync::Mutex::new(None);
@@ -547,7 +547,7 @@ fn read_sketch_model(bytes: &[u8]) -> Result<(serde_json::Value, SketchFileForma
         serde_json::from_slice(bytes).map_err(|_| "Invalid sketch file format.".to_string())?;
     if sketchy::recognizes(&model) {
         let converted =
-            sketchy::convert(model).map_err(|e| format!("Could not open Sketchy file: {e}"))?;
+            sketchy::convert(model).map_err(|e| format!("Could not open Sketchie file: {e}"))?;
         Ok((
             converted.model,
             SketchFileFormat::Sketchy,
@@ -560,11 +560,18 @@ fn read_sketch_model(bytes: &[u8]) -> Result<(serde_json::Value, SketchFileForma
 
 fn sketchy_file_stem(path: &std::path::Path) -> &str {
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-    if stem.to_ascii_lowercase().ends_with(".sketchy") {
-        &stem[..stem.len() - ".sketchy".len()]
-    } else {
-        stem
+    if path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+    {
+        let lower = stem.to_ascii_lowercase();
+        for suffix in [".sketchie", ".sketchy"] {
+            if lower.ends_with(suffix) {
+                return &stem[..stem.len() - suffix.len()];
+            }
+        }
     }
+    stem
 }
 
 fn same_sketch_path(a: &std::path::Path, b: &std::path::Path) -> bool {
@@ -587,9 +594,9 @@ fn sketch_destination(
         .and_then(|name| name.to_str())
         .unwrap_or_default()
         .to_ascii_lowercase();
-    if file_name.ends_with(".sketchy.json") {
+    if file_name.ends_with(".sketchie.json") || file_name.ends_with(".sketchy.json") {
         (path, SketchFileFormat::Sketchy)
-    } else if file_name.ends_with(".sketchy") {
+    } else if file_name.ends_with(".sketchie") || file_name.ends_with(".sketchy") {
         (path, SketchFileFormat::SketchyStore)
     } else if file_name.ends_with(".json") {
         (path, SketchFileFormat::Json)
@@ -8084,7 +8091,7 @@ impl App {
         if model["pages"].as_array().is_some_and(|p| p.len() > 1) {
             return self
                 .toasts
-                .show("Use File > Open to load all pages of this Sketchy file.".into());
+                .show("Use File > Open to load all pages of this Sketchie file.".into());
         }
         let page = &mut model["pages"][0];
         // Imported shapes get the current document's layers. Source layer IDs
@@ -8105,7 +8112,7 @@ impl App {
         let imported = self.import_state(&model, &path.to_string_lossy());
         if omitted {
             self.toasts.show(
-                "Imported Sketchy geometry. Some drawing details could not be imported.".into(),
+                "Imported Sketchie geometry. Some drawing details could not be imported.".into(),
             )
         } else {
             imported
@@ -8142,7 +8149,7 @@ impl App {
             self.view.center_and_fit(self.sketch_view_bounds());
             if omitted {
                 return self.toasts.show(
-                    "Some Sketchy details are hidden in this view and retained in the file.".into(),
+                    "Some Sketchie details are hidden in this view and retained in the file.".into(),
                 );
             }
         }
@@ -8163,14 +8170,18 @@ impl App {
                 .is_some_and(|file| file.format.is_sketchy())
                 || (self.current_file.is_none() && self.sketchy_backing.is_some());
             let ext = if prefer_sketchy {
-                if self
+                let store = self
                     .current_file
                     .as_ref()
-                    .is_some_and(|file| file.format == SketchFileFormat::SketchyStore)
-                {
-                    "sketchy"
-                } else {
-                    "sketchy.json"
+                    .is_some_and(|file| file.format == SketchFileFormat::SketchyStore);
+                match (
+                    self.sketchy_backing.as_ref().and_then(sketchy::Backing::version),
+                    store,
+                ) {
+                    (Some("0.1"), true) => "sketchy",
+                    (Some("0.1"), false) => "sketchy.json",
+                    (_, true) => "sketchie",
+                    (_, false) => "sketchie.json",
                 }
             } else {
                 match sketch_core::skx::write(&model, &Default::default()) {
@@ -8232,6 +8243,14 @@ impl App {
                 .to_owned()
         };
         model["fileName"] = name.clone().into();
+        let format_marker = (!same_target && target.format.is_sketchy()).then(|| {
+            let name = target.path.to_string_lossy().to_ascii_lowercase();
+            if name.ends_with(".sketchy") || name.ends_with(".sketchy.json") {
+                sketchy::LEGACY_FORMAT
+            } else {
+                sketchy::FORMAT
+            }
+        });
         let mut prepared = None;
         let bytes = match target.format {
             SketchFileFormat::Skx => {
@@ -8243,6 +8262,7 @@ impl App {
                 self.sketchy_backing.as_ref(),
                 &name,
                 self.sketchy_backing.is_some() && !same_target,
+                format_marker,
             )
             .map(|mut save| {
                 let bytes = std::mem::take(&mut save.bytes);
@@ -8264,7 +8284,7 @@ impl App {
                     Some(id) => Some(id),
                     None => {
                         return self.toasts.show(
-                            "Could not save Sketchy store: missing original revision.".into(),
+                            "Could not save Sketchie store: missing original revision.".into(),
                         )
                     }
                 }

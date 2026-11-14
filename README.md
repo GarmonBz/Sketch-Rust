@@ -41,7 +41,7 @@ You can also send living-unit area totals for an eligible UAD 3.6 report.
 Enter legacy area totals directly in Appraise-It Pro. Review the result
 and save the report there.
 
-Keep the editable sketch in Sketchy or SKX. Use **File > Export as PNG** or
+Keep the editable sketch in Sketchie or SKX. Use **File > Export as PNG** or
 **File > Export as PDF** for a report attachment where your form supports it,
 and enter the area totals in Appraise-It Pro. AXF files can be opened with
 the licensed Apex application.

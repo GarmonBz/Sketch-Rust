@@ -24,7 +24,7 @@ try {
     Copy-Item -LiteralPath 'assets/symbols.previous.json' -Destination (Join-Path $stage 'symbols.previous.json') -Force
     Copy-Item -LiteralPath 'docs/SYMBOL_LIBRARY.md' -Destination (Join-Path $stage 'SYMBOL-LIBRARY.md') -Force
     Copy-Item -LiteralPath 'docs/RELEASE_README.txt' -Destination (Join-Path $stage 'README.txt') -Force
-    Copy-Item -LiteralPath 'docs/SKETCHY.md','examples/try-sketchy.sketchy.json' -Destination $stage -Force
+    Copy-Item -LiteralPath 'docs/SKETCHY.md','examples/try-sketchie.sketchie.json' -Destination $stage -Force
     Copy-Item -LiteralPath 'LICENSE' -Destination (Join-Path $stage 'LICENSE.txt') -Force
     Copy-Item -LiteralPath 'assets/icons/LICENSE' -Destination (Join-Path $stage 'PHOSPHOR-LICENSE.txt') -Force
     Copy-Item -LiteralPath 'docs/DISTO.md' -Destination (Join-Path $stage 'DISTO.md') -Force

@@ -65,8 +65,11 @@ foreach ($entry in $manifest.files) {
     }
 }
 
-$sample = Join-Path $work 'disposable.sketchy.json'
-Copy-Item -LiteralPath (Join-Path $unpacked 'try-sketchy.sketchy.json') -Destination $sample
+$sampleName = @('try-sketchie.sketchie.json', 'try-sketchy.sketchy.json') |
+    Where-Object { Test-Path -LiteralPath (Join-Path $unpacked $_) } | Select-Object -First 1
+if (!$sampleName) { throw 'The installer has no Sketchie sample.' }
+$sample = Join-Path $work $sampleName
+Copy-Item -LiteralPath (Join-Path $unpacked $sampleName) -Destination $sample
 $stdout = Join-Path $work 'sketchy-stdout.txt'
 $stderr = Join-Path $work 'sketchy-stderr.txt'
 $probe = Start-Process -FilePath (Join-Path $unpacked 'sketch-app.exe') `

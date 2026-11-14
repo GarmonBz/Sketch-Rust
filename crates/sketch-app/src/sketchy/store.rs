@@ -1,11 +1,11 @@
-//! SQLite container for complete Sketchy revision snapshots (§16).
+//! SQLite container for complete Sketchie revision snapshots (§16).
 
 use std::path::Path;
 
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBehavior};
 use serde_json::Value;
 
-use super::{recognizes, Result};
+use super::{is_format, Result};
 
 const APPLICATION_ID: i64 = 0x534B4359;
 const SCHEMA: &str = "
@@ -49,11 +49,11 @@ fn meta(conn: &Connection, key: &str) -> Result<String> {
     )
 }
 
-fn validate(conn: &Connection) -> Result<()> {
+fn validate(conn: &Connection) -> Result<String> {
     let app: i64 = db(conn.pragma_query_value(None, "application_id", |row| row.get(0)))?;
     let version: i64 = db(conn.pragma_query_value(None, "user_version", |row| row.get(0)))?;
     if app != APPLICATION_ID || version != 1 {
-        return Err("Unsupported SQLite file. Expected Sketchy store version 1.".into());
+        return Err("Unsupported SQLite file. Expected Sketchie store version 1.".into());
     }
     let unsafe_schema: bool = db(conn.query_row(
         "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type IN ('trigger','view')
@@ -62,19 +62,20 @@ fn validate(conn: &Connection) -> Result<()> {
         |row| row.get(0),
     ))?;
     if unsafe_schema {
-        return Err("Sketchy stores cannot contain triggers, views, or virtual tables.".into());
+        return Err("Sketchie stores cannot contain triggers, views, or virtual tables.".into());
     }
-    if meta(conn, "format")? != "sketchy" {
-        return Err("SQLite file is missing the Sketchy store format marker.".into());
+    let format = meta(conn, "format")?;
+    if !is_format(&format) {
+        return Err("SQLite file is missing the Sketchie store format marker.".into());
     }
     super::bulge_sign(&meta(conn, "format_version")?)?;
-    Ok(())
+    Ok(format)
 }
 
 pub fn read(path: &Path) -> Result<Value> {
     let mut conn = connect(path, false)?;
     let tx = db(conn.transaction())?;
-    validate(&tx)?;
+    let format = validate(&tx)?;
     let id = meta(&tx, "head")?;
     let document_id = meta(&tx, "document_id")?;
     let (document, sequence, parents, created_at, author, message, status, hash):
@@ -84,7 +85,7 @@ pub fn read(path: &Path) -> Result<Value> {
     let parsed: Value = serde_json::from_str(&document).map_err(|error| error.to_string())?;
     let revision = &parsed["revision"];
     let parents: Value = serde_json::from_str(&parents).map_err(|error| error.to_string())?;
-    if !recognizes(&parsed)
+    if parsed["format"] != format
         || parsed["id"] != document_id
         || revision["id"] != id
         || revision["sequence"].as_i64() != Some(sequence)
@@ -117,7 +118,7 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         let path = root.join("test.sqlite");
         let db = Connection::open(&path).unwrap();
-        assert!(read(&path).unwrap_err().contains("Expected Sketchy store"));
+        assert!(read(&path).unwrap_err().contains("Expected Sketchie store"));
         db.execute_batch(SCHEMA).unwrap();
         db.execute_batch("CREATE VIEW unsafe_view AS SELECT key FROM meta")
             .unwrap();
@@ -134,6 +135,35 @@ mod tests {
                 sketch_core::skx::sha256_hex(br#"{"a":0,"z":1}"#)
             )
         );
+    }
+
+    #[test]
+    fn sketchie_store_updates_version_metadata_with_the_head() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/sketchy-tests")
+            .join(format!("version-metadata-{}", std::process::id()));
+        let path = root.join("upgrade.sketchie");
+        let document = |version, id, sequence, parents| {
+            let mut value = json!({
+                "format": super::super::FORMAT, "format_version": version,
+                "id": "property", "length_unit": "ft", "structures": [],
+                "revision": {"id": id, "sequence": sequence, "parents": parents,
+                    "created_at": "2026-11-14T12:00:00Z", "status": "draft"}
+            });
+            value["revision"]["content_hash"] = json!(content_hash(&value).unwrap());
+            value
+        };
+        let first = document("0.1", "first", 1, json!([]));
+        write(&path, &serde_json::to_vec(&first).unwrap(), None).unwrap();
+        let second = document("0.2", "second", 2, json!(["first"]));
+        let parent = ("first", first["revision"]["content_hash"].as_str().unwrap());
+        write(&path, &serde_json::to_vec(&second).unwrap(), Some(parent)).unwrap();
+        assert_eq!(read(&path).unwrap(), second);
+        let db = connect(&path, true).unwrap();
+        assert_eq!(meta(&db, "format_version").unwrap(), "0.2");
+        db.execute("UPDATE meta SET value='sketchy' WHERE key='format'", [])
+            .unwrap();
+        assert!(read(&path).is_err());
     }
 }
 
@@ -206,10 +236,17 @@ fn append(
     let version = document["format_version"]
         .as_str()
         .ok_or("Missing Sketchy version")?;
+    super::bulge_sign(version)?;
+    let format = document["format"]
+        .as_str()
+        .filter(|format| is_format(format))
+        .ok_or("Missing or unsupported Sketchie format marker")?;
     let tx = db(conn.transaction_with_behavior(TransactionBehavior::Immediate))?;
     if let Some((previous_head, previous_hash)) = previous_head {
-        validate(&tx)?;
-        if meta(&tx, "head")? != previous_head || meta(&tx, "document_id")? != document_id {
+        if validate(&tx)? != format
+            || meta(&tx, "head")? != previous_head
+            || meta(&tx, "document_id")? != document_id
+        {
             return Err("The Sketchy store changed on disk. Reopen it or use Save As.".into());
         }
         let old_hash: Option<String> = db(tx
@@ -230,11 +267,7 @@ fn append(
         }
     } else {
         db(tx.execute_batch(SCHEMA))?;
-        for (key, value) in [
-            ("format", "sketchy"),
-            ("format_version", version),
-            ("document_id", document_id),
-        ] {
+        for (key, value) in [("format", format), ("document_id", document_id)] {
             db(tx.execute(
                 "INSERT INTO meta(key,value) VALUES (?1,?2)",
                 params![key, value],
@@ -244,6 +277,10 @@ fn append(
     db(tx.execute("INSERT INTO revisions (id,sequence,parents,created_at,author,message,status,content_hash,document)
         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)", params![id, sequence, revision["parents"].to_string(), created_at,
             revision.pointer("/author/name").and_then(Value::as_str), revision["message"].as_str(), status, hash, text]))?;
-    db(tx.execute("INSERT INTO meta(key,value) VALUES ('head',?1) ON CONFLICT(key) DO UPDATE SET value=excluded.value", [id]))?;
+    db(tx.execute(
+        "INSERT INTO meta(key,value) VALUES ('head',?1), ('format_version',?2)
+         ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        params![id, version],
+    ))?;
     db(tx.commit())
 }

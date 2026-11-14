@@ -52,9 +52,11 @@ if ($positive.exitCode -ne 0 -or $positive.stdout -notmatch 'OK; \d+ external sy
     throw "Packaged installation failed: $($positive | ConvertTo-Json -Compress)"
 }
 $sketchy = $null
-if (Test-Path -LiteralPath (Join-Path $unpacked 'try-sketchy.sketchy.json')) {
-    $sample = Join-Path $work 'disposable.sketchy.json'
-    Copy-Item -LiteralPath (Join-Path $unpacked 'try-sketchy.sketchy.json') -Destination $sample -Force
+$sampleName = @('try-sketchie.sketchie.json', 'try-sketchy.sketchy.json') |
+    Where-Object { Test-Path -LiteralPath (Join-Path $unpacked $_) } | Select-Object -First 1
+if ($sampleName) {
+    $sample = Join-Path $work $sampleName
+    Copy-Item -LiteralPath (Join-Path $unpacked $sampleName) -Destination $sample -Force
     $sketchyOut = Join-Path $work 'sketchy-stdout.txt'
     $sketchyErr = Join-Path $work 'sketchy-stderr.txt'
     $probe = Start-Process -FilePath $exe -ArgumentList "--check-sketchy-workfile `"$sample`"" `

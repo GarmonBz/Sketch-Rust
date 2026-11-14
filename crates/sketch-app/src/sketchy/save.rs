@@ -5,7 +5,9 @@ use std::collections::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
-use super::{bulge_sign, units, Converted, Frame, Point, Result, CURRENT_VERSION};
+use super::{
+    bulge_sign, units, Converted, Frame, Point, Result, CURRENT_VERSION, FORMAT, LEGACY_FORMAT,
+};
 
 const NAMESPACE: &str = "app.sketchrust";
 const WORKFILE: &str = "app.sketchrust.workfile";
@@ -90,6 +92,10 @@ pub struct Backing {
 }
 
 impl Backing {
+    pub fn version(&self) -> Option<&str> {
+        self.source["format_version"].as_str()
+    }
+
     pub fn revision_id(&self) -> Option<&str> {
         self.source["revision"]["id"].as_str()
     }
@@ -229,6 +235,7 @@ pub fn prepare_save(
     backing: Option<&Backing>,
     title: &str,
     fork: bool,
+    format: Option<&str>,
 ) -> Result<Prepared> {
     if let Some(map) = model.as_object_mut() {
         for key in ["savedAt", "sketchyBacking", "extendedData"] {
@@ -240,10 +247,28 @@ pub fn prepare_save(
     }
     let page_keys = assign_keys(&mut model)?;
     let mut source = backing.map(|state| state.source.clone()).unwrap_or_else(|| json!({
-        "format": "sketchy", "format_version": CURRENT_VERSION, "id": new_id(), "title": title,
+        "format": FORMAT, "format_version": CURRENT_VERSION, "id": new_id(), "title": title,
         "length_unit": if model.pointer("/settings/options/unitSystem").and_then(Value::as_str) == Some("metric") { "m" } else { "ft" },
         "structures": []
     }));
+    if let Some(format) = format.filter(|&format| source["format"] != format) {
+        if format == FORMAT && source["format_version"] != CURRENT_VERSION {
+            return Err(
+                "Save draft 0.1 workfiles with the original .sketchy.json or .sketchy extension."
+                    .into(),
+            );
+        }
+        const SKETCHY_SCHEMA: &str =
+            "https://property-hackers.github.io/sketchy/schema/0.2/sketchy.schema.json";
+        const SKETCHIE_SCHEMA: &str =
+            "https://property-hackers.github.io/sketchie/schema/0.2/sketchie.schema.json";
+        if format == FORMAT && source["$schema"] == SKETCHY_SCHEMA {
+            source["$schema"] = json!(SKETCHIE_SCHEMA);
+        } else if format == LEGACY_FORMAT && source["$schema"] == SKETCHIE_SCHEMA {
+            source["$schema"] = json!(SKETCHY_SCHEMA);
+        }
+        source["format"] = json!(format);
+    }
     let (feet, _) = units(source["length_unit"].as_str().unwrap_or(""))?;
     let root_frame = Frame {
         feet,

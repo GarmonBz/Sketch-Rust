@@ -14,7 +14,7 @@
    fields and save the report there.
 
 Each send submits one image per nonblank page in sketch page order and preserves
-existing sketches. Keep the editable drawing in a Sketchy or SKX file.
+existing sketches. Keep the editable drawing in a Sketchie or SKX file.
 
 The connector uses Appraise-It Pro 3.5 or later and its COM registration for the
 matching Windows architecture. It rechecks the destination in the selected
@@ -44,7 +44,7 @@ feet. Enter area totals directly in Appraise-It Pro for legacy reports.
 | `BSMT2` | Unfinished below grade |
 
 Classify outlines before transfer. In particular, use GLA codes for standard
-finished area. Unclassified Sketchy areas, gross building area, nonstandard
+finished area. Unclassified Sketchie areas, gross building area, nonstandard
 area, garage, amenities, and other categories require manual entry. The
 preview shows each positive rounded total and the report value it will
 replace. Enter zeroes and clear report fields directly in Appraise-It Pro.

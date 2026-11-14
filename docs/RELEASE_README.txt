@@ -21,10 +21,11 @@ Review the images and save the report in Appraise-It Pro.
 0.1.31 opens Sketchy 0.2 JSON files and SQLite stores as Saved. Editing
 marks the file Unsaved, and saving returns it to Saved.
 
-Sketchy preview: File > Open accepts draft 0.1 and 0.2 .sketchy.json workfiles
-and .sketchy revision stores. Save writes edits to the open workfile. Save As
-offers Sketchy JSON and Sketchy Store. Copy try-sketchy.sketchy.json to Documents, open the copy,
-move a wall, save, and reopen it. See SKETCHY.md for format details.
+File > Open accepts Sketchie 0.2 .sketchie.json workfiles and .sketchie
+revision stores, as well as the earlier Sketchy file types. Save writes edits
+to the open workfile. Save As offers Sketchie JSON and Sketchie Store. Copy
+try-sketchie.sketchie.json to Documents, open the copy, move a wall, save,
+and reopen it. See SKETCHY.md for format details.
 
 See LICENSE.txt for the Sketch Rust Free Use License. Paid appraisal work is
 permitted. Selling or monetizing the program or modified versions is prohibited.
