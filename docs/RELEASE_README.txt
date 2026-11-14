@@ -1,4 +1,9 @@
-Sketch Rust 0.1.34 - Windows x64 preview
+Sketch Rust 0.1.35 - Windows x64 preview
+
+0.1.35 adds native open and save for Sketchie 0.2 JSON workfiles and
+SQLite revision stores. Existing Sketchy files save in their original
+format and version. Use Save As to create a Sketchie copy of a Sketchy
+0.2 file. See SKETCHY.md for details.
 
 0.1.34 sends sketch pages to legacy Appraise-It Pro reports that support
 repeatable Sketch addenda. In Help > Appraise-It Reports, check the open
