@@ -1,4 +1,4 @@
-//! Workfile support for the Property Hackers Sketchy 0.x draft.
+//! Workfile support for Sketchie and its earlier Sketchy drafts.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -15,13 +15,15 @@ pub use save::{prepare_save, Backing, PageKey};
 use save::{Binding, Entity};
 
 const CURRENT_VERSION: &str = "0.2";
+pub const FORMAT: &str = "sketchie";
+pub const LEGACY_FORMAT: &str = "sketchy";
 
 fn bulge_sign(version: &str) -> Result<f64> {
     match version {
         "0.1" => Ok(1.0),
         CURRENT_VERSION => Ok(-1.0),
         _ => Err(format!(
-            "unsupported Sketchy version {version}; expected 0.1 or 0.2"
+            "unsupported Sketchie version {version}; expected 0.1 or 0.2"
         )),
     }
 }
@@ -30,7 +32,14 @@ type Result<T> = std::result::Result<T, String>;
 type Point = [f64; 2];
 
 pub fn recognizes(value: &Value) -> bool {
-    value.get("format").and_then(Value::as_str) == Some("sketchy")
+    value
+        .get("format")
+        .and_then(Value::as_str)
+        .is_some_and(is_format)
+}
+
+fn is_format(format: &str) -> bool {
+    matches!(format, FORMAT | LEGACY_FORMAT)
 }
 
 #[derive(Deserialize)]
@@ -582,7 +591,7 @@ pub fn convert(mut source: Value) -> Result<Converted> {
     let document: Document = Document::deserialize(&source).map_err(|e| e.to_string())?;
     if !document.extensions_required.is_empty() {
         return Err(format!(
-            "unsupported required Sketchy extensions: {}",
+            "unsupported required Sketchie extensions: {}",
             document.extensions_required.join(", ")
         ));
     }
@@ -1568,7 +1577,7 @@ mod tests {
         source["format_version"] = json!("1.0");
         assert!(read_sketch_model(source.to_string().as_bytes())
             .unwrap_err()
-            .contains("unsupported Sketchy version"));
+            .contains("unsupported Sketchie version"));
         source["format_version"] = json!("0.2");
         source["extensions_required"] = json!(["org.example.required"]);
         assert!(read_sketch_model(source.to_string().as_bytes())
@@ -1633,7 +1642,7 @@ mod tests {
         let backing = Backing::from_model(&converted.model).unwrap();
         let mut edited = converted.model;
         edited["pages"][0]["lines"][0]["bowAngle"] = json!(-90);
-        let written = prepare_save(edited, Some(&backing), "Test", false).unwrap();
+        let written = prepare_save(edited, Some(&backing), "Test", false, None).unwrap();
         let raw: Value = serde_json::from_slice(&written.bytes).unwrap();
         near(
             raw["structures"][0]["levels"][0]["walls"][0]["bulge"]
@@ -1652,8 +1661,9 @@ mod tests {
             .join(format!("save-indicator-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let mut source: Value =
-            serde_json::from_str(include_str!("../../../examples/try-sketchy.sketchy.json"))
+            serde_json::from_str(include_str!("../../../examples/try-sketchie.sketchie.json"))
                 .unwrap();
+        source["format"] = json!(LEGACY_FORMAT);
         source["structures"][0]["levels"]
             .as_array_mut()
             .unwrap()
@@ -1733,9 +1743,10 @@ mod tests {
         let mut first = fixture();
         first["format_version"] = json!("0.2");
         let model = convert(first).unwrap();
-        let first = prepare_save(model.model, None, "Work", false).unwrap();
+        let first = prepare_save(model.model, None, "Work", false, Some(LEGACY_FORMAT)).unwrap();
         store::write(&path, &first.bytes, None).unwrap();
         let initial = store::read(&path).unwrap();
+        assert_eq!(initial["format"], LEGACY_FORMAT);
         let initial_id = initial["revision"]["id"].as_str().unwrap();
         let (mut app, _) = App::boot(1.0);
         let _ = app.open_sketch_path(path.clone());
@@ -1885,7 +1896,7 @@ mod tests {
             .join("../../target/sketchy-tests")
             .join(std::process::id().to_string());
         std::fs::create_dir_all(&dir).unwrap();
-        let file = dir.join("new-plan.sketchy.json");
+        let file = dir.join("new-plan.sketchie.json");
         let (mut app, _) = App::boot(1.0);
         app.drawing.add_wall_shape(
             crate::drawing::WallShape::Rectangle,
@@ -1899,7 +1910,7 @@ mod tests {
             let _ = app.update(Message::SaveFileAs);
         });
         let raw: Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
-        assert_eq!(raw["format"], "sketchy");
+        assert_eq!(raw["format"], FORMAT);
         let level = &raw["structures"][0]["levels"][0];
         assert_eq!(level["walls"].as_array().unwrap().len(), 4);
         assert_eq!(
@@ -2024,16 +2035,16 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires the draft 0.2 upstream examples in SKETCHY_02_FIXTURE_DIR"]
-    fn sketchy_02_roundtrips_updated_upstream_examples() {
-        let dir = std::path::PathBuf::from(std::env::var_os("SKETCHY_02_FIXTURE_DIR").unwrap());
+    #[ignore = "requires the draft 0.2 upstream examples in SKETCHIE_FIXTURE_DIR"]
+    fn sketchie_roundtrips_upstream_examples() {
+        let dir = std::path::PathBuf::from(std::env::var_os("SKETCHIE_FIXTURE_DIR").unwrap());
         for (name, pages) in [
             ("single-family", 5),
             ("condo-unit", 1),
             ("commercial-building", 4),
         ] {
             let raw: Value = serde_json::from_slice(
-                &std::fs::read(dir.join(format!("{name}.sketchy.json"))).unwrap(),
+                &std::fs::read(dir.join(format!("{name}.sketchie.json"))).unwrap(),
             )
             .unwrap();
             let converted = convert(raw.clone()).unwrap_or_else(|error| panic!("{name}: {error}"));
@@ -2045,8 +2056,9 @@ mod tests {
             let backing = Backing::from_model(&converted.model).unwrap();
             let mut model = converted.model;
             model["pages"][0]["polygons"][0]["name"] = json!("Edited in Sketch");
-            let saved = prepare_save(model, Some(&backing), name, false).unwrap();
+            let saved = prepare_save(model, Some(&backing), name, false, None).unwrap();
             let mut saved: Value = serde_json::from_slice(&saved.bytes).unwrap();
+            assert_eq!(saved["format"], FORMAT);
             assert_eq!(saved["format_version"], "0.2");
             assert_eq!(saved["presentation"], raw["presentation"]);
             assert!(saved.get("results").is_none());
@@ -2060,5 +2072,63 @@ mod tests {
                 "Edited in Sketch"
             );
         }
+    }
+
+    #[test]
+    fn sketchie_save_as_upgrades_the_name_and_preserves_the_legacy_file() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/sketchy-tests")
+            .join(format!("rename-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let legacy = dir.join("original.sketchy.json");
+        let json_path = dir.join("copy.SKETCHIE.JSON");
+        let store_path = dir.join("copy.SKETCHIE");
+        let mut source = fixture();
+        source["format_version"] = json!("0.2");
+        source["$schema"] =
+            json!("https://property-hackers.github.io/sketchy/schema/0.2/sketchy.schema.json");
+        std::fs::write(&legacy, source.to_string()).unwrap();
+
+        let (mut app, _) = App::boot(1.0);
+        let _ = app.open_sketch_path(legacy.clone());
+        let (_, names) = crate::file_dialogs::with_save_path(Some(json_path.clone()), || {
+            let _ = app.update(Message::SaveFileAs);
+        });
+        assert_eq!(names, ["original.sketchie.json"]);
+        let saved: Value = serde_json::from_slice(&std::fs::read(&json_path).unwrap()).unwrap();
+        assert_eq!(saved["format"], FORMAT);
+        assert_eq!(saved["derived_from"]["document"], source["id"]);
+        assert_eq!(
+            saved["$schema"],
+            "https://property-hackers.github.io/sketchie/schema/0.2/sketchie.schema.json"
+        );
+        assert_eq!(std::fs::read_to_string(&legacy).unwrap(), source.to_string());
+        assert_eq!(app.file_name, "copy");
+
+        let _ = app.open_sketch_path(json_path);
+        app.refresh_dirty();
+        assert_eq!(app.save_state(), "Saved");
+        crate::file_dialogs::with_save_path(Some(store_path.clone()), || {
+            let _ = app.update(Message::SaveFileAs);
+        });
+        assert!(crate::is_sketch_file(&store_path));
+        let initial = store::read(&store_path).unwrap();
+        assert_eq!(initial["format"], FORMAT);
+        let _ = app.open_sketch_path(store_path.clone());
+        app.refresh_dirty();
+        assert_eq!(app.save_state(), "Saved");
+        app.drawing.polygons[0].name = "Updated Sketchie area".into();
+        app.refresh_dirty();
+        assert_eq!(app.save_state(), "Unsaved");
+        let _ = app.update(Message::SaveFile);
+        let head = store::read(&store_path).unwrap();
+        assert_eq!(
+            head["revision"]["parents"],
+            json!([initial["revision"]["id"]])
+        );
+        let _ = app.open_sketch_path(store_path);
+        app.refresh_dirty();
+        assert_eq!(app.save_state(), "Saved");
+        assert_eq!(app.drawing.polygons[0].name, "Updated Sketchie area");
     }
 }

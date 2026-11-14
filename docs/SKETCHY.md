@@ -1,22 +1,25 @@
-# Opening and saving Sketchy files
+# Opening and saving Sketchie files
 
-Use **File > Open** to open a draft 0.1 or 0.2 `.sketchy.json` workfile or a
-SQLite `.sketchy` store. Sketch recognizes the file by its contents. Draft
-versions before 1.0 can change incompatibly, so Sketch reports versions and
-required extensions it cannot read. [Property Hackers Sketchy draft 0.2](https://github.com/property-hackers/sketchy/blob/3b2e3d15a20d94b60c771ae15e3e0dd19dfd1f3f/SPEC.md)
+Use **File > Open** to open a Sketchie 0.2 JSON workfile (`.sketchie.json`) or a
+SQLite revision store (`.sketchie`). Sketch Rust also opens earlier Sketchy
+0.1 and 0.2 workfiles and stores (`.sketchy.json` and `.sketchy`). It recognizes
+both formats by their contents and reports unsupported versions and required
+extensions. [Property Hackers Sketchie draft 0.2](https://github.com/property-hackers/sketchie/blob/a33c0f4dcdfbeb19df743820e2c6b4be72aa13c4/SPEC.md)
 
-**Save** writes back to the open Sketchy file. Use **File > Save As** and choose
-**Sketchy JSON** (`.sketchy.json`) or **Sketchy Store** (`.sketchy`). New documents
-use draft 0.2. Existing files keep their draft version and curve convention.
-Saving changes to a store adds a revision and advances the head in a single
-transaction. Save As creates a separate document linked to the original revision.
+**Save** writes back to the open file using its original format marker and draft
+version. Use **File > Save As** and choose **Sketchie JSON** or **Sketchie Store**
+for new files or to save a separate Sketchie copy of a Sketchy 0.2 file. Draft 0.1
+files use the legacy Save As options and retain their curve convention.
+Saving changes to a store adds a revision and updates the head and format version
+in a single transaction. Save As creates a separate document linked to the
+original revision.
 
 Each building level becomes an editable page. Site geometry has its own page.
 Sketch converts the source units and structure placements, keeps circular arcs
 editable, and approximates ellipses with line segments. For 0.2, it clips holes,
 voids, and subtracting subdivisions to each space and counts overlaps once.
-Curved intersections use a polygon approximation. Sketchy areas are not automatically classified
-as gross living area. To merge a single Sketchy page into an existing sketch,
+Curved intersections use a polygon approximation. Gross living area
+classification requires review in Sketch Rust. To merge a single Sketchie page into an existing sketch,
 use **File > Import...**.
 
 Openings become markers or footprints, including skylights and openings on hole
@@ -28,9 +31,9 @@ layouts, custom styles, symbol definitions, dimension annotations, reference
 images, and unknown metadata in the file. Some of these details are hidden in
 the editor. Edited ellipses are saved as polygon outlines.
 
-Files saved by Sketch contain standard Sketchy geometry and an optional extension
+Files saved by Sketch contain standard Sketchie geometry and an optional extension
 for app features such as dimension chains, symbol libraries, and drawing styles.
-If another editor changes the standard Sketchy document, Sketch opens the updated
+If another editor changes the standard document, Sketch opens the updated
 standard geometry.
 
 To build the separate Windows preview, run `tools\package.ps1 -NativePreview`

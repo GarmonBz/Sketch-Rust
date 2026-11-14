@@ -170,7 +170,7 @@ pub const TOPICS: &[Topic] = &[
     Topic {
         title: "Appraise-It reports",
         blocks: &[
-            Para("Keep the editable drawing in a Sketchy or SKX file. On Windows, use the controls above to send sketch pages to UAD 3.6 reports and legacy reports that support Sketch addenda."),
+            Para("Keep the editable drawing in a Sketchie or SKX file. On Windows, use the controls above to send sketch pages to UAD 3.6 reports and legacy reports that support Sketch addenda."),
             Heading("Export a sketch for your report"),
             Steps(&[
                 "Use File > Export as PNG for a sketch image or File > Export as PDF for a document with calculations.",

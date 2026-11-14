@@ -21,12 +21,18 @@ pub fn open_sketch() -> Option<PathBuf> {
 pub fn save_sketch(default_name: &str, preferred: &str) -> Option<PathBuf> {
     #[cfg(not(test))]
     {
-        let filters = [
+        let mut filters = vec![
             ("Sketch", "skx"),
-            ("Sketchy JSON", "sketchy.json"),
-            ("Sketchy Store", "sketchy"),
+            ("Sketchie JSON", "sketchie.json"),
+            ("Sketchie Store", "sketchie"),
             ("Sketch JSON", "json"),
         ];
+        if matches!(preferred, "sketchy.json" | "sketchy") {
+            filters.extend([
+                ("Sketchy JSON (legacy)", "sketchy.json"),
+                ("Sketchy Store (legacy)", "sketchy"),
+            ]);
+        }
         let mut dialog = rfd::FileDialog::new().set_file_name(default_name);
         for (name, ext) in filters
             .iter()
