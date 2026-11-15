@@ -23,31 +23,44 @@ Run one `cargo` command at a time; the target directory is shared.
 - `coverage.csv`: 49 rows pointed at tests that did not exist; corrected.
 - Duplicate "Manage symbols..." command removed (it opened the Symbol library).
 
+## Second round (2026-11-15)
+
+- **Inspector is paged, not scrolled.** Each selection kind is split into short
+  tabs (an area has Area, Math, Look, Edit). `UiState.inspector_tab`,
+  `ui::Msg::InspectorTab`. The scroll area remains only as a net for windows
+  too short to show a page. Screenshots: `target/e2e-next/inspector-*.png`
+  from `e2e_next::inspector_pages_render_without_scrolling`.
+- **File dialogs** all go through `platform.rs` (`pick_file`, `pick_files`,
+  `save_file`, `save_file_as`, and the async pair). No `rfd` call elsewhere.
+- **Drag tests** added for the curve handle, rotate handle and marquee
+  (`e2e_next::select_drag_on_*`); coverage rows S6-067, S6-071, S6-072 updated.
+- **Calculation marker** is `native.calculation`
+  (`sketch_core::area_calc::uses_native_net`); the legacy key is still read.
+- **Command search** gained recent sketches, nudge, underlay and label defaults.
+- **Removed** the three area-type dialogs nothing could open (JSON table,
+  New Area Code, definition editor): `def_editor.rs` is gone and
+  `new_code_dialog.rs` keeps only the fill style names.
+- Pick lists and sliders use `kit::pick_list_style`, `kit::pick_menu_style`
+  and `kit::slider_style`.
+- The mini map's dark box was a headless-test artefact: with no window to
+  capture, `minimap::blank` is shown. The running app captures the canvas.
+
 ## Still open
 
-2. **Dead screens.** `symbol_manager.rs`, `new_code_dialog.rs`, `def_editor.rs`,
-   `text_manager.rs` and the JSON area-types dialog in `ui/dialogs.rs` are no
-   longer opened by any command, but their state and messages are still wired
-   into `main.rs` (`symbol_manager::Changes` is used by the insert drawer).
-   Remove the views and keep the types `update` needs.
-3. **Thin tests.** There is one large headless test per phase. Rotate-handle,
-   curve-handle and marquee drags (coverage rows S6-067, S6-071, S6-072) still
-   cite a transform unit test that never drags. Add drag tests like the two above.
-4. **Platform isolation** (`07-touch-and-android.md` section 5): `rfd` is called
-   from `file_dialogs.rs`, `layer_io.rs`, `main.rs`, `symbol_manager.rs`,
-   `ui/dialogs.rs` and `ui/symbol_library.rs`; `ui/commands.rs`, `ui/dialogs.rs`
-   and `ui/start.rs` contain `#[cfg(windows)]`. Move both behind `platform.rs`.
-5. **`apex.calculation`** attribute key in `sketch-core/src/area_calc.rs` and
-   `sketch-app/src/area_repair.rs`: rename with a read-compatible alias.
-6. **Android (P16)** is a desk study. No Android toolchain was installed, so the
-   experiments in `07-touch-and-android.md` section 5 have not been run.
-7. **Command search** has no entry for recent sketches, nudge, trace image
-   intensity, underlay or label defaults. Each is reachable elsewhere (Menu,
-   page tab menu, inspector, ledger menu).
-8. **Mini map** draws an empty dark box when the sketch is empty; check in the
-   running app.
-9. Unstyled controls: the "Snaps to wall" pick list in the Symbol library and
-   the fill opacity slider in Area types use iced defaults, not the tokens.
+1. **Old symbol manager.** `symbol_manager.rs` still holds the classic
+   "Manage Symbols" modal. Nothing opens it (`Msg::Open` forwards to the
+   Symbol library), but the tile context menu, `Changes` and
+   `category_key` in the same file are live. Split the live parts out, then
+   delete the modal view and its messages.
+2. **Windows-only code in `ui/`.** `ui/commands.rs`, `ui/dialogs.rs` and
+   `ui/start.rs` gate the Appraise-It features with `#[cfg(windows)]`. Moving
+   them behind `platform.rs` needs a non-Windows build to verify, which this
+   machine does not have.
+3. **Android (P16)** is a desk study. No Android toolchain is installed, so
+   the experiments in `07-touch-and-android.md` section 5 have not been run.
+4. **Thin tests elsewhere.** Outside Select-mode drags there is still one
+   large headless test per phase.
+5. Inspector action buttons do not fill the panel width (cosmetic).
 
 ## Constraints to preserve
 

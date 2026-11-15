@@ -1715,9 +1715,6 @@ mod tests {
             app.symbol_edit_session = None;
             app.area_dialog.open = false;
             app.attr_dialog.open = false;
-            app.codes_editor.open = false;
-            app.new_code.open = false;
-            app.def_editor.open = false;
             app.breakdown.open = false;
             app.geo_menu.open = false;
             app.print_preview.open = false;

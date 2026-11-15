@@ -31,14 +31,10 @@ use crate::area_dialog::{self, AreaDialog, AreaDialogMsg, PostSwitch};
 use crate::attr_dialog::{AttrDialog, AttrMsg, ATTRS};
 use crate::breakdown_dialog::{self, BreakdownDialog, BreakdownMsg};
 use crate::color_dialog::{self, Area as ColorArea, ColorDialog, ColorMsg, RgbField, Tab as ColorTab};
-use crate::def_editor::{DefEditor, DefMsg};
 use crate::dialog::{Action, Dialog, DialogMsg};
 use crate::disto::{Disto, DistoMsg, Phase as DistoPhase};
 use crate::guide::{Block as GuideBlock, Guide, GuideMsg, INTEGRATION_TOPIC, TOPICS};
 use crate::icons::mono;
-use crate::new_code_dialog::{
-    style_label, style_value, NewCodeDialog, NewCodeMsg, FILL_STYLES,
-};
 use crate::options::{BoolKey, FormatKey, NumKey, Options, StrKey, FONTS, FONT_SIZES};
 use crate::options_dialog::{
     NumChoice, OptMsg, OptionsDialog, Tab as OptTab, ALIGNMENT_STYLES, DRAWING_MODES,
@@ -122,19 +118,10 @@ pub fn layers<'a>(
     if let Some(layer) = breakdown_layer(app, &app.breakdown, win, size_class, d) {
         out.push(layer);
     }
-    if let Some(layer) = codes_editor_layer(app, win, size_class, d) {
-        out.push(layer);
-    }
     if let Some(layer) = attr_dialog_layer(&app.attr_dialog, win, size_class, d) {
         out.push(layer);
     }
     if let Some(layer) = area_dialog_layer(&app.area_dialog, win, size_class, d) {
-        out.push(layer);
-    }
-    if let Some(layer) = new_code_layer(&app.new_code, win, size_class, d) {
-        out.push(layer);
-    }
-    if let Some(layer) = def_editor_layer(&app.def_editor, win, size_class, d) {
         out.push(layer);
     }
     if let Some(layer) = color_dialog_layer(&app.color, win, size_class, d) {
@@ -1887,72 +1874,6 @@ fn breakdown_layer<'a>(
 }
 
 // ---------------------------------------------------------------------------
-// 8. Area Codes Table JSON Editor
-// ---------------------------------------------------------------------------
-
-fn codes_editor_layer<'a>(
-    app: &'a App,
-    win: Size,
-    size_class: SizeClass,
-    d: Density,
-) -> Option<Element<'a, Message>> {
-    let ed = &app.codes_editor;
-    if !ed.open {
-        return None;
-    }
-    let compact = size_class == SizeClass::Compact;
-    let cm = |m: CodesMsg| Message::CodesEditor(m);
-
-    let editor_el: Element<'a, Message> = if let Some(content) = &ed.content {
-        text_editor(content)
-            .on_action(move |a| cm(CodesMsg::Edit(a)))
-            .font(Font::MONOSPACE)
-            .size(TEXT_12)
-            .padding(SPACE_2)
-            .height(Length::Fill)
-            .style(editor_style)
-            .into()
-    } else {
-        Space::new().into()
-    };
-
-    let body = column![
-        body_text("Edit the area types as JSON."),
-        editor_el,
-    ]
-    .spacing(SPACE_2)
-    .height(Length::Fill);
-
-    let left = row![
-        kit::text_button("Import JSON", Some(cm(CodesMsg::Import)), d),
-        kit::text_button("Export JSON", Some(cm(CodesMsg::Export)), d),
-        kit::text_button("Restore defaults", Some(cm(CodesMsg::RestoreDefaults)), d),
-    ]
-    .spacing(SPACE_2)
-    .wrap();
-    let right = row![
-        kit::text_button("Close", Some(cm(CodesMsg::Close)), d),
-        kit::primary_button("Apply", Some(cm(CodesMsg::Apply)), d),
-    ]
-    .spacing(SPACE_2);
-
-    Some(dialog_frame(
-        DialogFrame {
-            title: "Area types (JSON)".into(),
-            subtitle: None,
-            preferred_w: 760.0,
-            preferred_h: Some(580.0),
-            body: body.into(),
-            footer: Some(footer_pair(left.into(), right.into(), compact)),
-            on_close: Some(cm(CodesMsg::Close)),
-        },
-        win,
-        size_class,
-        d,
-    ))
-}
-
-// ---------------------------------------------------------------------------
 // 9. Area Attributes
 // ---------------------------------------------------------------------------
 
@@ -2144,155 +2065,6 @@ fn area_dialog_layer<'a>(
             body: body.into(),
             footer: Some(footer.into()),
             on_close: Some(ad(AreaDialogMsg::Cancel)),
-        },
-        win,
-        size_class,
-        d,
-    ))
-}
-
-// ---------------------------------------------------------------------------
-// 11. New Area Code & Definition Editor
-// ---------------------------------------------------------------------------
-
-fn fill_style_pick<'a>(
-    current: &str,
-    on_pick: impl Fn(String) -> Message + 'a,
-) -> Element<'a, Message> {
-    let opts: Vec<StringChoice> = FILL_STYLES
-        .iter()
-        .map(|s| StringChoice((*s).to_string(), style_label(s).to_string()))
-        .collect();
-    let lbl = style_label(current);
-    let sel = StringChoice(style_value(lbl).to_string(), lbl.to_string());
-    column![
-        label_text("Fill style"),
-        pick_list(opts, Some(sel), move |c: StringChoice| on_pick(c.0))
-            .width(Length::Fill)
-            .text_size(TEXT_13)
-            .font(BARLOW)
-            .padding([6, 10])
-            .style(pick_style)
-            .menu_style(pick_menu_style),
-    ]
-    .spacing(SPACE_1)
-    .into()
-}
-
-fn new_code_layer<'a>(
-    dlg: &'a NewCodeDialog,
-    win: Size,
-    size_class: SizeClass,
-    d: Density,
-) -> Option<Element<'a, Message>> {
-    if !dlg.open {
-        return None;
-    }
-    let compact = size_class == SizeClass::Compact;
-    let nc = |m: NewCodeMsg| Message::NewCode(m);
-
-    let body = scrollable(
-        column![
-            two_up(
-                labelled_field("Code", &dlg.code, "e.g. PATIO", move |s| nc(NewCodeMsg::Code(s)), d),
-                labelled_field("Name", &dlg.name, "Covered Patio", move |s| nc(NewCodeMsg::Name(s)), d),
-                compact,
-            ),
-            labelled_field("Description", &dlg.description, "", move |s| nc(NewCodeMsg::Description(s)), d),
-            two_up(
-                labelled_field("Group", &dlg.group, "OTH", move |s| nc(NewCodeMsg::Group(s)), d),
-                labelled_field("Multiplier", &dlg.multiplier_text, "1", move |s| nc(NewCodeMsg::Multiplier(s)), d),
-                compact,
-            ),
-            check_row(
-                "Include in Living Area (GLA)",
-                dlg.include_gla,
-                move |b| nc(NewCodeMsg::IncludeGla(b)),
-                d,
-            ),
-            two_up(
-                fill_style_pick(&dlg.fill_style, move |s| nc(NewCodeMsg::FillStyle(s))),
-                owned_field(
-                    "Fill opacity (%)",
-                    &format!("{}", dlg.fill_opacity.round() as i32),
-                    "10",
-                    move |s| nc(NewCodeMsg::FillOpacity(s.trim().parse().unwrap_or(10.0))),
-                    d,
-                ),
-                compact,
-            ),
-        ]
-        .spacing(SPACE_2),
-    );
-
-    let footer = row![
-        Space::new().width(Length::Fill),
-        kit::text_button("Cancel", Some(nc(NewCodeMsg::Cancel)), d),
-        kit::primary_button("Create", Some(nc(NewCodeMsg::Create)), d),
-    ]
-    .spacing(SPACE_2);
-
-    Some(dialog_frame(
-        DialogFrame {
-            title: "New area type".into(),
-            subtitle: None,
-            preferred_w: 500.0,
-            preferred_h: None,
-            body: body.into(),
-            footer: Some(footer.into()),
-            on_close: Some(nc(NewCodeMsg::Cancel)),
-        },
-        win,
-        size_class,
-        d,
-    ))
-}
-
-fn def_editor_layer<'a>(
-    ed: &'a DefEditor,
-    win: Size,
-    size_class: SizeClass,
-    d: Density,
-) -> Option<Element<'a, Message>> {
-    if !ed.open {
-        return None;
-    }
-    let compact = size_class == SizeClass::Compact;
-    let dm = |m: DefMsg| Message::DefEditor(m);
-
-    let body = column![
-        row![label_text("Code:"), text(ed.code.clone()).font(BARLOW_SEMIBOLD).size(TEXT_13).color(tokens::text())].spacing(SPACE_2),
-        labelled_field("Name", &ed.name, "", move |s| dm(DefMsg::Name(s)), d),
-        two_up(
-            fill_style_pick(&ed.fill_style, move |s| dm(DefMsg::FillStyle(s))),
-            owned_field(
-                "Fill opacity (%)",
-                &format!("{}", ed.fill_opacity.round() as i32),
-                "10",
-                move |s| dm(DefMsg::FillOpacity(s.trim().parse().unwrap_or(10.0))),
-                d,
-            ),
-            compact,
-        ),
-    ]
-    .spacing(SPACE_3);
-
-    let footer = row![
-        Space::new().width(Length::Fill),
-        kit::text_button("Cancel", Some(dm(DefMsg::Cancel)), d),
-        kit::primary_button("Save", Some(dm(DefMsg::Save)), d),
-    ]
-    .spacing(SPACE_2);
-
-    Some(dialog_frame(
-        DialogFrame {
-            title: "Edit Area Definition".into(),
-            subtitle: None,
-            preferred_w: 440.0,
-            preferred_h: None,
-            body: body.into(),
-            footer: Some(footer.into()),
-            on_close: Some(dm(DefMsg::Cancel)),
         },
         win,
         size_class,
@@ -3317,80 +3089,8 @@ fn geo_menu_layer<'a>(
 }
 
 // ---------------------------------------------------------------------------
-// Area Codes Table Editor State & Native File Pickers
+// Native file pickers for area type import and export
 // ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Default)]
-pub struct CodesEditor {
-    pub open: bool,
-    pub content: Option<text_editor::Content>,
-    pub session: u64,
-}
-
-#[derive(Debug, Clone)]
-pub enum CodesMsg {
-    Edit(text_editor::Action),
-    Apply,
-    Import,
-    Export,
-    ImportChosen(u64, Option<std::path::PathBuf>),
-    ExportChosen {
-        session: u64,
-        body: String,
-        path: Option<std::path::PathBuf>,
-    },
-    RestoreDefaults,
-    Close,
-}
-
-impl CodesEditor {
-    #[cfg(test)]
-    pub fn open_with(json: String) -> CodesEditor {
-        CodesEditor {
-            open: true,
-            content: Some(text_editor::Content::with_text(&json)),
-            session: 0,
-        }
-    }
-
-    pub fn close(&mut self) {
-        self.open = false;
-        self.content = None;
-        self.session = self.session.wrapping_add(1);
-    }
-
-    pub fn text(&self) -> String {
-        self.content.as_ref().map(|c| c.text()).unwrap_or_default()
-    }
-
-    pub fn export_json(&self) -> Result<String, sketch_core::geometry::AreaCodesError> {
-        use sketch_core::geometry::area_codes::{from_json, to_json};
-        to_json(from_json(&self.text())?)
-    }
-
-    pub fn update(&mut self, msg: CodesMsg) {
-        match msg {
-            CodesMsg::Edit(action) => {
-                if let Some(content) = self.content.as_mut() {
-                    content.perform(action);
-                }
-            }
-            CodesMsg::RestoreDefaults => {
-                let json = sketch_core::geometry::area_codes::to_json(
-                    sketch_core::geometry::area_codes::default_area_codes(),
-                )
-                .unwrap_or_default();
-                self.content = Some(text_editor::Content::with_text(&json));
-            }
-            CodesMsg::Apply
-            | CodesMsg::Import
-            | CodesMsg::Export
-            | CodesMsg::ImportChosen(_, _)
-            | CodesMsg::ExportChosen { .. } => {}
-            CodesMsg::Close => self.close(),
-        }
-    }
-}
 
 #[cfg(not(test))]
 pub async fn pick_codes_import() -> Option<std::path::PathBuf> {
@@ -3410,47 +3110,4 @@ pub async fn pick_codes_import() -> Option<std::path::PathBuf> {
 #[cfg(test)]
 pub async fn pick_codes_export() -> Option<std::path::PathBuf> {
     std::future::pending().await
-}
-
-#[cfg(test)]
-mod codes_editor_tests {
-    use super::*;
-
-    #[test]
-    fn the_editor_opens_with_the_table_json() {
-        let json = sketch_core::geometry::area_codes::to_json(
-            sketch_core::geometry::area_codes::default_area_codes(),
-        )
-        .expect("json");
-        let d = CodesEditor::open_with(json.clone());
-        assert!(d.open);
-        assert_eq!(d.text(), json);
-        assert!(d.text().contains("\"includeInGLA\": true"));
-    }
-
-    #[test]
-    fn restore_defaults_rewrites_the_text() {
-        let mut d = CodesEditor::open_with("[]".to_string());
-        assert_eq!(d.text(), "[]");
-        d.update(CodesMsg::RestoreDefaults);
-        let restored = d.text();
-        assert!(restored.contains("GLA1"), "the default catalogue is back");
-        let codes = sketch_core::geometry::area_codes::from_json(&restored).expect("parse");
-        assert_eq!(codes.len(), 32);
-    }
-
-    #[test]
-    fn apply_reads_the_edited_text_through_the_catalogue() {
-        let mut d = CodesEditor::open_with("[{\"code\":\"bad code\"}]".to_string());
-        d.update(CodesMsg::RestoreDefaults);
-        d.content = Some(text_editor::Content::with_text("[{\"code\":\"bad code\"}]"));
-        let err = sketch_core::geometry::area_codes::from_json(&d.text()).unwrap_err();
-        assert_eq!(err.to_string(), "Area code 1 has an invalid code.");
-        d.content = Some(text_editor::Content::with_text(
-            "[{\"code\":\"GLA1\",\"name\":\"First Floor\"}]",
-        ));
-        let codes = sketch_core::geometry::area_codes::from_json(&d.text()).expect("valid");
-        assert_eq!(codes.len(), 1);
-        assert_eq!(codes[0].name, "First Floor");
-    }
 }

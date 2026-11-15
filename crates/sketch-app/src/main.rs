@@ -24,7 +24,6 @@ mod clipboard;
 mod color_dialog;
 mod command_palette;
 mod context_menu;
-mod def_editor;
 mod define_area;
 #[allow(unused_imports)]
 mod dialog;
@@ -391,16 +390,10 @@ pub enum Message {
     Options(options_dialog::OptMsg),
     /// The Breakdown Details dialog's controls.
     Breakdown(breakdown_dialog::BreakdownMsg),
-    /// The area-code table editor's controls.
-    CodesEditor(ui::dialogs::CodesMsg),
     /// Areas dock › New (`showAddAreaCode`).
     OpenNewCode,
-    /// The New Area Code dialog's controls.
-    NewCode(new_code_dialog::NewCodeMsg),
     /// Areas dock › Edit areas… (`showAreaDefinitionEditor`).
     OpenDefEditor,
-    /// The area-definition editor's controls.
-    DefEditor(def_editor::DefMsg),
     /// A calcs group header (collapse/expand).
     CalcsGroup(String),
     /// A calcs area row: expand its details and select the area.
@@ -684,8 +677,6 @@ pub struct App {
     area_dialog: area_dialog::AreaDialog,
     /// The Area Attributes dialog (screen 7).
     attr_dialog: attr_dialog::AttrDialog,
-    /// The area-code table editor (screen 7).
-    codes_editor: ui::dialogs::CodesEditor,
     /// The Options dialog (Screen 11, S11-001..032).
     options_dialog: options_dialog::OptionsDialog,
     /// `state.pageLayout` (Screen 11's File > Page Layout).
@@ -716,10 +707,6 @@ pub struct App {
     popup_menu: popup_menu::PopupMenu,
     /// Bluetooth (Disto) chooser and the `#disto-status` chip.
     disto: disto::Disto,
-    /// The New Area Code dialog (screen 7).
-    new_code: new_code_dialog::NewCodeDialog,
-    /// The area-definition editor (screen 7).
-    def_editor: def_editor::DefEditor,
     /// The Breakdown Details dialog (screen 7).
     breakdown: breakdown_dialog::BreakdownDialog,
     /// The symbol currently being placed (screen 8). `Some(id)` arms
@@ -1047,7 +1034,6 @@ impl App {
                     context: context_menu::ContextMenu::default(),
                     area_dialog: area_dialog::AreaDialog::default(),
                     attr_dialog: attr_dialog::AttrDialog::default(),
-                    codes_editor: ui::dialogs::CodesEditor::default(),
                     options_dialog: options_dialog::OptionsDialog::default(),
                     page_layout: page_layout::PageLayout::default(),
                     page_layout_dialog: page_layout::PageLayoutDialog::default(),
@@ -1063,8 +1049,6 @@ impl App {
                     mini_map: None,
                     popup_menu: popup_menu::PopupMenu::default(),
                     disto: disto::Disto::default(),
-                    new_code: new_code_dialog::NewCodeDialog::default(),
-                    def_editor: def_editor::DefEditor::default(),
                     breakdown: breakdown_dialog::BreakdownDialog::default(),
                     area_codes: sketch_core::geometry::area_codes::default_area_codes(),
                     calcs_totals: None,
@@ -4319,45 +4303,8 @@ impl App {
                 self.open_type_editor(Some(&code));
                 Task::none()
             }
-            Message::DefEditor(m) => {
-                use def_editor::DefMsg;
-                match m {
-                    DefMsg::Cancel => self.def_editor.open = false,
-                    DefMsg::Save => {
-                        let code = self.def_editor.code.clone();
-                        self.def_editor.apply(&mut self.area_codes);
-                        self.def_editor
-                            .rename_polygons(&mut self.drawing.polygons, &mut self.drawing.lines);
-                        self.def_editor.open = false;
-                        self.persist_area_codes();
-                        return self
-                            .toasts
-                            .show(format!("{code} settings saved permanently."));
-                    }
-                    other => self.def_editor.update(other),
-                }
-                Task::none()
-            }
             Message::OpenNewCode => {
                 self.open_type_editor_new();
-                Task::none()
-            }
-            Message::NewCode(m) => {
-                use new_code_dialog::NewCodeMsg;
-                match m {
-                    NewCodeMsg::Cancel => self.new_code.open = false,
-                    NewCodeMsg::Create => match self.new_code.create(&self.area_codes) {
-                        Ok(entry) => {
-                            let code = entry.code.clone();
-                            self.area_codes.push(entry);
-                            self.persist_area_codes();
-                            self.new_code.open = false;
-                            return self.toasts.show(format!("Area type \"{code}\" created."));
-                        }
-                        Err(notice) => return self.toasts.show(notice),
-                    },
-                    other => self.new_code.update(other),
-                }
                 Task::none()
             }
             Message::OpenBreakdown => {
@@ -4423,88 +4370,6 @@ impl App {
             }
             Message::Options(m) => self.options_msg(m),
             Message::PageLayout(m) => self.page_layout_msg(m),
-            Message::CodesEditor(m) => {
-                use ui::dialogs::CodesMsg;
-                match m {
-                    CodesMsg::Close => self.codes_editor.close(),
-                    CodesMsg::Import if self.codes_editor.open => {
-                        let session = self.codes_editor.session;
-                        return Task::perform(ui::dialogs::pick_codes_import(), move |path| {
-                            Message::CodesEditor(CodesMsg::ImportChosen(session, path))
-                        });
-                    }
-                    CodesMsg::Export if self.codes_editor.open => {
-                        let body = match self.codes_editor.export_json() {
-                            Ok(body) => body,
-                            Err(error) => return self.toasts.show(error.to_string()),
-                        };
-                        let session = self.codes_editor.session;
-                        return Task::perform(ui::dialogs::pick_codes_export(), move |path| {
-                            Message::CodesEditor(CodesMsg::ExportChosen {
-                                session,
-                                body,
-                                path,
-                            })
-                        });
-                    }
-                    CodesMsg::ImportChosen(session, path) => {
-                        if self.codes_editor.open && session == self.codes_editor.session {
-                            if let Some(path) = path {
-                                match std::fs::read_to_string(&path) {
-                                    Ok(body) => {
-                                        self.codes_editor.content =
-                                            Some(iced::widget::text_editor::Content::with_text(
-                                                body.trim_start_matches('\u{feff}'),
-                                            ));
-                                    }
-                                    Err(error) => {
-                                        return self
-                                            .toasts
-                                            .show(format!("Could not import area types: {error}"))
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    CodesMsg::ExportChosen {
-                        session,
-                        body,
-                        path,
-                    } => {
-                        if self.codes_editor.open && session == self.codes_editor.session {
-                            if let Some(path) = path {
-                                if let Err(error) = std::fs::write(&path, body) {
-                                    return self
-                                        .toasts
-                                        .show(format!("Could not export area types: {error}"));
-                                }
-                            }
-                        }
-                    }
-                    CodesMsg::Apply => {
-                        if !self.codes_editor.open {
-                            return Task::none();
-                        }
-                        // `AreaCodes.fromJSON` then `setAreaCodes`; the error
-                        // messages are the catalogue's own.
-                        match sketch_core::geometry::area_codes::from_json(
-                            &self.codes_editor.text(),
-                        ) {
-                            Ok(codes) => {
-                                self.area_codes = codes;
-                                self.persist_area_codes();
-                                self.codes_editor.close();
-                                return self.toasts.show("Area types updated.".to_string());
-                            }
-                            Err(e) => {
-                                return self.toasts.show(e.to_string());
-                            }
-                        }
-                    }
-                    other => self.codes_editor.update(other),
-                }
-                Task::none()
-            }
             Message::ToggleCalcs => self.update(Message::Ui(ui::Msg::ToggleLedger)),
             Message::OpenAreaAttributes(editable) => {
                 let Some(poly) = self
@@ -6128,14 +5993,6 @@ impl App {
                 if self.dock_drag.as_ref().is_some_and(|d| d.active) {
                     self.dock_drag = None;
                     self.dock_click = None;
-                    return Task::none();
-                }
-                if self.def_editor.open {
-                    self.def_editor.open = false;
-                    return Task::none();
-                }
-                if self.new_code.open {
-                    self.new_code.open = false;
                     return Task::none();
                 }
                 if self.area_dialog.open {
@@ -9694,9 +9551,6 @@ impl App {
                 || self.area_dialog.open
                 || self.attr_dialog.open
                 || self.color.open
-                || self.def_editor.open
-                || self.new_code.open
-                || self.codes_editor.open
                 || self.page_layout_dialog.open
                 || self.subject_dialog.open
                 || self.text_manager.open
@@ -10074,8 +9928,6 @@ impl App {
             .on_hardware_key(Message::Ui(ui::Msg::HardwareKeyPressed));
         let workflow_dialog = self.workflow.chooser.is_some();
         let workflow_escape = self.dialog.is_none()
-            && !self.def_editor.open
-            && !self.new_code.open
             && (workflow_dialog
                 || self.workflow.advanced
                 || self.workflow.menu.is_some()
@@ -10098,16 +9950,10 @@ impl App {
                 Some(Message::PageLayout(page_layout::LayoutMsg::Cancel))
             } else if self.breakdown.open {
                 Some(Message::Breakdown(breakdown_dialog::BreakdownMsg::Close))
-            } else if self.codes_editor.open {
-                Some(Message::CodesEditor(ui::dialogs::CodesMsg::Close))
             } else if self.attr_dialog.open {
                 Some(Message::AreaAttributes(attr_dialog::AttrMsg::Cancel))
             } else if self.area_dialog.open {
                 Some(Message::AreaDialog(area_dialog::AreaDialogMsg::Cancel))
-            } else if self.new_code.open {
-                Some(Message::NewCode(new_code_dialog::NewCodeMsg::Cancel))
-            } else if self.def_editor.open {
-                Some(Message::DefEditor(def_editor::DefMsg::Cancel))
             } else if self.room_shapes.open {
                 Some(Message::RoomShapeCancel)
             } else if self.disto.open() {
