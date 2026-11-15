@@ -1633,9 +1633,9 @@ pub mod area_codes {
     pub const DEFAULT_AREA_CODES_JSON: &str = r##"[
 
   { "code": "GLA1", "name": "First Floor", "description": "Gross Living Area", "group": "GLA", "multiplier": 1, "positive": true, "includeInGLA": true, "color": "#2B6CB0", "fill": "rgba(43,108,176,.10)" },
-  { "code": "GLA2", "name": "Second Floor", "description": "Gross Living Area", "group": "GLA", "multiplier": 1, "positive": true, "includeInGLA": true, "color": "#2C5282", "fill": "rgba(44,82,130,.10)" },
-  { "code": "GLA3", "name": "Third Floor", "description": "Gross Living Area", "group": "GLA", "multiplier": 1, "positive": true, "includeInGLA": true, "color": "#3182CE", "fill": "rgba(49,130,206,.10)" },
-  { "code": "GLA4", "name": "Fourth Floor", "description": "Gross Living Area", "group": "GLA", "multiplier": 1, "positive": true, "includeInGLA": true, "color": "#4299E1", "fill": "rgba(66,153,225,.10)" },
+  { "code": "GLA2", "name": "Second Floor", "description": "Gross Living Area", "group": "GLA", "multiplier": 1, "positive": true, "includeInGLA": true, "color": "#0987A0", "fill": "rgba(9,135,160,.10)" },
+  { "code": "GLA3", "name": "Third Floor", "description": "Gross Living Area", "group": "GLA", "multiplier": 1, "positive": true, "includeInGLA": true, "color": "#B83280", "fill": "rgba(184,50,128,.10)" },
+  { "code": "GLA4", "name": "Fourth Floor", "description": "Gross Living Area", "group": "GLA", "multiplier": 1, "positive": true, "includeInGLA": true, "color": "#C53030", "fill": "rgba(197,48,48,.10)" },
   { "code": "GBA1", "name": "First Floor", "description": "Gross Building Area", "group": "GBA", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#024F39", "fill": "rgba(2,79,57,.10)" },
   { "code": "GBA2", "name": "Second Floor", "description": "Gross Building Area", "group": "GBA", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#065F40", "fill": "rgba(6,95,64,.10)" },
   { "code": "GBA3", "name": "Third Floor", "description": "Gross Building Area", "group": "GBA", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#017142", "fill": "rgba(1,113,66,.10)" },
@@ -2640,5 +2640,32 @@ mod tests {
         }]);
         assert_eq!(map.get("GAR").unwrap().name, "Garage");
         assert!(as_map(&[]).is_empty());
+    }
+
+    #[test]
+    fn default_area_codes_order_and_gla_palette() {
+        let codes = area_codes::default_area_codes();
+        let actual_codes: Vec<&str> = codes.iter().map(|c| c.code.as_str()).collect();
+        let expected_codes = [
+            "GLA1", "GLA2", "GLA3", "GLA4", "GBA1", "GBA2", "GBA3", "GBA4", "GBA5", "GBA6",
+            "GBA7", "GBA8", "GBA9", "GBA10", "GAR", "GAR2", "BSMT", "BSMT2", "OFP", "SFP",
+            "EFP", "PAT", "PORCH", "DK", "BAL", "POOL", "SHED", "LAND", "SITE", "OTH", "NCA",
+            "UND",
+        ];
+        assert_eq!(actual_codes, expected_codes);
+        let gla: Vec<(&str, &str, &str)> = codes
+            .iter()
+            .take(4)
+            .map(|c| (c.code.as_str(), c.color.as_str(), c.fill.as_str()))
+            .collect();
+        assert_eq!(
+            gla,
+            vec![
+                ("GLA1", "#2B6CB0", "rgba(43,108,176,.10)"),
+                ("GLA2", "#0987A0", "rgba(9,135,160,.10)"),
+                ("GLA3", "#B83280", "rgba(184,50,128,.10)"),
+                ("GLA4", "#C53030", "rgba(197,48,48,.10)"),
+            ]
+        );
     }
 }

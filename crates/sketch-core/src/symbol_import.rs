@@ -130,11 +130,9 @@ mod tests {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
     }
     fn source(name: &str) -> Symbol {
-        from_dxf(
-            &fs::read_to_string(root().join(format!("refs/caddillo/fixtures/{name}.dxf"))).unwrap(),
-            name,
-        )
-        .unwrap()
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join(format!("tests/fixtures/dxf/{name}.dxf"));
+        from_dxf(&fs::read_to_string(path).unwrap(), name).unwrap()
     }
     #[test]
     fn real_caddillo_blocks_import_geometry_in_inches_without_advertising() {

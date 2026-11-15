@@ -246,7 +246,7 @@ compatibility runtime, AXF file handling and provider setup. See
 - All 303 application regressions and 167 core tests passed (269 GUI tests
   excluded from that broad run; one timing probe ignored). All three focused
   setup checks passed, including pending-job guards, and all five disposable
-  registration-backend tests passed. The control audit covers 130 ribbon
+  registration-backend tests passed. The control audit covers 130 toolbar
   instances and 17 File items with zero missing actions. Workspace/all-target
   Clippy and formatting checks passed. Existing print and report-transfer
   implementations remain unchanged from the previous build.
@@ -378,7 +378,7 @@ compatibility runtime, AXF file handling and provider setup. See
 - All 13 audited controls now invoke the existing native handlers. Home shares
   clipboard/selection/Delete handlers with Edit Tools; Rotate Sketch is mapped;
   two-line captions normalize before lookup; File Open/Save/Save As are mapped.
-- Wiring guards cover 129 ribbon button/field instances and 17 File-menu items.
+- Wiring guards cover 129 toolbar button/field instances and 17 File-menu items.
   Actual widget tests exercise the repaired Home, View and Tools buttons with
   selected walls and defined areas, plus File Save/Save As naming prompts.
 - 296 application regressions passed (260 GUI/e2e tests excluded), and all six
@@ -490,7 +490,7 @@ Actual Appraise-It Pro 3.8.8 desktop transfer checks (2026-10-30):
   remains separate. UAD vehicle-storage field mapping was not independently verified.
 - Both were reopened through Pro's native Apex integration helper and returned
   a second time with the same area totals and two images (no duplicate pages).
-- Legacy launch was exercised using Pro's Apex ribbon button. Further runs used
+- Legacy launch was exercised using Pro's Apex toolbar button. Further runs used
   its installed native helper against the actual report PID. Return packets were
   frozen from the real Rust model and signalled through the embedded session
   interface; returned fields were read through Pro's transaction/data-store API.

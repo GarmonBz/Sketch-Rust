@@ -129,7 +129,7 @@ Cancellation or a write error preserves the existing document name and drawing.
 
 0.1.15 wires all 13 controls identified by the follow-up control audit: File
 Open/Save/Save As; Home clipboard, selection, Delete, Rotate Sketch and Area
-Attributes; View Calcs; and Tools Area Codes. Ribbon command lookup now handles
+Attributes; View Calcs; and Tools Area Codes. Command lookup now handles
 two-line captions. Regression checks reject enabled controls with no action.
 
 0.1.14 fixes the Center and Center & Fit view buttons and C / Shift+C shortcuts.
@@ -201,9 +201,7 @@ Save Image With Sketch option includes them in clean image export.
 DISTO software is implemented, but testing with the physical instrument is
 deferred. Read DISTO.md before trying the Bluetooth measurement feature.
 
-FEATURE-AUDIT.md and feature-audit.json describe the exact scope and remaining
-native/reference differences. Parent-suite integration and physical DISTO
-testing remain deferred.
+Parent-suite integration and physical DISTO testing remain deferred.
 
 manifest.json records the source revision, working-tree fingerprint and file
 SHA-256 hashes.

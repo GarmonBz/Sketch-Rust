@@ -50,6 +50,7 @@ pub struct Calcs {
 }
 
 impl Calcs {
+    #[cfg(test)]
     pub fn is_empty(&self) -> bool {
         self.groups.is_empty()
     }
@@ -143,6 +144,7 @@ pub struct AreaTotals {
 }
 
 /// One summary line.
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SummaryRow {
     pub label: &'static str,
@@ -154,6 +156,7 @@ pub struct SummaryRow {
 /// `updateCalcsPanel`'s summary block: Defined Areas, Undefined Areas (only
 /// when there are any), Total Gross Living Area and Total Gross Building Area,
 /// the last two to one decimal place with the original's " sf" suffix.
+#[cfg(test)]
 pub fn summary(calcs: &Calcs, totals: Option<AreaTotals>) -> Vec<SummaryRow> {
     let totals = totals.unwrap_or_default();
     let defined: usize = calcs.groups.iter().map(|g| g.areas.len()).sum();

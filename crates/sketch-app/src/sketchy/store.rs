@@ -105,68 +105,6 @@ pub fn read(path: &Path) -> Result<Value> {
     Ok(parsed)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn sketchy_store_rejects_ordinary_databases_and_unsafe_schema() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../target/sketchy-tests")
-            .join(format!("invalid-store-{}", std::process::id()));
-        std::fs::create_dir_all(&root).unwrap();
-        let path = root.join("test.sqlite");
-        let db = Connection::open(&path).unwrap();
-        assert!(read(&path).unwrap_err().contains("Expected Sketchie store"));
-        db.execute_batch(SCHEMA).unwrap();
-        db.execute_batch("CREATE VIEW unsafe_view AS SELECT key FROM meta")
-            .unwrap();
-        assert!(read(&path).unwrap_err().contains("cannot contain"));
-    }
-
-    #[test]
-    fn sketchy_content_hash_ignores_revision_history_and_formats_numbers_canonically() {
-        let value = json!({"z":1.0, "a":-0.0, "revision":{"id":"one"}, "history":[]});
-        assert_eq!(
-            content_hash(&value).unwrap(),
-            format!(
-                "sha256:{}",
-                sketch_core::skx::sha256_hex(br#"{"a":0,"z":1}"#)
-            )
-        );
-    }
-
-    #[test]
-    fn sketchie_store_updates_version_metadata_with_the_head() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../target/sketchy-tests")
-            .join(format!("version-metadata-{}", std::process::id()));
-        let path = root.join("upgrade.sketchie");
-        let document = |version, id, sequence, parents| {
-            let mut value = json!({
-                "format": super::super::FORMAT, "format_version": version,
-                "id": "property", "length_unit": "ft", "structures": [],
-                "revision": {"id": id, "sequence": sequence, "parents": parents,
-                    "created_at": "2026-11-14T12:00:00Z", "status": "draft"}
-            });
-            value["revision"]["content_hash"] = json!(content_hash(&value).unwrap());
-            value
-        };
-        let first = document("0.1", "first", 1, json!([]));
-        write(&path, &serde_json::to_vec(&first).unwrap(), None).unwrap();
-        let second = document("0.2", "second", 2, json!(["first"]));
-        let parent = ("first", first["revision"]["content_hash"].as_str().unwrap());
-        write(&path, &serde_json::to_vec(&second).unwrap(), Some(parent)).unwrap();
-        assert_eq!(read(&path).unwrap(), second);
-        let db = connect(&path, true).unwrap();
-        assert_eq!(meta(&db, "format_version").unwrap(), "0.2");
-        db.execute("UPDATE meta SET value='sketchy' WHERE key='format'", [])
-            .unwrap();
-        assert!(read(&path).is_err());
-    }
-}
-
 pub(super) fn content_hash(document: &Value) -> Result<String> {
     let mut content = document
         .as_object()
@@ -283,4 +221,66 @@ fn append(
         params![id, version],
     ))?;
     db(tx.commit())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn sketchy_store_rejects_ordinary_databases_and_unsafe_schema() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/sketchy-tests")
+            .join(format!("invalid-store-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("test.sqlite");
+        let db = Connection::open(&path).unwrap();
+        assert!(read(&path).unwrap_err().contains("Expected Sketchie store"));
+        db.execute_batch(SCHEMA).unwrap();
+        db.execute_batch("CREATE VIEW unsafe_view AS SELECT key FROM meta")
+            .unwrap();
+        assert!(read(&path).unwrap_err().contains("cannot contain"));
+    }
+
+    #[test]
+    fn sketchy_content_hash_ignores_revision_history_and_formats_numbers_canonically() {
+        let value = json!({"z":1.0, "a":-0.0, "revision":{"id":"one"}, "history":[]});
+        assert_eq!(
+            content_hash(&value).unwrap(),
+            format!(
+                "sha256:{}",
+                sketch_core::skx::sha256_hex(br#"{"a":0,"z":1}"#)
+            )
+        );
+    }
+
+    #[test]
+    fn sketchie_store_updates_version_metadata_with_the_head() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/sketchy-tests")
+            .join(format!("version-metadata-{}", std::process::id()));
+        let path = root.join("upgrade.sketchie");
+        let document = |version, id, sequence, parents| {
+            let mut value = json!({
+                "format": super::super::FORMAT, "format_version": version,
+                "id": "property", "length_unit": "ft", "structures": [],
+                "revision": {"id": id, "sequence": sequence, "parents": parents,
+                    "created_at": "2026-11-14T12:00:00Z", "status": "draft"}
+            });
+            value["revision"]["content_hash"] = json!(content_hash(&value).unwrap());
+            value
+        };
+        let first = document("0.1", "first", 1, json!([]));
+        write(&path, &serde_json::to_vec(&first).unwrap(), None).unwrap();
+        let second = document("0.2", "second", 2, json!(["first"]));
+        let parent = ("first", first["revision"]["content_hash"].as_str().unwrap());
+        write(&path, &serde_json::to_vec(&second).unwrap(), Some(parent)).unwrap();
+        assert_eq!(read(&path).unwrap(), second);
+        let db = connect(&path, true).unwrap();
+        assert_eq!(meta(&db, "format_version").unwrap(), "0.2");
+        db.execute("UPDATE meta SET value='sketchy' WHERE key='format'", [])
+            .unwrap();
+        assert!(read(&path).is_err());
+    }
 }

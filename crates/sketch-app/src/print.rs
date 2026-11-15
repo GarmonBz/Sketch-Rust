@@ -4,23 +4,14 @@
 //! The preview renders every page of the exact PDF it prints through Windows'
 //! native PDF engine. The cached PDF is retained until the preview closes.
 
-use iced::widget::{
-    button, column, container, image, mouse_area, opaque, row, scrollable, text, Space,
-};
-use iced::{Background, Border, Color, Element, Length};
+use iced::widget::image;
 use sketch_core::print_layout::PaperSize;
-
-use crate::theme::*;
-use crate::Message;
-
-/// The preview sheet's width on screen, in px.
-const SHEET_W: f32 = 520.0;
 
 #[derive(Debug, Clone, Default)]
 pub struct PrintPreview {
     pub open: bool,
-    paper: Option<PaperSize>,
-    rasters: Vec<image::Handle>,
+    pub(crate) paper: Option<PaperSize>,
+    pub(crate) rasters: Vec<image::Handle>,
     pub pdf: Vec<u8>,
 }
 
@@ -180,81 +171,6 @@ pub fn temp_report_path(file_name: &str) -> std::path::PathBuf {
 /// Hand a file to the OS handler (the browser's `window.open`).
 pub fn open_with_os(path: &std::path::Path) {
     crate::platform::open_target(path.as_os_str());
-}
-
-/// The preview overlay, or None when closed.
-pub fn layer(p: &PrintPreview) -> Option<Element<'_, Message>> {
-    if !p.open {
-        return None;
-    }
-    let paper = p.paper.unwrap_or(PaperSize::Legal);
-    let (pw, ph) = paper.size();
-    let sheet_h = SHEET_W * (ph / pw) as f32;
-
-    let tool_btn = |label: &'static str, msg: PreviewMsg, primary: bool| {
-        button(container(text(label).font(SEGOE).size(12.0).color(WHITE)).padding([5, 12]))
-            .on_press(Message::PrintPreview(msg))
-            .style(move |_, status| button::Style {
-                background: Some(Background::Color(match (primary, status) {
-                    (true, _) => accent(),
-                    (false, button::Status::Hovered) => bg_hover(),
-                    (false, _) => bg_ribbon(),
-                })),
-                border: Border {
-                    color: border(),
-                    width: 1.0,
-                    radius: 3.0.into(),
-                },
-                ..button::Style::default()
-            })
-    };
-
-    let toolbar = container(
-        row![
-            tool_btn("Print / Save PDF", PreviewMsg::Print, true),
-            tool_btn("Close Preview", PreviewMsg::Close, false),
-            text(p.summary()).font(SEGOE).size(12.0).color(muted()),
-        ]
-        .spacing(10)
-        .align_y(iced::alignment::Alignment::Center),
-    )
-    .width(Length::Fill)
-    .padding([8, 14])
-    .style(|_| container::Style {
-        background: Some(Background::Color(bg_panel())),
-        border: Border {
-            color: border(),
-            width: 1.0,
-            radius: 0.0.into(),
-        },
-        ..container::Style::default()
-    });
-
-    let mut sheets = column![].spacing(20);
-    for raster in &p.rasters {
-        sheets = sheets.push(
-            image(raster.clone())
-                .width(SHEET_W)
-                .height(sheet_h)
-                .content_fit(iced::ContentFit::Contain),
-        );
-    }
-    let body = scrollable(
-        container(sheets)
-            .width(Length::Fill)
-            .padding(20)
-            .center_x(Length::Fill),
-    )
-    .height(Length::Fill);
-
-    let page = container(column![toolbar, body, Space::new().height(0)])
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .style(|_| container::Style {
-            background: Some(Background::Color(Color::from_rgb8(0x3a, 0x3a, 0x3c))),
-            ..container::Style::default()
-        });
-    Some(opaque(mouse_area(page)))
 }
 
 #[cfg(test)]

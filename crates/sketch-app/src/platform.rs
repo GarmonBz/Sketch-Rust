@@ -141,6 +141,7 @@ pub fn activate_existing(path: &std::path::Path) -> bool {
 
 /// Holds the "this file is open here" event for `path` for as long as the
 /// stream lives, and yields each time another instance asks for the window.
+#[allow(clippy::ptr_arg)]
 pub fn activation_stream(path: &std::path::PathBuf) -> impl iced::futures::Stream<Item = ()> {
     let (tx, rx) = iced::futures::channel::mpsc::unbounded::<()>();
     #[cfg(windows)]

@@ -384,8 +384,8 @@ const DXF: &str =
 #[test]
 fn caddillo_dxf_manager_import_keeps_size_metadata_and_survives_reopen() {
     persist::with_temp_store(|| {
-        let root =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../refs/caddillo/fixtures");
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../sketch-core/tests/fixtures/dxf");
         let mut a = app();
         for name in [
             "DOOR-SWING-36",
@@ -742,7 +742,8 @@ fn category_deletion_starts_in_the_dock_category() {
     a.dock.active = dock::DockTab::Symbols;
     a.dock.symbol_category = "fire".into();
     let _ = a.manager_msg(S::Open);
-    assert_eq!(a.symbol_manager.category, "fire");
+    assert!(a.ui.symbol_library.open);
+    assert_eq!(a.ui.symbol_library.category, "fire");
 }
 #[test]
 fn category_deletion_handles_empty_categories() {

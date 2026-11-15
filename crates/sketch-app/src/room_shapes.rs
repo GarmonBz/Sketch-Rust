@@ -1,10 +1,5 @@
 //! Insert Room Shape dialog + placement (Screen 9).
 
-use iced::widget::{button, column, container, row, text, text_input};
-use iced::{Alignment, Element, Length};
-
-use crate::Message;
-
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct PendingShape {
@@ -99,63 +94,4 @@ pub fn shape_points(p: &PendingShape) -> Vec<sketch_core::geometry::Pt> {
         }
     }
     pts
-}
-
-pub fn layer(rs: &RoomShapes) -> Option<Element<'static, Message>> {
-    if !rs.open {
-        return None;
-    }
-    let col = column![
-        text("Insert Room Shape").size(13),
-        row![
-            text("Shape"),
-            text_input("rectangle", &rs.kind)
-                .on_input(|s| Message::RoomShapeField("kind".into(), s))
-        ],
-        row![
-            text("Width"),
-            text_input("12", &rs.width).on_input(|s| Message::RoomShapeField("width".into(), s))
-        ],
-        row![
-            text("Depth"),
-            text_input("10", &rs.depth).on_input(|s| Message::RoomShapeField("depth".into(), s))
-        ],
-        row![
-            text("Notch W"),
-            text_input("4", &rs.cut_width).on_input(|s| Message::RoomShapeField("cutw".into(), s))
-        ],
-        row![
-            text("Notch D"),
-            text_input("4", &rs.cut_depth).on_input(|s| Message::RoomShapeField("cutd".into(), s))
-        ],
-        row![
-            text("Rotation"),
-            text_input("0", &rs.rotation)
-                .on_input(|s| Message::RoomShapeField("rotation".into(), s))
-        ],
-        button("Place").on_press(Message::RoomShapePlace),
-        button("Cancel").on_press(Message::RoomShapeCancel),
-    ]
-    .spacing(4)
-    .padding(8);
-    let panel = container(col)
-        .padding(8)
-        .width(Length::Fixed(280.0))
-        .style(|_| container::Style {
-            background: Some(iced::Background::Color(iced::Color::from_rgb(
-                0.15, 0.15, 0.15,
-            ))),
-            border: iced::Border {
-                color: iced::Color::WHITE,
-                width: 1.0,
-                radius: 4.0.into(),
-            },
-            ..container::Style::default()
-        });
-    let overlay = container(panel)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .align_x(Alignment::Center)
-        .align_y(Alignment::Center);
-    Some(overlay.into())
 }

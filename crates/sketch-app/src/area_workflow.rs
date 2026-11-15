@@ -2,8 +2,7 @@
 use std::collections::{BTreeMap, HashSet};
 
 use iced::widget::{
-    button, checkbox, column, container, mouse_area, opaque, pick_list, row, scrollable, text,
-    text_input, Space,
+    button, checkbox, column, container, mouse_area, opaque, pick_list, pin, row, text, Space,
 };
 use iced::{Element, Length, Point, Task};
 use sketch_core::geometry::{AreaCode, Pt};
@@ -90,7 +89,6 @@ pub struct Chooser {
     pub post: AutoPost,
     pub labels: bool,
     pub repeat: bool,
-    pub at: Point,
     pub existing: bool,
     pub area: f64,
     pub extra_code: Option<AreaCode>,
@@ -124,7 +122,7 @@ impl Chooser {
     pub fn matches(&self, c: &AreaCode) -> bool {
         let term = self.search.trim().to_lowercase();
         if term.is_empty() {
-            c.group == self.group
+            self.group == "ALL" || c.group == self.group
         } else {
             format!(
                 "{} {} {} {}",
@@ -241,10 +239,53 @@ impl App {
             x: world.x,
             y: world.y,
         });
-        self.workflow_open(
-            region,
-            Point::new(x as f32 + 41.0 + self.pages_nav_width(), y as f32 + 129.0),
-        )
+        let origin = self.canvas_origin();
+        self.workflow_open(region, Point::new(x as f32 + origin.x, y as f32 + origin.y))
+    }
+
+    /// Area mode on touch (`07-touch-and-android.md` §4):
+    /// first tap previews the enclosed region & shows its size; second tap on the
+    /// same region opens the Area Chooser (armed types still assign immediately).
+    pub(super) fn workflow_touch_tap(&mut self, world: Pt) -> Task<Message> {
+        let prev = self.workflow.hover.clone();
+        self.workflow_hover(world);
+        let Some(region) = self.workflow.hover.clone() else {
+            self.workflow.status =
+                "No closed area here. Use Detect Regions in advanced tools for enclosed wall networks."
+                    .into();
+            return Task::none();
+        };
+        if let Some(code) = self.workflow.armed.clone() {
+            let id = self.workflow_materialize(&region);
+            self.workflow_assign(id, &code, None, None);
+            self.workflow.status = "Assigned. Tap another outline, or Escape to stop.".into();
+            return Task::none();
+        }
+        if prev.as_ref().is_some_and(|p| Self::regions_match(p, &region)) {
+            let (x, y) = self.view.to_screen(crate::view_state::World {
+                x: world.x,
+                y: world.y,
+            });
+            let origin = self.canvas_origin();
+            return self.workflow_open(region, Point::new(x as f32 + origin.x, y as f32 + origin.y));
+        }
+        let sq_ft = match &region {
+            Region::Area(id) => self
+                .computed
+                .get(id)
+                .map(|c| c.net)
+                .filter(|&net| net.abs() > 1e-3)
+                .or_else(|| {
+                    self.drawing.polygons.iter().find(|p| p.id == *id).map(|p| {
+                        sketch_core::geometry::GeometryEngine::new()
+                            .calculate_area(&p.points, &p.edges)
+                    })
+                })
+                .unwrap_or(0.0),
+            Region::Face(face) => face.area,
+        };
+        self.workflow.status = format!("Preview: {sq_ft:.1} sf. Tap again to define area.");
+        Task::none()
     }
 
     fn workflow_materialize(&mut self, region: &Region) -> i64 {
@@ -256,6 +297,31 @@ impl App {
                 self.assign_area_to_dedicated_layer(id, false);
                 id
             }
+        }
+    }
+
+    fn regions_match(a: &Region, b: &Region) -> bool {
+        match (a, b) {
+            (Region::Area(x), Region::Area(y)) => x == y,
+            (Region::Face(fa), Region::Face(fb)) => {
+                if (fa.area - fb.area).abs() > 1e-3 || fa.points.len() != fb.points.len() {
+                    return false;
+                }
+                if fa.points.is_empty() {
+                    return true;
+                }
+                let n = fa.points.len() as f64;
+                let ca = (
+                    fa.points.iter().map(|p| p.x).sum::<f64>() / n,
+                    fa.points.iter().map(|p| p.y).sum::<f64>() / n,
+                );
+                let cb = (
+                    fb.points.iter().map(|p| p.x).sum::<f64>() / n,
+                    fb.points.iter().map(|p| p.y).sum::<f64>() / n,
+                );
+                (ca.0 - cb.0).hypot(ca.1 - cb.1) < 1e-2
+            }
+            _ => false,
         }
     }
 
@@ -320,7 +386,7 @@ impl App {
         true
     }
 
-    fn workflow_open(&mut self, region: Region, at: Point) -> Task<Message> {
+    fn workflow_open(&mut self, region: Region, _at: Point) -> Task<Message> {
         self.workflow_close();
         let poly = match &region {
             Region::Area(id) => self.drawing.polygons.iter().find(|p| p.id == *id),
@@ -341,7 +407,7 @@ impl App {
         } else {
             None
         };
-        let known = code
+        let _known = code
             .as_ref()
             .and_then(|code| self.area_codes.iter().find(|c| &c.code == code));
         let extra_code = poly
@@ -370,10 +436,7 @@ impl App {
             region: region.clone(),
             previous_selection: self.selection.clone(),
             search: String::new(),
-            group: known
-                .map(|c| c.group.clone())
-                .or_else(|| extra_code.as_ref().map(|c| c.group.clone()))
-                .unwrap_or_else(|| "GLA".into()),
+            group: "ALL".into(),
             code,
             name: poly
                 .filter(|_| existing)
@@ -384,7 +447,6 @@ impl App {
                 .unwrap_or_else(|| self.drawing.auto_post.clone()),
             labels: false,
             repeat: self.workflow.repeat,
-            at,
             existing,
             area,
             extra_code,
@@ -510,9 +572,8 @@ impl App {
             Msg::EditType(code) => {
                 self.workflow.menu = None;
                 self.workflow.advanced = false;
-                if let Some(c) = self.area_codes.iter().find(|c| c.code == code) {
-                    self.def_editor = crate::def_editor::DefEditor::open_on(c);
-                }
+                self.open_type_editor(Some(&code));
+                return Task::none();
             }
             Msg::NewType => {
                 self.workflow.menu = None;
@@ -573,7 +634,8 @@ impl App {
                             let (x, y) = self
                                 .view
                                 .to_screen(crate::view_state::World { x: c.x, y: c.y });
-                            Point::new(x as f32 + 41.0 + self.pages_nav_width(), y as f32 + 129.0)
+                            let origin = self.canvas_origin();
+                            Point::new(x as f32 + origin.x, y as f32 + origin.y)
                         })
                         .unwrap_or(Point::new(100.0, 160.0))
                 } else {
@@ -647,16 +709,15 @@ impl App {
                 let Some(c) = self.workflow.chooser.as_ref() else {
                     return Task::none();
                 };
-                let Some(code) = c.code.clone() else {
+                let all_codes = c.codes(&self.area_codes);
+                let code = c
+                    .code
+                    .clone()
+                    .filter(|code| all_codes.iter().any(|e| &e.code == code && c.matches(e)))
+                    .or_else(|| all_codes.iter().find(|e| c.matches(e)).map(|e| e.code.clone()));
+                let Some(code) = code else {
                     return Task::none();
                 };
-                if !c
-                    .codes(&self.area_codes)
-                    .iter()
-                    .any(|e| e.code == code && c.matches(e))
-                {
-                    return Task::none();
-                }
                 let c = c.clone();
                 if c.page != self.pages.current {
                     self.workflow_close();
@@ -912,7 +973,7 @@ fn action<'a>(label: &str, m: Msg) -> Element<'a, Message> {
                     status,
                     iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed
                 ) {
-                    bg_ribbon()
+                    crate::ui::tokens::bar()
                 } else {
                     bg_hover()
                 }
@@ -1082,218 +1143,6 @@ pub fn post_controls<'a>(post: &AutoPost, defaults: bool) -> Element<'a, Message
     list.into()
 }
 
-pub fn advanced<'a>(
-    post: &AutoPost,
-    dimensions: bool,
-    placement: crate::view_state::DimensionPlacement,
-) -> Element<'a, Message> {
-    let mut post = post.clone();
-    post.dims = dimensions;
-    let placement = if placement == crate::view_state::DimensionPlacement::In {
-        "In"
-    } else {
-        "Out"
-    }
-    .to_string();
-    let values = vec!["Out".to_string(), "In".to_string()];
-    let picker = pick_list(values.clone(), Some(placement.clone()), |s| {
-        send(Msg::DefaultPlacement(s))
-    });
-    scrollable(column![
-        row![text("Edit areas").font(SEGOE_BOLD).size(14),Space::new().width(Length::Fill),action("×",Msg::Advanced(false))].align_y(iced::Alignment::Center),
-        text("Area operations").size(13).font(SEGOE_BOLD),
-        text("Acts on the areas selected on the canvas. Redefine uses the type armed in the palette.").size(12),
-        row![action("Redefine",Msg::Redefine),action("Clone",Msg::Clone)].spacing(4),
-        row![action("Reopen",Msg::Reopen),action("Detect Regions",Msg::Detect)].spacing(4),
-        text("Label defaults").size(13).font(SEGOE_BOLD),text("Applied to areas you define from now on.").size(12),post_controls(&post,true),
-        text("Dimension placement").size(12),keyboard_select(picker,"area-dimension-placement",values,Some(placement),Msg::DefaultPlacement)
-    ].spacing(12)).into()
-}
-
-pub fn chooser_layer<'a>(
-    state: &State,
-    codes: &[AreaCode],
-    size: iced::Size,
-) -> Option<Element<'a, Message>> {
-    let c = state.chooser.as_ref()?;
-    let all = c.codes(codes);
-    let mut groups = iced::widget::Column::new().spacing(4);
-    let mut seen = HashSet::new();
-    let mut group_row = row![].spacing(4);
-    let mut count = 0;
-    for code in &all {
-        if seen.insert(code.group.clone())
-            && (c.search.trim().is_empty()
-                || all.iter().any(|a| a.group == code.group && c.matches(a)))
-        {
-            let label = match dock::palette_group_label(&code.group) {
-                "" => code.group.as_str(),
-                l => l,
-            };
-            group_row = group_row.push(action(
-                &format!("{}{}", label, if c.group == code.group { " ✓" } else { "" }),
-                Msg::ChooseGroup(code.group.clone()),
-            ));
-            count += 1;
-            if count % 2 == 0 {
-                groups = groups.push(group_row);
-                group_row = row![].spacing(4);
-            }
-        }
-    }
-    groups = groups.push(group_row);
-    let matches: Vec<_> = all
-        .iter()
-        .filter(|a| c.matches(a))
-        .map(|a| format!("{} ({})", a.name, a.code))
-        .collect();
-    let selected = c
-        .code
-        .as_ref()
-        .and_then(|code| all.iter().find(|a| &a.code == code && c.matches(a)))
-        .map(|a| format!("{} ({})", a.name, a.code));
-    let submit = if c.existing {
-        "Save changes"
-    } else {
-        "Define area"
-    };
-    let parse_code = |s: String| {
-        Msg::Code(
-            s.rsplit_once(" (")
-                .map_or(s.clone(), |(_, c)| c.trim_end_matches(')').to_string()),
-        )
-    };
-    let picker = pick_list(matches.clone(), selected.clone(), move |s| {
-        send(parse_code(s))
-    })
-    .placeholder("Choose a classification...")
-    .text_size(12);
-    let classification = keyboard_select(
-        picker,
-        "area-classification",
-        matches,
-        selected.clone(),
-        parse_code,
-    );
-    let mut body = column![
-        row![
-            text(if c.existing {
-                "Edit definition"
-            } else {
-                "Define this area"
-            })
-            .font(SEGOE_BOLD)
-            .size(14),
-            Space::new().width(Length::Fill),
-            text(format!("{:.1} sf", c.area)).size(12)
-        ],
-        text("What is this space?").size(12),
-        text_input("Find any type or custom code...", &c.search)
-            .id("area-definition-search")
-            .on_input(|s| send(Msg::Search(s)))
-            .on_submit(send(Msg::Submit))
-            .size(12),
-        groups,
-        text("Classification").size(12),
-        classification,
-        text("Name · optional").size(12),
-        text_input("Custom area name", &c.name)
-            .on_input(|s| send(Msg::Name(s)))
-            .on_submit(send(Msg::Submit))
-            .size(12),
-        action(
-            if c.labels {
-                "▾ Label settings"
-            } else {
-                "▸ Label settings"
-            },
-            Msg::Labels
-        )
-    ]
-    .spacing(8);
-    if c.labels {
-        body = body.push(post_controls(&c.post, false));
-    }
-    let mut save = button(text(submit).size(12))
-        .padding([6, 10])
-        .style(|_, status| iced::widget::button::Style {
-            background: Some(
-                if matches!(status, iced::widget::button::Status::Disabled) {
-                    bg_hover()
-                } else {
-                    accent()
-                }
-                .into(),
-            ),
-            text_color: if matches!(status, iced::widget::button::Status::Disabled) {
-                muted()
-            } else {
-                iced::Color::WHITE
-            },
-            border: iced::Border {
-                color: border(),
-                width: 1.0,
-                radius: 2.0.into(),
-            },
-            ..Default::default()
-        });
-    if selected.is_some() {
-        save = save.on_press(send(Msg::Submit));
-    }
-    let repeat = crate::event_tap::EventTap::new(
-        checkbox(c.repeat)
-            .label("Keep assigning this type")
-            .on_toggle(|v| send(Msg::Repeat(v)))
-            .text_size(12),
-    )
-    .keyboard_action("area-repeat", send(Msg::Repeat(!c.repeat)));
-    let save: Element<'a, Message> = if selected.is_some() {
-        crate::event_tap::EventTap::new(save)
-            .keyboard_action("area-submit", send(Msg::Submit))
-            .into()
-    } else {
-        save.into()
-    };
-    body = body.push(repeat).push(
-        row![
-            Space::new().width(Length::Fill),
-            action("Cancel", Msg::Cancel),
-            save
-        ]
-        .spacing(8),
-    );
-    let height = if c.labels { 720.0_f32 } else { 510.0_f32 }.min((size.height - 20.0).max(80.0));
-    let panel = container(scrollable(body).height(Length::Shrink))
-        .id("area-chooser-scope")
-        .padding(14)
-        .width(300)
-        .max_height(height)
-        .style(|_| container::Style {
-            background: Some(bg_panel().into()),
-            text_color: Some(text_main()),
-            border: iced::Border {
-                color: border(),
-                width: 1.0,
-                radius: 5.0.into(),
-            },
-            ..Default::default()
-        });
-    let left = (c.at.x + 16.0).min(size.width - 310.0).max(10.0);
-    let top = c.at.y.min(size.height - height - 10.0).max(10.0);
-    Some(
-        iced::widget::stack![
-            opaque(
-                mouse_area(Space::new().width(Length::Fill).height(Length::Fill))
-                    .on_press(send(Msg::Cancel))
-            ),
-            crate::theme::at(left, top, opaque(panel))
-        ]
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into(),
-    )
-}
-
 pub fn menu_layer<'a>(
     state: &State,
     codes: &[AreaCode],
@@ -1351,11 +1200,9 @@ pub fn menu_layer<'a>(
                 mouse_area(Space::new().width(Length::Fill).height(Length::Fill))
                     .on_press(send(Msg::CloseMenu))
             ),
-            crate::theme::at(
-                state.menu_at.x.min(size.width - 273.0).max(8.0),
-                state.menu_at.y.min(size.height - 260.0).max(8.0),
-                opaque(panel)
-            )
+            pin(opaque(panel))
+                .x(state.menu_at.x.min(size.width - 273.0).max(8.0))
+                .y(state.menu_at.y.min(size.height - 260.0).max(8.0))
         ]
         .width(Length::Fill)
         .height(Length::Fill)
@@ -1391,9 +1238,10 @@ pub(super) fn drag_ghost<'a>(
             },
             ..Default::default()
         });
-    Some(crate::theme::at(
-        (at.x + 16.0).min(size.width - 240.0).max(0.0),
-        (at.y + 16.0).min(size.height - 40.0).max(0.0),
-        body,
-    ))
+    Some(
+        pin(body)
+            .x((at.x + 16.0).min(size.width - 240.0).max(0.0))
+            .y((at.y + 16.0).min(size.height - 40.0).max(0.0))
+            .into(),
+    )
 }

@@ -193,11 +193,39 @@ pub enum BufferCmd {
     },
 }
 
+fn parse_distance(s: &str) -> Option<f64> {
+    let trimmed = s.trim();
+    if let Some(q) = trimmed.find('\'') {
+        let feet_part = trimmed[..q].trim();
+        let feet = if feet_part.is_empty() {
+            0.0
+        } else if feet_part.bytes().all(|b| b.is_ascii_digit() || b == b'.') {
+            parse_float(feet_part)?
+        } else {
+            return None;
+        };
+        let rest = trimmed[q + 1..].trim().trim_end_matches('"');
+        let inches = if rest.is_empty() {
+            0.0
+        } else if rest.bytes().all(|b| b.is_ascii_digit() || b == b'.') {
+            parse_float(rest)?
+        } else {
+            return None;
+        };
+        return Some(feet + inches / 12.0);
+    }
+    parse_float(trimmed)
+}
+
 fn num(s: &str) -> Option<f64> {
-    if s.is_empty() || !s.bytes().all(|b| b.is_ascii_digit() || b == b'.') {
+    if s.is_empty()
+        || !s
+            .bytes()
+            .all(|b| b.is_ascii_digit() || b == b'.' || b == b'\'')
+    {
         return None;
     }
-    parse_float(s)
+    parse_distance(s)
 }
 
 pub fn parse_buffer(buf: &str) -> Option<BufferCmd> {
@@ -239,8 +267,8 @@ pub fn parse_buffer(buf: &str) -> Option<BufferCmd> {
             }
         }
     }
-    // Plain distance.
-    parse_float(buf).map(BufferCmd::Distance)
+    // Plain distance (including feet-inches like 10'6).
+    parse_distance(buf).map(BufferCmd::Distance)
 }
 
 /// `getDefaultLineStyle(type)` with the default options.
@@ -366,6 +394,8 @@ impl Drawing {
             layers: None,
             active_layer_id: None,
             north_angle: None,
+            area_codes: None,
+            pages: None,
         }
     }
 
@@ -1051,9 +1081,17 @@ impl Drawing {
     /// digits/dots; '<' (or ',') only after a digit; Tab is a decimal point.
     /// Returns true when the key was consumed.
     pub fn buffer_key(&mut self, key: &str, ctx: DrawCtx) -> bool {
-        let all_numeric =
-            !self.buffer.is_empty() && self.buffer.bytes().all(|b| b.is_ascii_digit() || b == b'.');
+        let all_numeric = !self.buffer.is_empty()
+            && self
+                .buffer
+                .bytes()
+                .all(|b| b.is_ascii_digit() || b == b'.' || b == b'\'');
         let ends_digit = self.buffer.ends_with(|c: char| c.is_ascii_digit());
+        let tail_has_prime = self
+            .buffer
+            .rsplit(['x', 'X', 'l', 'L', 'r', 'R', '<'])
+            .next()
+            .is_some_and(|seg| seg.contains('\'') || seg.contains('.'));
         let append = |d: &mut Drawing, s: &str, angle: Option<&str>| {
             d.buffer.push_str(s);
             d.hud.update(Some(&d.buffer.clone()), angle, d.pen_down);
@@ -1062,6 +1100,10 @@ impl Drawing {
         match key {
             k if k.len() == 1 && (k.as_bytes()[0].is_ascii_digit() || k == ".") => {
                 append(self, k, None);
+                true
+            }
+            "'" if ends_digit && !tail_has_prime => {
+                append(self, "'", None);
                 true
             }
             "x" | "X" if ends_digit => {
@@ -1516,27 +1558,6 @@ impl Drawing {
     /// Is this wall part of the live chain (drawn in `wallActive`)?
     pub fn is_active(&self, id: i64) -> bool {
         self.pen_down && self.line_ids.contains(&id)
-    }
-}
-
-/// A bare 10 ft wall (0,0)-(10,0) for tests elsewhere.
-#[cfg(test)]
-pub fn tests_wall() -> SketchLine {
-    SketchLine {
-        id: 1,
-        start: Pt::new(0.0, 0.0),
-        end: Pt::new(10.0, 0.0),
-        kind: WallType::Exterior,
-        color: None,
-        line_thickness: None,
-        thickness: None,
-        dimension_hidden: false,
-        layer_id: None,
-        bow_angle: 0.0,
-        arc_height: 0.0,
-        line_style: None,
-        dimension_position: None,
-        dimension_anchor: None,
     }
 }
 
@@ -2399,5 +2420,38 @@ mod curve_tests {
         assert!((arc_height_of(&d.lines[0]) - (rise + 1.0)).abs() < 1e-9);
         d.adjust_curves(&[1], -1.0, true);
         assert!((d.lines[0].bow_angle - 15.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn feet_inches_parse_in_distance_and_turns() {
+        assert_eq!(parse_buffer("10'6"), Some(BufferCmd::Distance(10.5)));
+        assert_eq!(parse_buffer("12'"), Some(BufferCmd::Distance(12.0)));
+        assert_eq!(
+            parse_buffer("10'6l"),
+            Some(BufferCmd::Turn {
+                distance: 10.5,
+                left: true,
+                angle: 90.0
+            })
+        );
+        assert_eq!(
+            parse_buffer("10'6x5'3"),
+            Some(BufferCmd::RiseRun {
+                rise: 10.5,
+                run: 5.25
+            })
+        );
+        let mut d = Drawing::default();
+        let ctx = DrawCtx {
+            snap: true,
+            grid: 1.0,
+            zoom: 1.0,
+            kind: Some(WallType::Exterior),
+            step_unit: StepUnit::Whole,
+        };
+        for k in ["1", "0", "'", "6", "r"] {
+            assert!(d.buffer_key(k, ctx));
+        }
+        assert_eq!(d.buffer, "10'6r");
     }
 }

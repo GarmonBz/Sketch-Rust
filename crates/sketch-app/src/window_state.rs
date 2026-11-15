@@ -10,10 +10,13 @@ use serde::{Deserialize, Serialize};
 
 const FILE: &str = "window.json";
 
-/// The smallest window the layout still works in (CSS px): the ribbon's
-/// Home tab and one dock panel stay usable.
-pub const MIN_W: f32 = 800.0;
+/// Minimum window dimensions (CSS px).
+pub const MIN_W: f32 = 360.0;
 pub const MIN_H: f32 = 560.0;
+
+/// Minimum window dimensions for the responsive shell (phone / Compact layout).
+pub const NEXT_MIN_W: f32 = MIN_W;
+pub const NEXT_MIN_H: f32 = MIN_H;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Placement {
@@ -38,12 +41,12 @@ impl Placement {
 
     /// A stored placement made safe to use: a sane size, and a position
     /// only if its title bar would land on a monitor that still exists.
-    fn sanitized(mut self, ui_scale: f32, system_scale: f32) -> Option<Self> {
+    fn sanitized(mut self, ui_scale: f32, system_scale: f32, min_w: f32, min_h: f32) -> Option<Self> {
         if !self.width.is_finite() || !self.height.is_finite() {
             return None;
         }
-        self.width = self.width.clamp(MIN_W, 16_000.0);
-        self.height = self.height.clamp(MIN_H, 16_000.0);
+        self.width = self.width.clamp(min_w, 16_000.0);
+        self.height = self.height.clamp(min_h, 16_000.0);
         if let Some((x, y)) = self.pos {
             let scale = ui_scale * system_scale;
             // A point inside the title bar, in physical px.
@@ -62,8 +65,19 @@ impl Placement {
 }
 
 /// The stored placement, or `None` (no store, nothing stored, not valid).
+#[cfg(test)]
 pub fn load(ui_scale: f32, system_scale: f32) -> Option<Placement> {
-    crate::persist::read_json::<Placement>(FILE)?.sanitized(ui_scale, system_scale)
+    load_with_min(ui_scale, system_scale, MIN_W, MIN_H)
+}
+
+/// The stored placement, clamped to the given minimum dimensions.
+pub fn load_with_min(
+    ui_scale: f32,
+    system_scale: f32,
+    min_w: f32,
+    min_h: f32,
+) -> Option<Placement> {
+    crate::persist::read_json::<Placement>(FILE)?.sanitized(ui_scale, system_scale, min_w, min_h)
 }
 
 pub fn save(placement: &Placement) {

@@ -131,7 +131,7 @@ try {
         $log = Join-Path $work 'install.log'
         $p = Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /l*v `"$log`" INSTALLFOLDER=`"$scratch\`"" -Wait -PassThru
         if ($p.ExitCode -ne 0) { throw "msiexec /i exited $($p.ExitCode); see $log" }
-        foreach ($f in 'sketch-app.exe', 'symbols.json') { if (-not (Test-Path -LiteralPath (Join-Path $scratch $f))) { throw "$f was not installed" } }
+        foreach ($f in 'sketch-app.exe', 'symbols.json', 'symbols.original.json') { if (-not (Test-Path -LiteralPath (Join-Path $scratch $f))) { throw "$f was not installed" } }
         $startMenu = Join-Path ([Environment]::GetFolderPath('Programs')) 'Sketch Rust.lnk'
         $desktop = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Sketch Rust.lnk'
         foreach ($l in $startMenu, $desktop) { if (-not (Test-Path -LiteralPath $l)) { throw "missing shortcut $l" } }

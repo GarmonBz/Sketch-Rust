@@ -1,23 +1,7 @@
-//! sketch-app — native rebuild of Appraisal Sketch 1.1 (Iced 0.14).
+//! sketch-app — native floor-plan sketching application for appraisers (Iced 0.14).
 //!
-//! Screens 1-2 of ACCEPTANCE.md. Screen 1: the static chrome of the default state —
-//! borderless window with the app-drawn title bar (logo, QAT, save-state
-//! pill, title, working minimize / full-screen / close + drag-to-move), the
-//! ribbon tab strip with the Home body, the 17-button left rail, the white
-//! canvas, the right dock on Areas, and the status bar. Every element is
-//! placed from `refs/ui-spec/chrome-spec-home.json` (measured from the
-//! running original at 1400x860 CSS px). Only the window controls are live
-//! on this screen; every other control is visual (with its CSS hover).
-//! Screen 2: the ribbon tabs switch bodies (View / Tools / Reference Image /
-//! Help from `refs/ui-spec/chrome-spec-states.json`) and the File tab
-//! toggles the backstage (`backstage.rs`), all per `refs/ui-manager.js`.
-//!
-//! Display scaling: the original is a web page, so one CSS px is one device
-//! px times the device pixel ratio. By default the app follows the system
-//! DPI exactly like the browser does. `SKETCH_DPR=<ratio>` overrides the
-//! ratio — `SKETCH_DPR=1` renders 1 CSS px = 1 physical px, which is what
-//! `tools/shot.ps1` + `tools/compare.py` need to compare against the
-//! gallery captured at DPR 1.
+//! Display scaling: by default the app follows the system DPI. `SKETCH_DPR=<ratio>`
+//! overrides the ratio — `SKETCH_DPR=1` renders 1 logical px = 1 physical px.
 
 // Native GUI executables should not allocate a Windows console.
 #![cfg_attr(all(target_os = "windows", not(test)), windows_subsystem = "windows")]
@@ -32,13 +16,11 @@ mod area_repair_tests;
 mod area_workflow;
 mod attr_dialog;
 mod autosave;
-mod backstage;
 mod breakdown_dialog;
 mod calcs;
 mod canvas_theme;
 mod chains;
 mod clipboard;
-mod codes_editor;
 mod color_dialog;
 mod command_palette;
 mod context_menu;
@@ -50,11 +32,12 @@ mod disto;
 mod dock;
 mod drawing;
 #[cfg(test)]
-mod e2e;
+mod e2e_next;
+#[cfg(test)]
+mod e2e_support;
 mod event_tap;
 mod exporter;
 mod file_dialogs;
-mod filter;
 mod format;
 mod guide;
 mod handles;
@@ -78,13 +61,10 @@ mod platform;
 mod png_overlay;
 mod popup_menu;
 mod print;
-mod rail;
 mod recent;
 mod reference_image;
 mod render;
 mod report_sketch;
-mod ribbon;
-mod ribbon_tabs;
 mod room_shapes;
 mod select_menu;
 mod selection;
@@ -92,19 +72,17 @@ mod shapes;
 mod shortcuts;
 mod sketch_canvas;
 mod sketchy;
-mod snap;
 mod statusbar;
 mod subject_info;
 mod symbol_manager;
-mod symbol_organizer;
+mod symbol_shape;
 mod symlib;
 mod text_manager;
 mod theme;
-mod titlebar;
 mod toast;
 mod tooltips;
-mod touch_panel;
 mod transform;
+mod ui;
 mod undo;
 mod undo_history;
 mod view_state;
@@ -112,10 +90,8 @@ mod window_state;
 
 use std::sync::Arc;
 
-use iced::widget::{column, container, row, stack};
+use iced::widget::{column, row};
 use iced::{event, mouse, window, Element, Event, Length, Point, Size, Subscription, Task};
-
-use ribbon::{Body, TabId};
 
 /// Reference window client size in CSS px.
 const WINDOW_W: f32 = 1400.0;
@@ -159,14 +135,7 @@ pub enum Message {
     },
     Close,
     CloseHover(bool),
-    /// A ribbon tab (File included) was clicked.
-    TabClicked(TabId),
-    /// A mouse button went down at this point (backstage open only; reported
-    /// by the root `EventTap`, the press still reaches its target).
-    PointerDown(Point),
-    /// Escape was pressed (backstage open only).
-    Escape,
-    /// The right dock (screen 3).
+    /// The right dock.
     Dock(dock::DockMsg),
     /// Cursor moved while dragging the dock's resize handle: position and
     /// viewport width (root `EventTap`, i.e. pointer capture).
@@ -185,7 +154,7 @@ pub enum Message {
     ToastExpired(u64),
     /// The window's logical size changed.
     WindowResized(Size),
-    /// Status bar (screen 4) and the ribbon commands that share it.
+    /// Status bar and toolbar view commands.
     Status(statusbar::StatusMsg),
     /// A Select-mode press: starts the pointer's marquee when it missed.
     CanvasPress(f32, f32),
@@ -262,11 +231,9 @@ pub enum Message {
     /// An orphaned drag release (the pointer left the dock): resolve or
     /// clear the armed press (no-op once a widget release committed).
     LayerReleaseAnywhere,
-    /// The two library managers (the dock's Edit / Organize... buttons).
+    /// The text library manager.
     TextLibraryManager(text_manager::TextManagerMsg),
-    SymbolOrganizer(symbol_organizer::SymbolOrganizerMsg),
-    /// Recent Files (S11-049..053).
-    RecentToggle,
+    /// Recent Files: open or clear.
     RecentOpen(usize),
     RecentClear,
     /// Calcs Expand All / Collapse All (S7-016/017).
@@ -276,7 +243,7 @@ pub enum Message {
     New,
     /// `importFromFile` — merge another sketch's first page (S11-044).
     ImportSketch,
-    /// The reference image's ribbon (screen 10, S10-007..020).
+    /// Reference image controls (photo load, scale, orient, opacity).
     PhotoLoad,
     PhotoShow,
     PhotoHide,
@@ -291,6 +258,8 @@ pub enum Message {
     PhotoFlipH,
     PhotoFlipV,
     PhotoIntensity(f32),
+    #[cfg(test)]
+    PhotoBytesLoaded(Vec<u8>, u32, u32),
     /// The Geo popup (S10-021..024).
     GeoOpen,
     /// Help > About: the running build's version.
@@ -315,8 +284,7 @@ pub enum Message {
     Disto(disto::DistoMsg),
     /// The Flip Sketch / Canvas background / Interface theme popup menus.
     PopupMenu(popup_menu::PopupMsg),
-    /// The palette's route to one of them: the anchor is the ribbon button
-    /// when its tab shows, else a hidden element's zero rect.
+    /// Palette command routing for popup menus.
     PaletteMenu(popup_menu::Kind),
     /// View > Mini-Map / the palette's "Mini map" (`toggleMiniMap`).
     ToggleMiniMap,
@@ -325,14 +293,14 @@ pub enum Message {
     /// The window screenshot the map's snapshot is cropped from.
     MiniMapShot(window::Screenshot),
     MiniMapClose,
-    /// File > Print... / the QAT printer: the report PDF, opened for printing.
+    /// File > Print... / quick print: the report PDF, opened for printing.
     Print,
     /// File > Print Preview... and its toolbar.
     PrintPreviewOpen,
     PrintPreview(print::PreviewMsg),
     /// `emailSupport()` — the mailto opener (S12-026/071/084).
     Email,
-    /// Backstage actions (screens 11/2): the exporters, CAD import.
+    /// Export and CAD import actions.
     ExportPng,
     ExportSvg,
     ExportDxf,
@@ -373,8 +341,8 @@ pub enum Message {
     /// Text Color: open the Color dialog for the selected label / area text.
     TextColorClicked,
     /// One of the text group's typed boxes changed / was submitted.
-    TextFieldInput(ribbon::TextField, String),
-    TextFieldApply(ribbon::TextField),
+    TextFieldInput(ui::inspector::TextField, String),
+    TextFieldApply(ui::inspector::TextField),
     /// Edit Tools › an area's Fill Pattern / Line Style / Line Thickness
     /// select: the next option applies (`setSelectedAreaStyle`).
     AreaCycle(area_props::AreaCycle),
@@ -395,8 +363,6 @@ pub enum Message {
     Paste,
     SelectAll,
     Delete,
-    /// Edit Tools › Select: open the by-type menu (`select-by-type`).
-    OpenSelectMenu,
     /// Edit Tools › Area Props (`area-properties`).
     AreaProps,
     AreaWorkflow(area_workflow::Msg),
@@ -404,6 +370,11 @@ pub enum Message {
     SelectByType(select_menu::SelectKind),
     /// A canvas context-menu row.
     ContextAction(context_menu::Action),
+    /// Save or discard a temporary symbol shape-editing session (`ui/symbol_library.rs`).
+    SaveSymbolShape,
+    CancelSymbolShape,
+    /// Tracks Ctrl/Command held while the symbol library modal is open.
+    SymbolLibraryMods(bool),
     /// The Area Properties dialog's controls.
     AreaDialog(area_dialog::AreaDialogMsg),
     /// The Area Attributes dialog's controls.
@@ -416,12 +387,12 @@ pub enum Message {
     OpenCodesEditor,
     /// Tools › Area Breakdown (`area-breakdown`).
     OpenBreakdown,
-    /// The Options dialog (Tools › Options; File backstage › Options).
+    /// The Options dialog.
     Options(options_dialog::OptMsg),
     /// The Breakdown Details dialog's controls.
     Breakdown(breakdown_dialog::BreakdownMsg),
     /// The area-code table editor's controls.
-    CodesEditor(codes_editor::CodesMsg),
+    CodesEditor(ui::dialogs::CodesMsg),
     /// Areas dock › New (`showAddAreaCode`).
     OpenNewCode,
     /// The New Area Code dialog's controls.
@@ -435,7 +406,7 @@ pub enum Message {
     /// A calcs area row: expand its details and select the area.
     CalcsArea(i64),
     /// A rail tool button.
-    Rail(rail::RailTool),
+    Rail(view_state::RailTool),
     /// Canvas pan drag (window px): Pan tool, middle button, Space + left.
     PanStart(f32, f32),
     PanMove(f32, f32),
@@ -467,8 +438,12 @@ pub enum Message {
         /// Ctrl/Cmd: additive selection.
         ctrl: bool,
     },
+    /// A single-finger touch tap on the canvas (canvas px).
+    CanvasTouchTap { x: f32, y: f32 },
     /// Right press on the canvas (`contextmenu`): the pen lifts first.
     CanvasContext,
+    /// Presentational events for the Next shell.
+    Ui(ui::Msg),
 }
 
 /// The QAT's history button (`list-bullets`): 28x28, at x 20 + 28*3, y 1 —
@@ -611,16 +586,6 @@ struct CurrentFile {
     format: SketchFileFormat,
 }
 
-const QAT_HISTORY_X: f32 = 104.0;
-const QAT_Y: f32 = 1.0;
-const QAT_SIZE: f32 = 28.0;
-
-/// The Edit Tools › Select button: x 213, y 68, 46x49 in the ribbon body; the
-/// by-type popup opens 2px under it.
-const SELECT_BUTTON_X: f32 = 213.0;
-const SELECT_BUTTON_Y: f32 = 68.40625;
-const SELECT_BUTTON_H: f32 = 49.1875;
-
 /// How far the pointer travels before a press on a dock item is a drag.
 const DRAG_START_PX: f32 = 5.0;
 
@@ -639,6 +604,23 @@ struct DockDrag {
     hover: Option<(Vec<sketch_core::geometry::Pt>, iced::Color)>,
 }
 
+/// Saved page/viewport snapshot while temporarily editing a symbol's geometry.
+#[derive(Debug, Clone)]
+pub struct SymbolEditSession {
+    pub symbol_id: String,
+    pub symbol_name: String,
+    pub saved_drawing: drawing::Drawing,
+    pub saved_undo: undo::UndoStack,
+    pub saved_selection: selection::Selection,
+    pub saved_grid_size: f64,
+    pub saved_pan: (f64, f64),
+    pub saved_zoom: f64,
+    pub saved_mode: view_state::Mode,
+    pub saved_dimensions: bool,
+    pub locked_entities: Vec<sketch_core::symbols::Entity>,
+}
+
+/// Active state of the Sketch Rust application (`window_state::SIZE` default 1400x860).
 pub struct App {
     symbol_changes: symbol_manager::Changes,
     symbol_manager: symbol_manager::Manager,
@@ -665,8 +647,6 @@ pub struct App {
     /// The latest reported position / size, maximized or not.
     last_window_pos: Option<Point>,
     last_window_size: Option<Size>,
-    /// The tab carrying `.active` (File too, once clicked).
-    active_tab: TabId,
     /// `state.symbolFavorites` — the saved list, None while the dock lists
     /// the library defaults (`loadLibraryState`).
     symbol_favorites: Option<Vec<String>>,
@@ -676,10 +656,6 @@ pub struct App {
     canvas_pointer: std::cell::Cell<Option<(f32, f32)>>,
     canvas_cache: iced::widget::canvas::Cache,
     pointer_scene_ready: bool,
-    /// The `.ribbon-content` on display.
-    body: Body,
-    /// `#file-menu` shown.
-    file_menu: bool,
     /// `#sidebar-dock` state (`state.sidebar` + library panels).
     dock: dock::DockState,
     /// The external symbol library (`symbols.json`, read at runtime).
@@ -709,7 +685,7 @@ pub struct App {
     /// The Area Attributes dialog (screen 7).
     attr_dialog: attr_dialog::AttrDialog,
     /// The area-code table editor (screen 7).
-    codes_editor: codes_editor::CodesEditor,
+    codes_editor: ui::dialogs::CodesEditor,
     /// The Options dialog (Screen 11, S11-001..032).
     options_dialog: options_dialog::OptionsDialog,
     /// `state.pageLayout` (Screen 11's File > Page Layout).
@@ -718,12 +694,10 @@ pub struct App {
     page_layout_dialog: page_layout::PageLayoutDialog,
     /// The Text Library manager (S9-008..013, the dock's Edit button).
     text_manager: text_manager::TextManager,
-    /// The "Organize Favorite Symbols" dialog (S8-008 as captured).
-    symbol_organizer: symbol_organizer::SymbolOrganizer,
+    /// Active temporary canvas session editing a symbol's geometry (§6.2).
+    pub(crate) symbol_edit_session: Option<SymbolEditSession>,
     /// Recent Files (S11-049..053): newest first, capped at 10.
     recent: Vec<recent::RecentFile>,
-    /// The Recent Files submenu's open state (the File backstage's).
-    recent_open: bool,
     /// The reference image ("photometrics", screen 10).
     bg_image: reference_image::BgImage,
     /// The Image Edit Mode's drag: the drag's last world point.
@@ -738,7 +712,7 @@ pub struct App {
     print_preview: print::PrintPreview,
     /// The Mini-Map's snapshot while it is open (S12-018).
     mini_map: Option<iced::widget::image::Handle>,
-    /// The open ribbon popup menu (Flip / Canvas background / Interface).
+    /// The open popup menu (Flip / Canvas background / Interface).
     popup_menu: popup_menu::PopupMenu,
     /// Bluetooth (Disto) chooser and the `#disto-status` chip.
     disto: disto::Disto,
@@ -780,8 +754,6 @@ pub struct App {
     line_length_edit: Option<String>,
     /// What the Color dialog's OK applies to.
     color_target: color_dialog::ColorTarget,
-    /// The tab showing before the contextual Edit Tools tab took over.
-    tab_before_edit_tools: Option<(ribbon::TabId, ribbon::Body)>,
     /// `options.stepUnit` — the arrow keys' step.
     step_unit: drawing::StepUnit,
     /// The wall-shape menu and its prompt chain (screen 5d-2).
@@ -811,9 +783,6 @@ pub struct App {
     /// `dimensionsEnabled`, `dimensionPlacement`): read on `applySaveModel`
     /// and written back verbatim, never invented.
     settings_extra: std::collections::BTreeMap<String, serde_json::Value>,
-    /// The status bar's vertical scrollbar is showing (see
-    /// `sync_status_scroll`).
-    status_scroll: bool,
     /// The 1:N input's text while it is being edited.
     scale_edit: Option<String>,
     /// Pages, the current page and the underlay.
@@ -829,6 +798,7 @@ pub struct App {
     command_palette_selected: usize,
     touch_panel_open: bool,
     touch_distance: f64,
+    last_disto_meters: Option<f64>,
     /// The window's size in CSS px.
     window_size: Size,
     /// The startup maximize is pending: the original would have loaded at
@@ -841,17 +811,12 @@ pub struct App {
     /// The area last picked in the status bar's select.
     status_area: Option<i64>,
     /// The text group's box being typed in (until Enter applies it).
-    text_edit: Option<(ribbon::TextField, String)>,
+    text_edit: Option<(ui::inspector::TextField, String)>,
     /// `UIManager.defaultOptions`: the bundled options with any saved
     /// defaults laid over them - what Restore Defaults applies.
     default_options: crate::options::Options,
-}
-
-/// The canvas size inside a `w` x `h` (CSS px) window with the dock at
-/// `dock_w` and the Pages navigator `nav_w` wide: minus the 41px rail column
-/// and the 157px of chrome rows.
-fn canvas_size(w: f32, h: f32, dock_w: f32, nav_w: f32) -> (f32, f32) {
-    (w - 41.0 - nav_w - dock_w, h - 30.0 - 99.0 - 28.0)
+    /// Presentational state for the application UI.
+    ui: ui::UiState,
 }
 
 /// `areaCodes` in the save model (`window.AreaCodes` serialisation).
@@ -1030,9 +995,13 @@ impl App {
         };
         // The window opens where it was left (see `program`), so the first
         // layout uses that size rather than the default.
-        let placement = window_state::load(ui_scale, system_scale());
+        let placement = window_state::load_with_min(
+            ui_scale,
+            system_scale(),
+            window_state::NEXT_MIN_W,
+            window_state::NEXT_MIN_H,
+        );
         let window_size = placement.map_or(Size::new(WINDOW_W, WINDOW_H), |p| p.size());
-        let (cw, ch) = canvas_size(window_size.width, window_size.height, dock.width(), 0.0);
         (
             // The real app reads the recent-files sidecar at boot; the e2e
             // boots through this factory too, so the read gates on the
@@ -1056,18 +1025,18 @@ impl App {
                     placement_stored: placement,
                     last_window_pos: None,
                     last_window_size: None,
-                    active_tab: TabId::Home,
                     symbol_favorites: None,
                     gates_cache: crate::layers::LayerGates::default(),
                     canvas_pointer: Default::default(),
                     canvas_cache: Default::default(),
                     pointer_scene_ready: false,
-                    body: Body::Home,
-                    file_menu: false,
                     dock,
                     symbols: symlib::library(),
                     toasts: toast::Toasts::default(),
-                    view: view_state::View::new(cw as f64, ch as f64),
+                    view: view_state::View::new(
+                        f64::from(window_size.width),
+                        f64::from(window_size.height),
+                    ),
                     drawing: drawing::Drawing::default(),
                     color: color_dialog::ColorDialog::new(),
                     selection: selection::Selection::default(),
@@ -1078,14 +1047,13 @@ impl App {
                     context: context_menu::ContextMenu::default(),
                     area_dialog: area_dialog::AreaDialog::default(),
                     attr_dialog: attr_dialog::AttrDialog::default(),
-                    codes_editor: codes_editor::CodesEditor::default(),
+                    codes_editor: ui::dialogs::CodesEditor::default(),
                     options_dialog: options_dialog::OptionsDialog::default(),
                     page_layout: page_layout::PageLayout::default(),
                     page_layout_dialog: page_layout::PageLayoutDialog::default(),
                     text_manager: text_manager::TextManager::default(),
-                    symbol_organizer: symbol_organizer::SymbolOrganizer::default(),
+                    symbol_edit_session: None,
                     recent: Vec::new(),
-                    recent_open: false,
                     bg_image: reference_image::BgImage::default(),
                     photo_drag: None,
                     geo_menu: reference_image::GeoMenu::default(),
@@ -1106,7 +1074,6 @@ impl App {
                     drag_banked: false,
                     line_length_edit: None,
                     color_target: color_dialog::ColorTarget::DrawColor,
-                    tab_before_edit_tools: None,
                     step_unit: drawing::StepUnit::from_option(drawing::DEFAULT_STEP_UNIT),
                     shapes: shapes::Shapes::default(),
                     layers: layers::Layers::default(),
@@ -1121,7 +1088,6 @@ impl App {
                     subject_auto_filled: false,
                     extended_data: String::new(),
                     settings_extra: std::collections::BTreeMap::new(),
-                    status_scroll: false,
                     scale_edit: None,
                     pages: pages::Pages::default(),
                     areas_disabled: false,
@@ -1131,6 +1097,7 @@ impl App {
                     command_palette_selected: 0,
                     touch_panel_open: false,
                     touch_distance: 1.0,
+                    last_disto_meters: None,
                     placing_symbol: None,
                     placing_text: None,
                     dock_drag: None,
@@ -1138,14 +1105,15 @@ impl App {
                     region_cache: Default::default(),
                     workflow: Default::default(),
                     window_size,
-                    // A window restored maximized is laid out for its
-                    // restored size until the first resize arrives.
-                    recenter_on_resize: placement.is_some_and(|p| p.maximized),
+                    // The initial canvas center depends on the active size
+                    // class and first viewport resize.
+                    recenter_on_resize: true,
                     pages_nav_open: false,
                     pages_nav_hover: None,
                     status_area: None,
                     text_edit: None,
                     default_options: crate::options::Options::default(),
+                    ui: ui::UiState::default(),
                 };
                 if std::env::var_os("SKETCH_PERSIST").is_some() {
                     app.load_recent();
@@ -1158,21 +1126,45 @@ impl App {
                 app.symbol_changes = persist::read_json("symbol-library.json").unwrap_or_default();
                 app.rebuild_symbols();
                 app.autosave_boot();
+                app.sync_canvas();
+                let (cw, ch) = app.view.canvas;
+                app.view.pan = (cw / 2.0, ch / 2.0);
+                app.ui.start.sync_thumbs(&app.recent);
+                let has_startup_file = STARTUP_FILE
+                    .lock()
+                    .ok()
+                    .is_some_and(|file| file.is_some());
+                if std::env::var_os("SKETCH_PERSIST").is_some()
+                    && !has_startup_file
+                    && app.drawing.lines.is_empty()
+                    && app.drawing.polygons.is_empty()
+                {
+                    app.ui.start.open = true;
+                }
                 app
             },
-            window::latest().map(Message::WindowReady),
+            Task::batch([
+                ui::fonts::load_tasks(),
+                window::latest().map(Message::WindowReady),
+            ]),
         )
     }
 
-    /// The canvas's CSS size follows the window and the dock width.
+    /// Window-logical rectangle currently allocated to the drawing canvas.
+    pub(crate) fn canvas_rect(&self) -> iced::Rectangle {
+        ui::layout::canvas_rect(self)
+    }
+
+    /// Top-left window-logical origin of the drawing canvas.
+    pub(crate) fn canvas_origin(&self) -> Point {
+        let r = self.canvas_rect();
+        Point::new(r.x, r.y)
+    }
+
+    /// The canvas's CSS size follows the active shell's layout and window size.
     fn sync_canvas(&mut self) {
-        let (cw, ch) = canvas_size(
-            self.window_size.width,
-            self.window_size.height,
-            self.dock.width(),
-            self.pages_nav_width(),
-        );
-        self.view.canvas = (cw as f64, ch as f64);
+        let rect = self.canvas_rect();
+        self.view.canvas = (f64::from(rect.width), f64::from(rect.height));
     }
 
     /// The view's side of the measurement-label tests.
@@ -1330,50 +1322,12 @@ impl App {
         }
     }
 
-    /// The defined-areas select's options and the area it shows
-    /// (`updateCalcsPanel`): every defined area as `code  name  gross`, the
-    /// shown one being the selected area, else the last pick, else the last.
-    fn status_areas(&self) -> (Vec<statusbar::AreaOption>, Option<i64>) {
-        let defined: Vec<&sketch_core::model::Polygon> = self
-            .drawing
-            .polygons
-            .iter()
-            .filter(|p| !p.kind.is_empty() && p.kind != "UND")
-            .collect();
-        let rows: Vec<(i64, String, String, f64)> = defined
-            .iter()
-            .map(|p| {
-                let name = if p.name.is_empty() {
-                    p.kind.clone()
-                } else {
-                    p.name.clone()
-                };
-                let area = if p.gross != 0.0 { p.gross } else { p.area };
-                (p.id, p.kind.clone(), name, area)
-            })
-            .collect();
-        let selected = defined
-            .iter()
-            .find(|p| self.selection.polys.contains(&p.id))
-            .map(|p| p.id)
-            .or(self
-                .status_area
-                .filter(|id| defined.iter().any(|p| p.id == *id)));
-        (statusbar::area_options(&rows), selected)
-    }
-
-    /// The Pages navigator's width while open (0 closed).
-    fn pages_nav_width(&self) -> f32 {
-        if self.pages_nav_open {
-            pages_nav::WIDTH
-        } else {
-            0.0
-        }
-    }
-
     /// The Pages navigator (S10-040..045).
     fn pages_nav_msg(&mut self, m: pages_nav::NavMsg) -> Task<Message> {
         use pages_nav::NavMsg as N;
+        self.ui.page_menu = None;
+        self.ui.export_menu = false;
+        self.history.close();
         match m {
             N::Toggle => {
                 self.pages_nav_open = !self.pages_nav_open;
@@ -1484,9 +1438,18 @@ impl App {
     fn status(&mut self, m: statusbar::StatusMsg) -> Task<Message> {
         use statusbar::StatusMsg as S;
         match m {
-            S::CenterSketch => self.view.center_sketch(self.sketch_view_bounds()),
-            S::CenterFit => self.view.center_and_fit(self.sketch_view_bounds()),
-            S::ZoomFence => return self.set_mode(view_state::Mode::ZoomFence),
+            S::CenterSketch => {
+                self.ui.controls_popover = None;
+                self.view.center_sketch(self.sketch_view_bounds());
+            }
+            S::CenterFit => {
+                self.ui.controls_popover = None;
+                self.view.center_and_fit(self.sketch_view_bounds());
+            }
+            S::ZoomFence => {
+                self.ui.controls_popover = None;
+                return self.set_mode(view_state::Mode::ZoomFence);
+            }
             S::ToggleGrid => {
                 self.view.grid = !self.view.grid;
                 self.drawing.options.grid_enabled = self.view.grid;
@@ -1498,7 +1461,12 @@ impl App {
             S::ToggleSnap => self.view.snap = !self.view.snap,
             S::ToggleAreaSnap => self.view.area_snap = !self.view.area_snap,
             S::Pitch(p) => self.view.set_area_snap_size(p.value),
-            S::ToggleFilter => self.view.filter_open = !self.view.filter_open,
+            S::ToggleFilter => {
+                self.view.filter_open = !self.view.filter_open;
+                if self.view.filter_open {
+                    self.ui.controls_popover = None;
+                }
+            }
             S::Filter(i) => self.view.filters[i] = !self.view.filters[i],
             // showPanel('panel-calcs') — always opens the dock.
             S::TotalsChip => {
@@ -1549,7 +1517,10 @@ impl App {
                 };
                 return self.open_dialog(d);
             }
-            S::Underlay(i) => self.pages.set_underlay(i),
+            S::Underlay(i) => {
+                self.ui.controls_popover = None;
+                self.pages.set_underlay(i);
+            }
             S::AreaPick(id) => {
                 // `#area-status-select` change: that area alone is selected.
                 if self.drawing.polygons.iter().any(|p| p.id == id) {
@@ -1564,6 +1535,7 @@ impl App {
                     // Number(value): blank or junk re-syncs the input.
                     if let Ok(n) = s.trim().parse::<f64>() {
                         self.view.set_drawing_scale(n);
+                        self.ui.controls_popover = None;
                     }
                 }
             }
@@ -1609,7 +1581,6 @@ impl App {
                 let world = self.world(*x, *y);
                 self.workflow_hover(world);
                 self.drawing.hover(world, self.draw_ctx());
-                self.sync_status_scroll();
                 return Task::none();
             }
         }
@@ -1619,7 +1590,6 @@ impl App {
         self.ensure_area_layers();
         self.recalculate_if_needed();
         self.workflow_refresh();
-        self.sync_status_scroll();
         // The view's render + right-press gates read this (a frame-fresh
         // isEntityVisible/isEntityLocked).
         self.gates_cache = self.layer_gates();
@@ -1669,28 +1639,13 @@ impl App {
                 .toasts
                 .show("That sketch is already open in another window.".into());
         }
+        self.ui.start.open = false;
         self.open_sketch_path(path)
     }
 
     fn invalidate_canvas(&mut self) {
         self.canvas_cache.clear();
         self.pointer_scene_ready = false;
-    }
-
-    /// The status bar is `overflow-x: auto`: once its centre overflows, the
-    /// readout wraps (30px tall), the bar overflows vertically and a 10px
-    /// scrollbar appears — which keeps the content overflowing until it fits
-    /// the narrower bar again (Chrome's layout, measured on the original).
-    fn sync_status_scroll(&mut self) {
-        let natural = statusbar::center_natural(&self.view, &self.drawing.hud);
-        let max = statusbar::center_max(&self.pages, self.window_size.width);
-        if self.status_scroll {
-            if natural <= max - statusbar::SCROLLBAR_W {
-                self.status_scroll = false;
-            }
-        } else if natural > max {
-            self.status_scroll = true;
-        }
     }
 
     /// The space a window may occupy on its monitor, in CSS px (the app's
@@ -1718,10 +1673,689 @@ impl App {
         // and undo-free, as in the original.
         self.ensure_area_layers();
         if std::env::var_os("SKETCH_TRACE").is_some() && !matches!(message, Message::Noop) {
-            eprintln!("TRACE msg={message:?} file_menu={}", self.file_menu);
+            eprintln!("TRACE msg={message:?}");
         }
         match message {
             Message::Noop => Task::none(),
+            Message::Ui(msg) => match msg {
+                ui::Msg::Noop => Task::none(),
+                ui::Msg::SetDensity(d) => {
+                    self.ui.density = d;
+                    self.sync_canvas();
+                    Task::none()
+                }
+                ui::Msg::SetGallery(open) => {
+                    self.ui.gallery = open;
+                    Task::none()
+                }
+                ui::Msg::GalleryInput(s) => {
+                    self.ui.gallery_input = s;
+                    Task::none()
+                }
+                ui::Msg::ToggleLedger => {
+                    let next = !self.ui.ledger_open;
+                    self.ui.ledger_open = next;
+                    if next {
+                        self.ui.inspector_open = false;
+                    }
+                    self.sync_canvas();
+                    Task::none()
+                }
+                ui::Msg::ToggleInspector => {
+                    let next = !self.ui.inspector_open;
+                    self.ui.inspector_open = next;
+                    if next {
+                        self.ui.ledger_open = false;
+                    }
+                    self.sync_canvas();
+                    Task::none()
+                }
+                ui::Msg::OpenLedger(open) => {
+                    self.ui.ledger_open = open;
+                    if open {
+                        self.ui.inspector_open = false;
+                        if ui::layout::SizeClass::of(self.window_size.width)
+                            == ui::layout::SizeClass::Compact
+                        {
+                            self.touch_panel_open = false;
+                        }
+                    }
+                    self.sync_canvas();
+                    Task::none()
+                }
+                ui::Msg::OpenInspector(open) => {
+                    self.ui.inspector_open = open;
+                    if open {
+                        self.ui.ledger_open = false;
+                        if ui::layout::SizeClass::of(self.window_size.width)
+                            == ui::layout::SizeClass::Compact
+                        {
+                            self.touch_panel_open = false;
+                        }
+                    }
+                    self.sync_canvas();
+                    Task::none()
+                }
+                ui::Msg::CloseOverlays => {
+                    self.ui.close_all();
+                    self.view.filter_open = false;
+                    self.history.close();
+                    self.geo_menu.close();
+                    if self.pages_nav_open {
+                        self.pages_nav_open = false;
+                        self.pages_nav_hover = None;
+                    }
+                    self.sync_canvas();
+                    Task::none()
+                }
+                ui::Msg::TouchDetected => {
+                    let was_hidden_by_key = self.ui.pad_hidden_by_key;
+                    self.ui.pad_hidden_by_key = false;
+                    let first_touch = !self.ui.touch_seen;
+                    if first_touch {
+                        self.ui.touch_seen = true;
+                        self.ui.density = ui::tokens::Density::Touch;
+                    }
+                    if (first_touch || was_hidden_by_key)
+                        && ui::pad::is_drawing_tool(self.view.mode)
+                        && !self.ui.pad_user_hidden
+                    {
+                        self.touch_panel_open = true;
+                        if ui::layout::SizeClass::of(self.window_size.width)
+                            == ui::layout::SizeClass::Compact
+                        {
+                            self.ui.ledger_open = false;
+                            self.ui.inspector_open = false;
+                        }
+                    }
+                    if first_touch || was_hidden_by_key {
+                        self.sync_canvas();
+                    }
+                    Task::none()
+                }
+                ui::Msg::ToggleMenu => {
+                    let next = !self.ui.menu_open;
+                    self.ui.menu_open = next;
+                    self.ui.menu_sub = None;
+                    self.ui.menu_row = 0;
+                    if next {
+                        self.command_palette_open = false;
+                        self.ui.page_menu = None;
+                        self.ui.export_menu = false;
+                        self.ui.controls_popover = None;
+                        self.view.filter_open = false;
+                        self.history.close();
+                    }
+                    Task::none()
+                }
+                ui::Msg::CloseMenu => {
+                    self.ui.menu_open = false;
+                    self.ui.menu_sub = None;
+                    Task::none()
+                }
+                ui::Msg::OpenSelectByType => {
+                    self.command_palette_open = false;
+                    self.ui.page_menu = None;
+                    self.ui.export_menu = false;
+                    self.ui.controls_popover = None;
+                    self.view.filter_open = false;
+                    self.history.close();
+                    self.ui.menu_open = true;
+                    self.ui.menu_group = ui::commands::Group::Edit;
+                    self.ui.menu_sub = Some(ui::menu::MenuSub::SelectByType);
+                    self.ui.menu_row = 0;
+                    Task::none()
+                }
+                ui::Msg::MenuGroup(group) => {
+                    self.ui.menu_group = group;
+                    self.ui.menu_sub = None;
+                    self.ui.menu_row = 0;
+                    Task::none()
+                }
+                ui::Msg::MenuSub(sub) => {
+                    self.ui.menu_sub = sub;
+                    self.ui.menu_row = 0;
+                    Task::none()
+                }
+                ui::Msg::MenuMove(delta) => {
+                    let count = ui::menu::active_row_count(self);
+                    self.ui.menu_row = command_palette::step(self.ui.menu_row, count, delta);
+                    Task::none()
+                }
+                ui::Msg::MenuSwitchGroup(delta) => {
+                    use ui::commands::Group;
+                    if self.ui.menu_sub.is_some() && delta < 0 {
+                        self.ui.menu_sub = None;
+                        self.ui.menu_row = 0;
+                        return Task::none();
+                    }
+                    let cur = Group::ALL
+                        .iter()
+                        .position(|&g| g == self.ui.menu_group)
+                        .unwrap_or(0);
+                    let next = command_palette::step(cur, Group::ALL.len(), delta);
+                    self.ui.menu_group = Group::ALL[next];
+                    self.ui.menu_sub = None;
+                    self.ui.menu_row = 0;
+                    Task::none()
+                }
+                ui::Msg::MenuEnter => {
+                    if let Some(sub) = self.ui.menu_sub {
+                        let actions = ui::menu::sub_actions(self, sub);
+                        if let Some(act) = actions.get(self.ui.menu_row) {
+                            if act.enabled {
+                                if let Some(msg) = act.on_press.clone() {
+                                    return self.update(msg);
+                                }
+                            }
+                        }
+                        return Task::none();
+                    }
+                    let items = ui::menu::group_items(self.ui.menu_group);
+                    match items.get(self.ui.menu_row) {
+                        Some(ui::menu::GroupItem::Sub(sub)) => {
+                            self.ui.menu_sub = Some(*sub);
+                            self.ui.menu_row = 0;
+                            Task::none()
+                        }
+                        Some(ui::menu::GroupItem::Cmd(cmd)) => {
+                            if (cmd.enabled)(self) {
+                                self.ui.menu_open = false;
+                                self.ui.menu_sub = None;
+                                let m = (cmd.run)(self);
+                                self.update(m)
+                            } else {
+                                Task::none()
+                            }
+                        }
+                        None => Task::none(),
+                    }
+                }
+                ui::Msg::MenuRunId(id) => {
+                    if let Some(cmd) = ui::commands::find(id) {
+                        if (cmd.enabled)(self) {
+                            self.ui.menu_open = false;
+                            self.ui.menu_sub = None;
+                            let m = (cmd.run)(self);
+                            return self.update(m);
+                        }
+                    }
+                    Task::none()
+                }
+                ui::Msg::MenuRunRecent(index) => {
+                    self.ui.menu_open = false;
+                    self.ui.menu_sub = None;
+                    self.update(Message::RecentOpen(index))
+                }
+                ui::Msg::MenuClearRecent => {
+                    self.ui.menu_open = false;
+                    self.ui.menu_sub = None;
+                    self.update(Message::RecentClear)
+                }
+                ui::Msg::MenuSelectKind(kind) => {
+                    self.ui.menu_open = false;
+                    self.ui.menu_sub = None;
+                    self.update(Message::SelectByType(kind))
+                }
+                ui::Msg::MenuFlip(axis) => {
+                    self.ui.menu_open = false;
+                    self.ui.menu_sub = None;
+                    self.update(Message::PopupMenu(popup_menu::PopupMsg::Flip(axis)))
+                }
+                ui::Msg::MenuPitch(index) => {
+                    self.ui.menu_open = false;
+                    self.ui.menu_sub = None;
+                    if let Some(&(label, value)) = view_state::PITCHES.get(index) {
+                        self.update(Message::Status(statusbar::StatusMsg::Pitch(
+                            statusbar::PitchOption { label, value },
+                        )))
+                    } else {
+                        Task::none()
+                    }
+                }
+                ui::Msg::MenuFilter(index) => {
+                    self.update(Message::Status(statusbar::StatusMsg::Filter(index)))
+                }
+                ui::Msg::MenuCanvasTheme(t) => {
+                    self.ui.menu_open = false;
+                    self.ui.menu_sub = None;
+                    self.update(Message::PopupMenu(popup_menu::PopupMsg::Canvas(t)))
+                }
+                ui::Msg::MenuInterfaceTheme(t) => {
+                    self.ui.menu_open = false;
+                    self.ui.menu_sub = None;
+                    self.update(Message::PopupMenu(popup_menu::PopupMsg::Interface(t)))
+                }
+                ui::Msg::MenuUnitsMetric(metric) => {
+                    self.ui.menu_open = false;
+                    self.ui.menu_sub = None;
+                    let mut u = self.drawing.options.units.clone();
+                    u.metric = metric;
+                    if metric && u.area_label_suffix == "sf" {
+                        u.area_label_suffix = "m²".to_owned();
+                    } else if !metric && u.area_label_suffix == "m²" {
+                        u.area_label_suffix = "sf".to_owned();
+                    }
+                    self.update(Message::Units(u))
+                }
+                ui::Msg::MenuOpenSearch => {
+                    self.ui.menu_open = false;
+                    self.ui.menu_sub = None;
+                    self.update(Message::CommandPaletteOpen)
+                }
+                ui::Msg::PromptRenameDocument => {
+                    self.ui.page_menu = None;
+                    self.ui.export_menu = false;
+                    self.history.close();
+                    let current = self.file_name.clone();
+                    self.open_dialog(dialog::Dialog::prompt(
+                        "Document name:",
+                        &current,
+                        dialog::Action::RenameDocument,
+                    ))
+                }
+                ui::Msg::PromptRenamePage(index) => {
+                    self.ui.page_menu = None;
+                    self.ui.export_menu = false;
+                    self.history.close();
+                    if index >= self.pages.len() {
+                        return Task::none();
+                    }
+                    let current = self.pages.page_name(index);
+                    self.open_dialog(dialog::Dialog::prompt(
+                        "Page name:",
+                        &current,
+                        dialog::Action::RenamePage(index),
+                    ))
+                }
+                ui::Msg::TogglePageMenu(target) => {
+                    self.ui.menu_open = false;
+                    self.ui.menu_sub = None;
+                    self.ui.export_menu = false;
+                    self.ui.controls_popover = None;
+                    self.view.filter_open = false;
+                    self.history.close();
+                    self.pages_nav_open = false;
+                    self.ui.page_menu = if self.ui.page_menu == target {
+                        None
+                    } else {
+                        target.filter(|&i| i < self.pages.len())
+                    };
+                    Task::none()
+                }
+                ui::Msg::PageMoveFirst(index) => {
+                    self.ui.page_menu = None;
+                    self.pages.move_page(index, 0);
+                    Task::none()
+                }
+                ui::Msg::PageMoveLast(index) => {
+                    self.ui.page_menu = None;
+                    let last = self.pages.len().saturating_sub(1);
+                    self.pages.move_page(index, last);
+                    Task::none()
+                }
+                ui::Msg::ToggleExportMenu => {
+                    self.ui.menu_open = false;
+                    self.ui.menu_sub = None;
+                    self.ui.page_menu = None;
+                    self.ui.controls_popover = None;
+                    self.view.filter_open = false;
+                    self.history.close();
+                    self.pages_nav_open = false;
+                    self.ui.export_menu = !self.ui.export_menu;
+                    Task::none()
+                }
+                ui::Msg::TogglePreferExportPrimary => {
+                    self.ui.prefer_export_primary = !self.ui.prefer_export_primary;
+                    self.ui.export_menu = false;
+                    Task::none()
+                }
+                ui::Msg::ToggleTrayFlyout(target) => {
+                    self.ui.menu_open = false;
+                    self.ui.menu_sub = None;
+                    self.ui.page_menu = None;
+                    self.ui.export_menu = false;
+                    self.ui.drawer = None;
+                    self.ui.controls_popover = None;
+                    self.view.filter_open = false;
+                    self.history.close();
+                    self.ui.tray_flyout = if self.ui.tray_flyout == target {
+                        None
+                    } else {
+                        target.filter(|t| t.has_flyout())
+                    };
+                    Task::none()
+                }
+                ui::Msg::TrayWallShape(kind, shape) => {
+                    self.ui.tray_flyout = None;
+                    self.shapes.open = Some((kind, iced::Vector::ZERO));
+                    self.shapes_msg(shapes::ShapesMsg::Choose(shape))
+                }
+                ui::Msg::OpenDrawer(target) => {
+                    self.ui.menu_open = false;
+                    self.ui.menu_sub = None;
+                    self.ui.page_menu = None;
+                    self.ui.export_menu = false;
+                    self.ui.ledger_menu = false;
+                    self.ui.tray_flyout = None;
+                    self.ui.controls_popover = None;
+                    self.view.filter_open = false;
+                    self.ui.drawer = target;
+                    Task::none()
+                }
+                ui::Msg::ToggleDrawerPin => {
+                    self.ui.drawer_pinned = !self.ui.drawer_pinned;
+                    Task::none()
+                }
+                ui::Msg::ToggleControlsPopover(kind) => {
+                    self.view.filter_open = false;
+                    self.ui.menu_open = false;
+                    self.ui.menu_sub = None;
+                    self.ui.page_menu = None;
+                    self.ui.export_menu = false;
+                    self.ui.ledger_menu = false;
+                    self.ui.tray_flyout = None;
+                    let opening = self.ui.controls_popover != Some(kind);
+                    self.ui.controls_popover = opening.then_some(kind);
+                    if opening && kind == ui::ControlsPopover::North {
+                        self.ui.north_draft =
+                            format!("{}", self.pages.page().north_angle.round() as i64);
+                        return iced::widget::operation::focus("north-angle-input");
+                    }
+                    Task::none()
+                }
+                ui::Msg::NorthEdit(s) => {
+                    self.ui.north_draft = s;
+                    Task::none()
+                }
+                ui::Msg::NorthSubmit => {
+                    self.pages.set_north(&self.ui.north_draft);
+                    self.ui.controls_popover = None;
+                    self.sync_canvas();
+                    Task::none()
+                }
+                ui::Msg::SetAngleStep(deg) => {
+                    self.drawing.options.ortho_angle = deg;
+                    Task::none()
+                }
+                ui::Msg::MeasureFinish => {
+                    if !self.drawing.measure_points.is_empty() {
+                        self.drawing
+                            .measure_runs
+                            .push(self.drawing.measure_points.clone());
+                        self.drawing.measure_points.clear();
+                        self.sync_canvas();
+                    }
+                    Task::none()
+                }
+                ui::Msg::MeasureClose => {
+                    if self.drawing.measure_points.len() >= 2 {
+                        let first = self.drawing.measure_points[0];
+                        self.drawing.measure_points.push(first);
+                        self.drawing
+                            .measure_runs
+                            .push(self.drawing.measure_points.clone());
+                        self.drawing.measure_points.clear();
+                        self.sync_canvas();
+                    }
+                    Task::none()
+                }
+                ui::Msg::MeasureUndo => {
+                    self.drawing.measure_points.pop();
+                    self.sync_canvas();
+                    Task::none()
+                }
+                ui::Msg::MeasureClear => {
+                    self.drawing.measure_points.clear();
+                    self.drawing.measure_runs.clear();
+                    self.sync_canvas();
+                    Task::none()
+                }
+                ui::Msg::MeasureCopy => {
+                    let (_, total) = crate::ui::tape::measure_totals(self);
+                    let text = self.drawing.options.units.length(total);
+                    iced::clipboard::write(text)
+                        .chain(self.toasts.show("Measurement copied.".to_string()))
+                }
+                ui::Msg::SetLedgerView(view) => {
+                    self.ui.ledger_menu = false;
+                    self.ui.ledger_view = view;
+                    Task::none()
+                }
+                ui::Msg::ToggleLedgerMenu => {
+                    self.ui.menu_open = false;
+                    self.ui.menu_sub = None;
+                    self.ui.page_menu = None;
+                    self.ui.export_menu = false;
+                    self.ui.controls_popover = None;
+                    self.view.filter_open = false;
+                    self.history.close();
+                    self.ui.ledger_menu = !self.ui.ledger_menu;
+                    Task::none()
+                }
+                ui::Msg::ToggleLayersSection => {
+                    self.ui.ledger_menu = false;
+                    self.ui.layers_expanded = !self.ui.layers_expanded;
+                    Task::none()
+                }
+                ui::Msg::TypeFilterChanged(s) => {
+                    self.ui.type_filter = s;
+                    Task::none()
+                }
+                ui::Msg::LedgerResizeStart => {
+                    self.ui.ledger_resizing = true;
+                    Task::none()
+                }
+                ui::Msg::LedgerResizeReset => {
+                    self.ui.ledger_width = None;
+                    self.ui.ledger_resizing = false;
+                    self.sync_canvas();
+                    Task::none()
+                }
+                ui::Msg::LedgerHandleHover(h) => {
+                    self.ui.ledger_handle_hover = h;
+                    Task::none()
+                }
+                ui::Msg::InspectorAdjustImage => {
+                    if self.bg_image.loaded() {
+                        let next = !self.ui.inspector_image_adjust;
+                        self.ui.inspector_image_adjust = next;
+                        if next {
+                            self.ui.inspector_open = true;
+                            self.ui.ledger_open = false;
+                        } else if !self.bg_image.edit_mode && self.selection.is_empty() {
+                            self.ui.inspector_open = false;
+                        }
+                        self.sync_canvas();
+                    }
+                    Task::none()
+                }
+                ui::Msg::SetWallLineStyle(style) => {
+                    if !self.selection.lines.is_empty() {
+                        self.push_undo("Wall Appearance");
+                        self.drawing
+                            .set_selected_line_appearance(&self.selection, Some(style), None);
+                        self.sync_canvas();
+                    }
+                    Task::none()
+                }
+                ui::Msg::SetWallCurveMode(mode) => {
+                    self.view.curve_mode = mode;
+                    Task::none()
+                }
+                ui::Msg::WallBowStep(sign) => {
+                    let walls: Vec<i64> = self
+                        .drawing
+                        .lines
+                        .iter()
+                        .filter(|l| self.selection.lines.contains(&l.id))
+                        .map(|l| l.id)
+                        .collect();
+                    if !walls.is_empty() {
+                        let height = self.view.curve_mode == view_state::CurveMode::Height;
+                        let step = if height { 0.5 } else { 5.0 };
+                        self.push_undo("Curve Wall");
+                        self.drawing.adjust_curves(&walls, sign * step, height);
+                        self.sync_canvas();
+                    }
+                    Task::none()
+                }
+                ui::Msg::ToggleSelectedDimensions => {
+                    self.toggle_selected_dimensions();
+                    self.sync_canvas();
+                    Task::none()
+                }
+                ui::Msg::SetAreaSubtractTarget(target) => {
+                    let ids: Vec<i64> = self
+                        .drawing
+                        .polygons
+                        .iter()
+                        .filter(|p| self.selection.polys.contains(&p.id))
+                        .map(|p| p.id)
+                        .collect();
+                    if !ids.is_empty() {
+                        self.push_undo("Deduct From");
+                        for poly in &mut self.drawing.polygons {
+                            if ids.contains(&poly.id) {
+                                poly.subtract_target_id = target.filter(|t| *t != poly.id);
+                                if poly.subtract_target_id.is_some() {
+                                    poly.subtract_mode = "always".to_string();
+                                }
+                            }
+                        }
+                        self.sync_inspector_area_draft(true);
+                        self.sync_canvas();
+                    }
+                    Task::none()
+                }
+                ui::Msg::SelectWall(id) => {
+                    if self.drawing.lines.iter().any(|l| l.id == id) {
+                        self.selection.clear();
+                        self.selection.lines.insert(id);
+                        self.sync_edit_tools();
+                        self.sync_canvas();
+                    }
+                    Task::none()
+                }
+                ui::Msg::ToggleWallsList => {
+                    self.ui.inspector_walls_expanded = !self.ui.inspector_walls_expanded;
+                    Task::none()
+                }
+                ui::Msg::ChainSideFlip => {
+                    let ids: Vec<i64> = self.selection.chains.iter().copied().collect();
+                    if !ids.is_empty() {
+                        self.push_undo("Chain Dimension");
+                        for chain in &mut self.drawing.dimension_chains {
+                            if ids.contains(&chain.id) {
+                                chain.side = if chain.side < 0 { 1 } else { -1 };
+                            }
+                        }
+                        self.sync_canvas();
+                    }
+                    Task::none()
+                }
+                ui::Msg::ChainOffsetStep(delta) => {
+                    let ids: Vec<i64> = self.selection.chains.iter().copied().collect();
+                    if !ids.is_empty() {
+                        self.push_undo("Chain Dimension");
+                        for chain in &mut self.drawing.dimension_chains {
+                            if ids.contains(&chain.id) {
+                                chain.offset = (chain.offset + delta).clamp(0.5, 50.0);
+                            }
+                        }
+                        self.sync_canvas();
+                    }
+                    Task::none()
+                }
+                ui::Msg::ChainToggleOverall => {
+                    let ids: Vec<i64> = self.selection.chains.iter().copied().collect();
+                    if !ids.is_empty() {
+                        self.push_undo("Chain Dimension");
+                        for chain in &mut self.drawing.dimension_chains {
+                            if ids.contains(&chain.id) {
+                                chain.show_overall = !chain.show_overall;
+                            }
+                        }
+                        self.sync_canvas();
+                    }
+                    Task::none()
+                }
+                ui::Msg::TouchTooltip(text) => self.toasts.show(text),
+                ui::Msg::ToggleSelectMore => {
+                    self.ui.select_more = !self.ui.select_more;
+                    Task::none()
+                }
+                ui::Msg::PadArrow(dir) => {
+                    self.ui.pad_popover = None;
+                    let pen_was_down = self.drawing.pen_down;
+                    let task = self.key(input::KeyCmd::Arrow {
+                        dir,
+                        ctrl: false,
+                        shift: false,
+                    });
+                    if pen_was_down && self.drawing.pen_down {
+                        task.chain(self.key(input::KeyCmd::Enter))
+                    } else {
+                        task
+                    }
+                }
+                ui::Msg::PadTurn(left) => {
+                    self.ui.pad_popover = None;
+                    if self.drawing.buffer.is_empty() {
+                        self.toasts
+                            .show("Enter a length first, then Turn L/R.".into())
+                    } else if !self.drawing.buffer.contains(['l', 'L', 'r', 'R']) {
+                        let ch = if left { "l" } else { "r" };
+                        let task = self.key(input::KeyCmd::Buffer(ch));
+                        task.chain(self.key(input::KeyCmd::Enter))
+                    } else {
+                        self.key(input::KeyCmd::Enter)
+                    }
+                }
+                ui::Msg::PadPen => {
+                    self.ui.pad_popover = None;
+                    if self.drawing.pen_down {
+                        self.key(input::KeyCmd::Escape)
+                    } else {
+                        self.key(input::KeyCmd::Enter)
+                    }
+                }
+                ui::Msg::PadLaser => {
+                    self.ui.pad_popover = None;
+                    if let Some(meters) = self.last_disto_meters {
+                        self.disto_measurement(meters)
+                    } else {
+                        self.toasts
+                            .show("Laser ready — trigger Disto to measure.".into())
+                    }
+                }
+                ui::Msg::PadPopover(popover) => {
+                    self.ui.pad_popover = popover;
+                    Task::none()
+                }
+                ui::Msg::PadDragStart => {
+                    self.ui.pad_dragging = true;
+                    self.ui.pad_drag_last = None;
+                    Task::none()
+                }
+                ui::Msg::HardwareKeyPressed => {
+                    if self.touch_panel_open {
+                        self.touch_panel_open = false;
+                        self.ui.pad_hidden_by_key = true;
+                        self.sync_canvas();
+                    }
+                    Task::none()
+                }
+                ui::Msg::TypeEditor(m) => self.type_editor_msg(m),
+                ui::Msg::SymbolLibrary(m) => ui::symbol_library::update(self, m),
+                ui::Msg::Start(m) => ui::start::update(self, m),
+            },
+            Message::SaveSymbolShape => self.finish_symbol_shape_edit(true),
+            Message::CancelSymbolShape => self.finish_symbol_shape_edit(false),
+            Message::SymbolLibraryMods(held) => {
+                self.ui.symbol_library.ctrl_held = held;
+                Task::none()
+            }
             Message::WindowReady(id) => {
                 self.window = id;
                 match id {
@@ -1870,37 +2504,6 @@ impl App {
                 self.close_hover = h;
                 Task::none()
             }
-            Message::TabClicked(id) => {
-                self.click_tab(id);
-                Task::none()
-            }
-            Message::PointerDown(p) => {
-                // ui-manager.js: a pointerdown outside `#file-menu` and the
-                // File tab closes the menu (the press still reaches its target).
-                let on_file_tab = p.x < ribbon::FILE_TAB_W
-                    && p.y >= ribbon::TAB_Y
-                    && p.y < ribbon::TAB_Y + ribbon::TAB_H;
-                if !backstage::contains(p.x, p.y) && !on_file_tab {
-                    self.close_file_menu();
-                }
-                Task::none()
-            }
-            Message::Escape => {
-                if self.symbol_manager.open {
-                    if self.symbol_manager.enlarged {
-                        self.symbol_manager.enlarged = false;
-                    } else {
-                        self.symbol_manager.open = false;
-                    }
-                    return Task::none();
-                }
-                if self.autosave_prompt {
-                    self.autosave_prompt = false;
-                    return Task::none();
-                }
-                self.close_file_menu();
-                Task::none()
-            }
             Message::Dock(m) => {
                 // The two library managers open App-level dialogs.
                 match m {
@@ -1909,7 +2512,17 @@ impl App {
                         return iced::widget::operation::focus(text_manager::INPUT_ID);
                     }
                     dock::DockMsg::OrganizeSymbols => {
-                        return self.manager_msg(symbol_manager::Msg::Open);
+                        return ui::symbol_library::update(
+                            self,
+                            ui::symbol_library::Msg::Open(None),
+                        );
+                    }
+                    dock::DockMsg::TextPick(_)
+                    | dock::DockMsg::SymbolPick(_)
+                    | dock::DockMsg::TextSubmit
+                        if !self.ui.drawer_pinned =>
+                    {
+                        self.ui.drawer = None;
                     }
                     _ => {}
                 }
@@ -1932,10 +2545,33 @@ impl App {
                 task
             }
             Message::PointerMoved(p, viewport_w) => {
-                self.dock.drag_to(p.x, viewport_w);
+                if self.ui.pad_dragging {
+                    if let Some(prev) = self.ui.pad_drag_last {
+                        let base = self
+                            .ui
+                            .pad_pos
+                            .unwrap_or_else(|| ui::pad::floating_origin(self));
+                        let max_x = (viewport_w - ui::pad::FLOAT_W - 12.0).max(12.0);
+                        let min_y = self.ui.density.bar_h() + 12.0;
+                        let max_y = (self.window_size.height - ui::pad::FLOAT_H - 12.0).max(min_y);
+                        self.ui.pad_pos = Some(Point::new(
+                            (base.x + p.x - prev.x).clamp(12.0, max_x),
+                            (base.y + p.y - prev.y).clamp(min_y, max_y),
+                        ));
+                    }
+                    self.ui.pad_drag_last = Some(p);
+                } else if self.ui.ledger_resizing {
+                    self.ui.ledger_width = Some(ui::ledger::clamp_width(p.x, viewport_w));
+                    self.sync_canvas();
+                } else {
+                    self.dock.drag_to(p.x, viewport_w);
+                }
                 Task::none()
             }
             Message::PointerUp => {
+                self.ui.pad_dragging = false;
+                self.ui.pad_drag_last = None;
+                self.ui.ledger_resizing = false;
                 self.dock.end_drag();
                 Task::none()
             }
@@ -2017,6 +2653,9 @@ impl App {
                         self.sync_canvas();
                     }
                 }
+                if !self.ui.drawer_pinned {
+                    self.ui.drawer = None;
+                }
                 Task::none()
             }
             Message::ToastExpired(id) => {
@@ -2058,7 +2697,7 @@ impl App {
             }
             Message::FenceEnd => {
                 // `fenceSelect` / `lassoSelect` / the zoom-fence.
-                let additive = false;
+                let additive = self.ui.select_more;
                 // Hidden/locked layers refuse the pick (the original's
                 // `selectable` gate).
                 let gates = self.layer_gates();
@@ -2141,13 +2780,16 @@ impl App {
                         let k = sketch_core::geometry::PIXELS_PER_FOOT * self.view.zoom;
                         (self.view.pan.0 + world.x * k, self.view.pan.1 - world.y * k)
                     };
-                    let hit = handles::hit_handle(
+                    let touch_handles = matches!(self.ui.density, ui::tokens::Density::Touch);
+                    let handle_radius = if touch_handles { 24.0 } else { 11.0 };
+                    let hit = handles::hit_handle_with_radius(
                         &self.drawing,
                         &self.selection,
                         &self.computed,
                         self.view.pan,
                         self.view.zoom,
                         screen,
+                        handle_radius,
                     );
                     match hit {
                         Some(handles::HandleHit::Area { center_world }) => {
@@ -2266,7 +2908,9 @@ impl App {
                 }
                 // The green curve handle of a selected wall bows it
                 // (canvas-engine.js:958).
-                let handle_tolerance = drawing::Drawing::tolerance(9.0, self.view.zoom);
+                let touch_handles = matches!(self.ui.density, ui::tokens::Density::Touch);
+                let handle_px = if touch_handles { 24.0 } else { 9.0 };
+                let handle_tolerance = drawing::Drawing::tolerance(handle_px, self.view.zoom);
                 if let Some(id) = self
                     .drawing
                     .lines
@@ -2413,6 +3057,10 @@ impl App {
                 Task::none()
             }
             Message::CanvasDrag(x, y, ctrl) => {
+                if self.view.drag.is_none() && self.view.fence.is_some() {
+                    self.view.fence_move(x as f64, y as f64);
+                    return Task::none();
+                }
                 let world = self.world(x, y);
                 // The photo drag repositions the image (bgimage-drag:
                 // `bgImage.x += current.x - drag.lastWorld.x`).
@@ -2624,6 +3272,9 @@ impl App {
                 Task::none()
             }
             Message::CanvasDragEnd => {
+                if self.view.drag.is_none() && self.view.fence.is_some() {
+                    return self.update_inner(Message::FenceEnd);
+                }
                 let moved = match &self.view.drag {
                     Some(view_state::Drag::Move { moved, .. }) => *moved,
                     Some(view_state::Drag::Endpoint { moved, .. }) => *moved,
@@ -2661,6 +3312,7 @@ impl App {
             }
             Message::Dialog(m) => self.dialog_msg(m),
             Message::NewFile => {
+                self.ui.start.open = false;
                 self.drawing = drawing::Drawing::default();
                 self.selection.clear();
                 self.pages = pages::Pages::default();
@@ -2772,6 +3424,11 @@ impl App {
                     self.command_palette_open = false;
                     return Task::none();
                 }
+                self.ui.menu_open = false;
+                self.ui.menu_sub = None;
+                self.ui.page_menu = None;
+                self.ui.export_menu = false;
+                self.history.close();
                 self.command_palette_open = true;
                 self.command_palette_query.clear();
                 self.command_palette_selected = 0;
@@ -2785,13 +3442,13 @@ impl App {
                 // `render(q)` keeps the highlight where it was, clamped to
                 // the new matches.
                 self.command_palette_query = q;
-                let count = command_palette::matches(&self.command_palette_query).len();
+                let count = ui::commands::matching(&self.command_palette_query).len();
                 self.command_palette_selected =
                     self.command_palette_selected.min(count.saturating_sub(1));
                 Task::none()
             }
             Message::CommandPaletteMove(d) => {
-                let count = command_palette::matches(&self.command_palette_query).len();
+                let count = ui::commands::matching(&self.command_palette_query).len();
                 self.command_palette_selected =
                     command_palette::step(self.command_palette_selected, count, d);
                 Task::none()
@@ -2899,6 +3556,18 @@ impl App {
             }
             Message::TouchPanelToggle => {
                 self.touch_panel_open = !self.touch_panel_open;
+                self.ui.pad_user_hidden = !self.touch_panel_open;
+                self.ui.pad_manual = self.touch_panel_open;
+                self.ui.pad_hidden_by_key = false;
+                self.ui.pad_popover = None;
+                if self.touch_panel_open
+                    && ui::layout::SizeClass::of(self.window_size.width)
+                        == ui::layout::SizeClass::Compact
+                {
+                    self.ui.ledger_open = false;
+                    self.ui.inspector_open = false;
+                }
+                self.sync_canvas();
                 Task::none()
             }
             Message::TouchDistance(s) => {
@@ -3142,15 +3811,16 @@ impl App {
                     None => Task::none(),
                 }
             }
-            Message::SymbolOrganizer(m) => self.symbol_organizer_msg(m),
             Message::SymbolManager(m) => self.manager_msg(m),
             Message::ImportLayer => self.import_layer_file(),
             Message::AutoSaveTick => {
                 self.store_placement();
+                if self.symbol_edit_session.is_some() {
+                    return Task::none();
+                }
                 self.autosave_tick(false)
             }
             Message::RecoveryOpen => {
-                self.close_file_menu();
                 self.autosave.recovery = autosave::latest();
                 self.autosave_prompt = self.autosave.recovery.is_some();
                 if !self.autosave_prompt {
@@ -3159,10 +3829,6 @@ impl App {
                 Task::none()
             }
             Message::RecoverAutosave(accept) => self.recover_autosave(accept),
-            Message::RecentToggle => {
-                self.recent_open = !self.recent_open;
-                Task::none()
-            }
             Message::RecentOpen(index) => {
                 let Some(entry) = self.recent.get(index).cloned() else {
                     return Task::none();
@@ -3182,28 +3848,37 @@ impl App {
                         .show("Could not open that recent file.".to_string());
                 }
                 let name = entry.name.trim_end_matches(".skx").to_string();
+                self.ui.start.open = false;
                 let task = self.apply_model(&model, &name);
                 self.record_recent(&entry.name, &entry.data);
+                self.ui.start.sync_thumbs(&self.recent);
                 task
             }
             Message::RecentClear => {
                 self.recent.clear();
                 self.persist_recent();
+                self.ui.start.sync_thumbs(&self.recent);
                 self.toasts.show("Recent files cleared.".to_string())
             }
             // Expand/Collapse All (S7-016/017): every group's key floods (or
             // clears) the dock's collapsed set.
             Message::CalcsExpandAll => {
+                self.ui.ledger_menu = false;
                 self.dock.calcs_collapsed.clear();
                 Task::none()
             }
             Message::CalcsCollapseAll => {
-                self.dock.calcs_collapsed =
+                self.ui.ledger_menu = false;
+                let mut set: std::collections::HashSet<String> =
                     calcs::build(&self.drawing.polygons, &self.recomputed())
                         .groups
                         .iter()
                         .map(|g| g.code.clone())
                         .collect();
+                if self.drawing.polygons.iter().any(|p| p.kind == "UND" || p.kind.is_empty()) {
+                    set.insert("UND".to_owned());
+                }
+                self.dock.calcs_collapsed = set;
                 Task::none()
             }
             Message::New => self.open_dialog(dialog::Dialog::confirm(
@@ -3281,6 +3956,13 @@ impl App {
                 }
                 self.bg_image.edit_mode = !self.bg_image.edit_mode;
                 self.bg_image.orient_mode = false;
+                if self.bg_image.edit_mode {
+                    self.ui.inspector_open = true;
+                    self.ui.ledger_open = false;
+                } else {
+                    self.ui.inspector_image_adjust = false;
+                }
+                self.sync_canvas();
                 let note = if self.bg_image.edit_mode {
                     "Image Edit Mode: drag the image to reposition it; use the wheel to resize."
                 } else {
@@ -3340,6 +4022,13 @@ impl App {
             }
             Message::PhotoIntensity(v) => {
                 self.bg_image.opacity = ((v / 100.0) as f64).clamp(0.0, 1.0);
+                Task::none()
+            }
+            #[cfg(test)]
+            Message::PhotoBytesLoaded(bytes, w, h) => {
+                let handle = iced::widget::image::Handle::from_bytes(bytes);
+                self.bg_image = reference_image::BgImage::load(handle, w, h);
+                self.sync_canvas();
                 Task::none()
             }
             Message::GeoOpen => {
@@ -3425,17 +4114,7 @@ impl App {
             }
             Message::PopupMenu(m) => self.popup_msg(m),
             Message::PaletteMenu(kind) => {
-                use popup_menu::Kind;
-                // `event?.currentTarget || querySelector('[data-command=..]')`:
-                // a hidden ribbon body has a zero rect.
-                let (visible, x, y) = match kind {
-                    Kind::Flip => (self.body == Body::Home, 570.0, 124.0),
-                    Kind::CanvasBackground => (self.body == Body::View, 510.0, 117.0),
-                    Kind::InterfaceTheme => (self.body == Body::View, 596.0, 117.0),
-                    Kind::QuickAccess => (true, 188.0, 29.0),
-                };
-                let (x, y) = if visible { (x, y) } else { (0.0, 0.0) };
-                self.popup_msg(popup_menu::PopupMsg::Open(kind, x, y))
+                self.popup_msg(popup_menu::PopupMsg::Open(kind, 8.0, 48.0))
             }
             Message::ToggleMiniMap => {
                 // `toggleMiniMap`: an open map closes; otherwise snapshot the
@@ -3452,12 +4131,11 @@ impl App {
                 }
             }
             Message::MiniMapShot(shot) => {
-                self.mini_map = minimap::snapshot(
+                self.mini_map = minimap::snapshot_rect(
                     &shot.rgba,
                     (shot.size.width, shot.size.height),
                     shot.scale_factor,
-                    self.dock.width(),
-                    self.pages_nav_width(),
+                    self.canvas_rect(),
                 )
                 .or_else(|| Some(minimap::blank(self.view.canvas)));
                 Task::none()
@@ -3569,18 +4247,16 @@ impl App {
             }
             Message::CommandPaletteRun => {
                 // `run()`: close first, then `executeCommand(id)`.
-                let found = command_palette::matches(&self.command_palette_query);
+                let found = ui::commands::matching(&self.command_palette_query);
                 self.command_palette_open = false;
-                let Some(&index) = found.get(self.command_palette_selected) else {
+                let Some(&cmd) = found.get(self.command_palette_selected) else {
                     return Task::none();
                 };
-                let (id, _, _) = command_palette::CATALOG[index];
-                match command_palette::action(id) {
-                    command_palette::Action::Run(msg) => self.update(msg),
-                    command_palette::Action::Unavailable => {
-                        self.toasts.show(format!("{id} is not available."))
-                    }
+                if !(cmd.enabled)(self) {
+                    return self.toasts.show(format!("{} is disabled.", cmd.label));
                 }
+                let msg = (cmd.run)(self);
+                self.update(msg)
             }
             Message::Color(m) => self.color_msg(m),
             Message::WallSolids(on) => {
@@ -3601,13 +4277,9 @@ impl App {
                 Task::none()
             }
             Message::AreaProps => self.open_area_properties(),
-            Message::AreaWorkflow(m) => self.workflow_msg(m),
-            Message::OpenSelectMenu => {
-                // Anchored under the Edit Tools Select button (x 213, y 68,
-                // 46x49 in the ribbon body).
-                self.select_menu
-                    .open_at(SELECT_BUTTON_X, SELECT_BUTTON_Y + SELECT_BUTTON_H);
-                Task::none()
+            Message::AreaWorkflow(m) => {
+                self.ui.ledger_menu = false;
+                self.workflow_msg(m)
             }
             Message::SelectByType(kind) => {
                 self.select_menu.close();
@@ -3654,16 +4326,7 @@ impl App {
                     .selected_area_type
                     .clone()
                     .unwrap_or_else(|| "UND".to_string());
-                match self.area_codes.iter().find(|c| c.code == code) {
-                    Some(entry) => {
-                        self.def_editor = def_editor::DefEditor::open_on(entry);
-                    }
-                    None => {
-                        return self
-                            .toasts
-                            .show("Select an area definition to edit.".to_string());
-                    }
-                }
+                self.open_type_editor(Some(&code));
                 Task::none()
             }
             Message::DefEditor(m) => {
@@ -3686,12 +4349,7 @@ impl App {
                 Task::none()
             }
             Message::OpenNewCode => {
-                let group = self
-                    .area_codes
-                    .first()
-                    .map(|c| c.group.clone())
-                    .unwrap_or_else(|| "OTH".to_string());
-                self.new_code = new_code_dialog::NewCodeDialog::open_with(&group);
+                self.open_type_editor_new();
                 Task::none()
             }
             Message::NewCode(m) => {
@@ -3775,20 +4433,19 @@ impl App {
                 Task::none()
             }
             Message::OpenCodesEditor => {
-                let json = sketch_core::geometry::area_codes::to_json(self.area_codes.clone())
-                    .unwrap_or_default();
-                self.codes_editor.open(json);
+                let selected = self.drawing.selected_area_type.clone();
+                self.open_type_editor(selected.as_deref());
                 Task::none()
             }
             Message::Options(m) => self.options_msg(m),
             Message::PageLayout(m) => self.page_layout_msg(m),
             Message::CodesEditor(m) => {
-                use codes_editor::CodesMsg;
+                use ui::dialogs::CodesMsg;
                 match m {
                     CodesMsg::Close => self.codes_editor.close(),
                     CodesMsg::Import if self.codes_editor.open => {
                         let session = self.codes_editor.session;
-                        return Task::perform(codes_editor::pick_import(), move |path| {
+                        return Task::perform(ui::dialogs::pick_codes_import(), move |path| {
                             Message::CodesEditor(CodesMsg::ImportChosen(session, path))
                         });
                     }
@@ -3798,7 +4455,7 @@ impl App {
                             Err(error) => return self.toasts.show(error.to_string()),
                         };
                         let session = self.codes_editor.session;
-                        return Task::perform(codes_editor::pick_export(), move |path| {
+                        return Task::perform(ui::dialogs::pick_codes_export(), move |path| {
                             Message::CodesEditor(CodesMsg::ExportChosen {
                                 session,
                                 body,
@@ -3864,18 +4521,7 @@ impl App {
                 }
                 Task::none()
             }
-            Message::ToggleCalcs => {
-                // `toggleCalcsPanel`: close the dock when Calcs is already
-                // showing, otherwise open it on the Calcs tab.
-                if self.dock.open && self.dock.active == dock::DockTab::Calcs {
-                    self.dock.open = false;
-                } else {
-                    self.dock.open = true;
-                    self.dock.active = dock::DockTab::Calcs;
-                }
-                self.sync_canvas();
-                Task::none()
-            }
+            Message::ToggleCalcs => self.update(Message::Ui(ui::Msg::ToggleLedger)),
             Message::OpenAreaAttributes(editable) => {
                 let Some(poly) = self
                     .drawing
@@ -3916,9 +4562,11 @@ impl App {
             }
             Message::AreaDialog(m) => {
                 use area_dialog::AreaDialogMsg;
+                let modal = self.area_dialog.open;
                 match m {
                     AreaDialogMsg::Cancel => {
                         self.area_dialog.close();
+                        self.sync_inspector_area_draft(true);
                     }
                     AreaDialogMsg::Apply => {
                         let props = self.area_dialog.payload();
@@ -3929,6 +4577,40 @@ impl App {
                             self.undo.push(before);
                             self.sync_edit_tools();
                         }
+                        self.sync_inspector_area_draft(true);
+                        self.sync_canvas();
+                    }
+                    AreaDialogMsg::Positive(pos) if !modal => {
+                        let currently_pos = self
+                            .drawing
+                            .polygons
+                            .iter()
+                            .find(|p| self.selection.polys.contains(&p.id))
+                            .map(|p| p.factor_override.unwrap_or(p.factor) >= 0.0)
+                            .unwrap_or(true);
+                        if currently_pos != pos {
+                            let task = self.make_negative();
+                            self.sync_inspector_area_draft(true);
+                            self.sync_canvas();
+                            return task;
+                        }
+                    }
+                    other @ (AreaDialogMsg::Code(_)
+                    | AreaDialogMsg::AutoSubtract(_)
+                    | AreaDialogMsg::Measure(_)
+                    | AreaDialogMsg::Post(_, _))
+                        if !modal =>
+                    {
+                        self.area_dialog.update(other);
+                        let props = self.area_dialog.payload();
+                        let before = self.snapshot_model("Area Properties");
+                        if area_props::apply_properties(&mut self.drawing, &self.selection, &props)
+                        {
+                            self.undo.push(before);
+                            self.sync_edit_tools();
+                        }
+                        self.sync_inspector_area_draft(true);
+                        self.sync_canvas();
                     }
                     other => self.area_dialog.update(other),
                 }
@@ -3943,6 +4625,12 @@ impl App {
                         return area_target.map_or_else(Task::none, |id| {
                             self.workflow_msg(area_workflow::Msg::Open(id))
                         })
+                    }
+                    Action::MakeSymbol => {
+                        return ui::symbol_library::update(
+                            self,
+                            ui::symbol_library::Msg::OpenMakeFromSelection,
+                        );
                     }
                     Action::Delete => return self.update(Message::Delete),
                     Action::Cut => return self.update(Message::Cut),
@@ -4001,6 +4689,8 @@ impl App {
                             area_props::toggle_auto_subtract(&mut self.drawing, &self.selection)
                         {
                             self.undo.push(before);
+                            self.sync_inspector_area_draft(true);
+                            self.sync_canvas();
                             return self.toasts.show(toast);
                         }
                     }
@@ -4064,23 +4754,50 @@ impl App {
             }
             Message::UndoTo(index) => {
                 self.history.close();
-                let current = self.snapshot_model("Edit");
+                let include_types = self.undo.undo_range_has_types(index);
+                if include_types {
+                    self.save_current_page();
+                }
+                let mut current = self.snapshot_model("Edit");
+                if include_types {
+                    current.area_codes = Some(self.area_codes.clone());
+                    current.pages = Some(self.pages.pages.clone());
+                }
                 let states = self.undo.undo_to(index, current);
                 if let Some(snap) = states.last() {
-                    self.restore_snapshot(snap);
+                    let earliest_codes = states.iter().rev().find_map(|s| s.area_codes.as_ref()).cloned();
+                    let earliest_pages = states.iter().rev().find_map(|s| s.pages.as_ref()).cloned();
+                    let mut final_snap = snap.clone();
+                    if final_snap.area_codes.is_none() {
+                        final_snap.area_codes = earliest_codes;
+                    }
+                    if final_snap.pages.is_none() {
+                        final_snap.pages = earliest_pages;
+                    }
+                    self.restore_snapshot(&final_snap);
                     self.selection.clear();
                     self.sync_edit_tools();
+                    self.sync_inspector_area_draft(true);
+                    self.sync_canvas();
                 }
                 Task::none()
             }
             Message::Undo => self.undo_step(),
             Message::Redo => self.redo_step(),
             Message::UndoHistory => {
+                if self.history.open.is_some() {
+                    self.history.close();
+                    return Task::none();
+                }
                 if !self.undo.can_undo() {
                     return self.toasts.show("Nothing to undo yet.".to_string());
                 }
-                // Anchored under the QAT's history button.
-                self.history.open_at(QAT_HISTORY_X, QAT_Y + QAT_SIZE);
+                self.ui.menu_open = false;
+                self.ui.menu_sub = None;
+                self.ui.page_menu = None;
+                self.ui.export_menu = false;
+                let (ax, ay) = ui::topbar::undo_history_anchor(self);
+                self.history.open_at(ax, ay);
                 Task::none()
             }
             Message::ApplyLineLength => {
@@ -4243,10 +4960,12 @@ impl App {
                 if let Some((f, text)) = self.text_edit.take() {
                     if f == field {
                         match field {
-                            ribbon::TextField::Size => {
+                            ui::inspector::TextField::Size => {
                                 self.set_selected_text_style("fontSize", text)
                             }
-                            ribbon::TextField::Value => self.set_selected_text_style("text", text),
+                            ui::inspector::TextField::Value => {
+                                self.set_selected_text_style("text", text)
+                            }
                         }
                     }
                 }
@@ -4356,37 +5075,20 @@ impl App {
             Message::Shapes(m) => self.shapes_msg(m),
             Message::RightPress(at) => {
                 self.workflow.menu_at = at;
+                self.view.drag = None;
+                self.drag_banked = false;
+                self.view.fence = None;
+                self.view.pan_from = None;
                 if self.workflow.chooser.is_some() {
                     return Task::none();
                 }
-                // The Layers tree's contextmenu: iced's right presses reach
-                // mouse_area with no cursor, so the row lookup rides the
-                // tap's last-cursor point (see dock::layer_row_at).
-                let dock_left = self.window_size.width - self.dock.width();
-                if let Some(id) = dock::layer_row_at(
-                    &self.dock,
-                    &self.layers,
-                    &self.area_layer_filter(),
-                    dock_left,
-                    at.x,
-                    at.y,
-                ) {
-                    return self.update(Message::LayerRowMenu(id));
-                }
-                if self.canvas_point(at).is_none() && at.x > 41.0 {
+                // The Layers tree's contextmenu in Classic: iced's right presses
+                // Right-press on a canvas target opens the context menu; Next
+                // rows wire layer context menus directly via kit::context_press.
+                if self.canvas_point(at).is_none() {
                     return Task::none();
                 }
-                // The original opens the wall-shape menu from `contextmenu`
-                // on the two draw tools as well as from their caret.
-                let rail_button =
-                    |y: f32| at.x >= 4.0 && at.x <= 36.0 && at.y >= y && at.y <= y + 32.0;
-                if rail_button(283.0) {
-                    self.shapes
-                        .open_at(sketch_core::model::WallType::Exterior, 283.0);
-                } else if rail_button(317.0) {
-                    self.shapes
-                        .open_at(sketch_core::model::WallType::Interior, 317.0);
-                } else if self.view.mode != view_state::Mode::Measure {
+                if self.view.mode != view_state::Mode::Measure {
                     // `contextmenu` on the canvas: end the pen, select what
                     // was clicked so the menu acts on it, then open the menu.
                     self.drawing.pen_up();
@@ -4423,6 +5125,8 @@ impl App {
                         }
                     }
                     self.context.open_at(at.x, at.y);
+                    self.context.can_make_symbol = self.symbol_edit_session.is_none()
+                        && symbol_shape::selection_convertible(&self.drawing, &self.selection);
                     let (x, y) = self.canvas_point(at).unwrap_or((at.x, at.y));
                     let world = self.world(x, y);
                     let gates = self.layer_gates();
@@ -4441,9 +5145,36 @@ impl App {
                 Task::none()
             }
             Message::CanvasClick { x, y, double, ctrl } => {
-                if self.view.mode == view_state::Mode::DefineArea {
-                    return self.workflow_click(self.world(x, y));
-                }
+                self.canvas_tap(x, y, double, ctrl, false)
+            }
+            Message::CanvasTouchTap { x, y } => self.canvas_tap(x, y, false, false, true),
+            Message::CanvasContext => {
+                // The context menu itself arrives with selection (screen 6).
+                self.drawing.pen_up();
+                Task::none()
+            }
+        }
+    }
+
+    /// Unified canvas tap/click handler for mouse clicks (`from_touch = false`)
+    /// and single-finger touch taps (`from_touch = true`).
+    fn canvas_tap(
+        &mut self,
+        x: f32,
+        y: f32,
+        double: bool,
+        ctrl: bool,
+        from_touch: bool,
+    ) -> Task<Message> {
+        let additive = ctrl || self.ui.select_more;
+        if self.view.mode == view_state::Mode::DefineArea {
+            let world = self.world(x, y);
+            return if from_touch {
+                self.workflow_touch_tap(world)
+            } else {
+                self.workflow_click(world)
+            };
+        }
                 // The reference image's modes intercept the click before the
                 // regular logic (canvas-engine.js:740-760).
                 let world = self.world(x, y);
@@ -4539,14 +5270,14 @@ impl App {
                             &mut self.region_cache,
                             world,
                         ) {
-                            self.workflow.menu_at =
-                                Point::new(x + 41.0 + self.pages_nav_width(), y + 129.0);
+                            let origin = self.canvas_origin();
+                            self.workflow.menu_at = Point::new(x + origin.x, y + origin.y);
                             return self.workflow_msg(area_workflow::Msg::Open(id));
                         }
                     }
                     // An area's label / size block (`hitTestAt`'s first pass).
                     if let Some((kind, id)) = self.area_text_at(world) {
-                        if !ctrl {
+                        if !additive {
                             self.selection.clear();
                         }
                         let set = if kind == handles::TextKind::AreaSize {
@@ -4554,7 +5285,7 @@ impl App {
                         } else {
                             &mut self.selection.area_labels
                         };
-                        if ctrl && set.contains(&id) {
+                        if additive && set.contains(&id) {
                             set.remove(&id);
                         } else {
                             set.insert(id);
@@ -4562,13 +5293,13 @@ impl App {
                         self.sync_edit_tools();
                         return Task::none();
                     }
-                    // A dimension chain's tier wins first (S9-035): Ctrl
-                    // toggles membership; a joined click arms the offset drag.
+                    // A dimension chain's tier wins first (S9-035): Ctrl or
+                    // Select more toggles membership; a joined click arms drag.
                     if let Some(chain_id) = self.drawing.chain_hit(world, self.view.zoom) {
-                        if !ctrl {
+                        if !additive {
                             self.selection.clear();
                         }
-                        if ctrl && self.selection.chains.contains(&chain_id) {
+                        if additive && self.selection.chains.contains(&chain_id) {
                             self.selection.chains.remove(&chain_id);
                         } else {
                             self.selection.chains.insert(chain_id);
@@ -4608,7 +5339,7 @@ impl App {
                         }
                     }
                     if let Some(id) = text_hit {
-                        if !ctrl {
+                        if !additive {
                             self.selection.clear();
                         }
                         self.selection.texts.insert(id);
@@ -4632,16 +5363,16 @@ impl App {
                         }
                     }
                     if let Some(id) = symbol_hit {
-                        if !ctrl {
+                        if !additive {
                             self.selection.clear();
                         }
                         self.selection.symbols.insert(id);
                     } else if let Some(id) = self.dimension_hit_at(world) {
-                        // A measurement label: Ctrl toggles it in or out.
-                        if !ctrl {
+                        // A measurement label: Ctrl / Select more toggles it.
+                        if !additive {
                             self.selection.clear();
                         }
-                        if ctrl && self.selection.dimensions.contains(&id) {
+                        if additive && self.selection.dimensions.contains(&id) {
                             self.selection.dimensions.remove(&id);
                         } else {
                             self.selection.dimensions.insert(id);
@@ -4649,7 +5380,7 @@ impl App {
                         self.sync_edit_tools();
                         return Task::none();
                     } else {
-                        if !ctrl {
+                        if !additive {
                             self.selection.symbols.clear();
                         }
                         let gates = self.layer_gates();
@@ -4659,7 +5390,7 @@ impl App {
                             &self.drawing.lines,
                             &self.drawing.polygons,
                             self.view.zoom,
-                            ctrl,
+                            additive,
                             &|id| gates.selectable(id),
                         );
                     }
@@ -4684,13 +5415,6 @@ impl App {
                     }
                 }
                 Task::none()
-            }
-            Message::CanvasContext => {
-                // The context menu itself arrives with selection (screen 6).
-                self.drawing.pen_up();
-                Task::none()
-            }
-        }
     }
 
     /// `setMode(mode)` plus the toast some modes announce.
@@ -4764,6 +5488,8 @@ impl App {
                 drag: None,
                 drag_moved: false,
                 text_zoom_floor: 2.0 * f64::from(fit.target.0) / 2048.0,
+                touch_handles: false,
+                locked_symbol_entities: &[],
             },
             size,
             &layers,
@@ -4935,11 +5661,15 @@ impl App {
         )
     }
 
-    fn symbols_lib(&self) -> &crate::symlib::SymIndex {
+    pub(crate) fn symbols_lib(&self) -> &crate::symlib::SymIndex {
         match self.symbols.as_ref() {
             Ok(lib) => lib,
             Err(_) => panic!("symbol library loaded at boot"),
         }
+    }
+
+    pub(crate) fn symbols_arc(&self) -> Arc<Result<crate::symlib::SymIndex, String>> {
+        Arc::clone(&self.symbols)
     }
 
     /// Use the same wall-completion path for mouse, keyboard, touch and bay
@@ -5032,9 +5762,49 @@ impl App {
         if mode != self.view.mode {
             self.workflow_close();
             self.workflow.hover = None;
+            self.ui.tray_flyout = None;
+            if (!matches!(
+                mode,
+                view_state::Mode::PlaceText
+                    | view_state::Mode::PlaceSymbol
+                    | view_state::Mode::Select
+            ) || !self.ui.drawer_pinned)
+                && !matches!(mode, view_state::Mode::PlaceText | view_state::Mode::PlaceSymbol)
+            {
+                self.ui.drawer = None;
+            }
         }
         if mode != view_state::Mode::DefineArea {
             self.workflow.armed = None;
+        }
+        // Slide-overs and sheets close when starting to draw; Touch density
+        // auto-shows the Pad on Wall/Inner/Measure unless hidden by user or key.
+        if !matches!(
+            mode,
+            view_state::Mode::Select | view_state::Mode::Fence | view_state::Mode::Lasso
+        ) {
+            self.ui.select_more = false;
+        }
+        if mode.is_drawing() {
+            self.ui.ledger_open = false;
+            self.ui.inspector_open = false;
+            self.ui.menu_open = false;
+            self.ui.menu_sub = None;
+        }
+        if ui::pad::is_drawing_tool(mode) {
+            if matches!(self.ui.density, ui::tokens::Density::Touch)
+                && !self.ui.pad_user_hidden
+                && !self.ui.pad_hidden_by_key
+            {
+                self.touch_panel_open = true;
+            }
+        } else if !self.ui.pad_manual {
+            self.touch_panel_open = false;
+        }
+        if mode.is_drawing()
+            || ui::pad::is_drawing_tool(mode) != ui::pad::is_drawing_tool(self.view.mode)
+        {
+            self.sync_canvas();
         }
         // A chain belongs to one wall type: finish it before changing tools.
         if self.drawing.pen_down && mode != self.view.mode {
@@ -5050,6 +5820,8 @@ impl App {
     /// Hit-test a handle of a selected symbol. Returns (id, is_rotate).
     fn symbol_handle_at(&self, world: sketch_core::geometry::Pt) -> Option<(i64, bool)> {
         let screen = handles::to_screen(world, self.view.pan, self.view.zoom);
+        let touch_handles = matches!(self.ui.density, ui::tokens::Density::Touch);
+        let radius = if touch_handles { 24.0 } else { 7.0 };
         for sym in &self.drawing.symbols {
             if !self.selection.symbols.contains(&sym.id) {
                 continue;
@@ -5070,7 +5842,7 @@ impl App {
                 self.view.pan,
                 self.view.zoom,
             );
-            match handles::hit_symbol_handle(&b, screen) {
+            match handles::hit_symbol_handle_with_radius(&b, screen, radius, radius) {
                 Some(handles::SymbolHandle::Rotate) => return Some((sym.id, true)),
                 Some(handles::SymbolHandle::Resize) => return Some((sym.id, false)),
                 None => {}
@@ -5278,11 +6050,12 @@ impl App {
         self.dock.preview = None;
     }
 
-    /// The rail's click handler (ui-manager.js): mode tools set the mode;
-    /// Text / Symbols / Define Area open their dock panels. Shapes, Touch,
-    /// Geo and Pages open their screens' dialogs (9, 12, 10, 10).
-    fn rail(&mut self, tool: rail::RailTool) -> Task<Message> {
-        use rail::RailTool as T;
+    /// The rail's click handler: mode tools set the mode;
+    /// Text / Symbols / Define Area open their dock panels. Shapes, Geo and Pages
+    /// open their sheets/panels.
+    fn rail(&mut self, tool: view_state::RailTool) -> Task<Message> {
+        use view_state::RailTool as T;
+        self.ui.tray_flyout = None;
         if tool == T::DefineArea {
             return self.workflow_msg(area_workflow::Msg::Activate);
         }
@@ -5292,9 +6065,27 @@ impl App {
         if tool == T::Pages {
             return self.pages_nav_msg(pages_nav::NavMsg::Toggle);
         }
+        if tool == T::Shapes {
+            self.ui.drawer = None;
+            return self.update(Message::RoomShapeOpen);
+        }
         let panel = match tool {
-            T::Text => Some(dock::DockTab::Text),
-            T::Symbols => Some(dock::DockTab::Symbols),
+            T::Text => {
+                self.ui.drawer = if self.ui.drawer == Some(ui::tray::DrawerTab::Labels) {
+                    None
+                } else {
+                    Some(ui::tray::DrawerTab::Labels)
+                };
+                Some(dock::DockTab::Text)
+            }
+            T::Symbols => {
+                self.ui.drawer = if self.ui.drawer == Some(ui::tray::DrawerTab::Symbols) {
+                    None
+                } else {
+                    Some(ui::tray::DrawerTab::Symbols)
+                };
+                Some(dock::DockTab::Symbols)
+            }
             T::DefineArea => Some(dock::DockTab::Areas),
             _ => None,
         };
@@ -5446,8 +6237,8 @@ impl App {
                 self.view.grid = !self.view.grid;
                 self.drawing.options.grid_enabled = self.view.grid;
             }
-            K::ShowSymbols => return self.rail(rail::RailTool::Symbols),
-            K::ShowText => return self.rail(rail::RailTool::Text),
+            K::ShowSymbols => return self.rail(view_state::RailTool::Symbols),
+            K::ShowText => return self.rail(view_state::RailTool::Text),
             K::RoomShape => return self.update(Message::RoomShapeOpen),
             K::CommandPalette => return self.update(Message::CommandPaletteOpen),
             K::OrientH => self.orient_selected(0.0),
@@ -5476,7 +6267,7 @@ impl App {
                 }
             }
             K::OrientV => self.orient_selected(90.0),
-            K::ShowAreas => return self.rail(rail::RailTool::DefineArea),
+            K::ShowAreas => return self.rail(view_state::RailTool::DefineArea),
             K::CurveMode => {
                 let toast = self.view.toggle_curve_mode();
                 return self.toasts.show(toast.into());
@@ -5715,15 +6506,17 @@ impl App {
         self.drag_banked = false;
     }
 
-    /// Which endpoint handle of wall `id` the pointer is on, if any (a 9px
-    /// screen tolerance around each end).
+    /// Which endpoint handle of wall `id` the pointer is on, if any (9px in
+    /// desktop density, 24px radius / 48px target in Touch density).
     fn endpoint_handle(
         &self,
         id: i64,
         world: sketch_core::geometry::Pt,
     ) -> Option<(bool, view_state::World)> {
         let line = self.drawing.lines.iter().find(|l| l.id == id)?;
-        let tol = 9.0 / (sketch_core::geometry::PIXELS_PER_FOOT * self.view.zoom).max(0.0001);
+        let touch_handles = matches!(self.ui.density, ui::tokens::Density::Touch);
+        let px = if touch_handles { 24.0 } else { 9.0 };
+        let tol = px / (sketch_core::geometry::PIXELS_PER_FOOT * self.view.zoom).max(0.0001);
         let ds = (world.x - line.start.x).hypot(world.y - line.start.y);
         let de = (world.x - line.end.x).hypot(world.y - line.end.y);
         if ds <= tol {
@@ -5776,6 +6569,21 @@ impl App {
         if let Some(north) = snap.north_angle.filter(|n| n.is_finite()) {
             let current = self.pages.current;
             self.pages.pages[current].north_angle = north;
+        }
+        if let Some(codes) = &snap.area_codes {
+            self.area_codes = codes.clone();
+            self.dock.area_codes = codes.clone();
+            self.persist_area_codes();
+        }
+        if let Some(pages) = &snap.pages {
+            self.pages.pages = pages.clone();
+            if self.pages.current >= self.pages.pages.len() && !self.pages.pages.is_empty() {
+                self.pages.current = self.pages.pages.len() - 1;
+            }
+            if let Some(cur) = self.pages.pages.get(self.pages.current) {
+                self.drawing.lines = cur.lines.clone();
+                self.drawing.polygons = cur.polygons.clone();
+            }
         }
     }
 
@@ -5925,10 +6733,9 @@ impl App {
 
     /// A pointer position (window CSS px) in canvas px, if it is over the canvas.
     fn canvas_point(&self, p: Point) -> Option<(f32, f32)> {
-        let (ox, oy) = minimap::CANVAS_ORIGIN;
-        let (x, y) = (p.x - ox - self.pages_nav_width(), p.y - oy);
-        let (cw, ch) = self.view.canvas;
-        (x >= 0.0 && y >= 0.0 && f64::from(x) < cw && f64::from(y) < ch).then_some((x, y))
+        let rect = self.canvas_rect();
+        let (x, y) = (p.x - rect.x, p.y - rect.y);
+        (x >= 0.0 && y >= 0.0 && x < rect.width && y < rect.height).then_some((x, y))
     }
 
     /// While an area code is dragged: the region under the pointer that a drop
@@ -6462,6 +7269,189 @@ impl App {
         }
     }
 
+    fn area_usage_counts(&self) -> std::collections::BTreeMap<String, usize> {
+        let mut counts = std::collections::BTreeMap::new();
+        for page in &self.pages.pages {
+            for poly in &page.polygons {
+                *counts.entry(poly.kind.clone()).or_insert(0) += 1;
+            }
+        }
+        counts
+    }
+
+    fn open_type_editor(&mut self, select: Option<&str>) {
+        self.save_current_page();
+        let counts = self.area_usage_counts();
+        self.ui
+            .type_editor
+            .open_list(&self.area_codes, counts, select);
+    }
+
+    fn open_type_editor_new(&mut self) {
+        self.save_current_page();
+        let counts = self.area_usage_counts();
+        let group = self
+            .area_codes
+            .first()
+            .map(|c| c.group.as_str())
+            .unwrap_or("OTH");
+        self.ui
+            .type_editor
+            .open_new(&self.area_codes, counts, group);
+    }
+
+    fn type_editor_msg(&mut self, msg: ui::type_editor::Msg) -> Task<Message> {
+        use ui::type_editor::{ConfirmKind, Msg};
+        match msg {
+            Msg::PickLineColor => {
+                self.color_target = color_dialog::ColorTarget::TypeEditorLine;
+                self.color
+                    .open_with(&self.ui.type_editor.current_line_color());
+            }
+            Msg::PickFillColor => {
+                self.color_target = color_dialog::ColorTarget::TypeEditorFill;
+                self.color
+                    .open_with(&self.ui.type_editor.current_fill_color());
+            }
+            Msg::Import if self.ui.type_editor.open => {
+                let session = self.ui.type_editor.session;
+                return Task::perform(ui::dialogs::pick_codes_import(), move |path| {
+                    Message::Ui(ui::Msg::TypeEditor(Msg::ImportChosen(session, path)))
+                });
+            }
+            Msg::Export if self.ui.type_editor.open => {
+                let codes = match self.ui.type_editor.validated_codes() {
+                    Ok(c) => c,
+                    Err(e) => return self.toasts.show(e),
+                };
+                let body = match sketch_core::geometry::area_codes::to_json(codes) {
+                    Ok(b) => b,
+                    Err(e) => return self.toasts.show(e.to_string()),
+                };
+                let session = self.ui.type_editor.session;
+                return Task::perform(ui::dialogs::pick_codes_export(), move |path| {
+                    Message::Ui(ui::Msg::TypeEditor(Msg::ExportChosen {
+                        session,
+                        body,
+                        path,
+                    }))
+                });
+            }
+            Msg::ImportChosen(session, path) => {
+                if self.ui.type_editor.open && session == self.ui.type_editor.session {
+                    if let Some(path) = path {
+                        match std::fs::read_to_string(&path).map_err(|e| e.to_string()).and_then(
+                            |body| {
+                                sketch_core::geometry::area_codes::from_json(
+                                    body.trim_start_matches('\u{feff}'),
+                                )
+                                .map_err(|e| e.to_string())
+                            },
+                        ) {
+                            Ok(codes) => self.ui.type_editor.load_imported_codes(codes),
+                            Err(error) => {
+                                return self
+                                    .toasts
+                                    .show(format!("Could not import area codes: {error}"));
+                            }
+                        }
+                    }
+                }
+            }
+            Msg::ExportChosen {
+                session,
+                body,
+                path,
+            } => {
+                if self.ui.type_editor.open && session == self.ui.type_editor.session {
+                    if let Some(path) = path {
+                        if let Err(error) = std::fs::write(&path, body) {
+                            return self
+                                .toasts
+                                .show(format!("Could not export area codes: {error}"));
+                        }
+                    }
+                }
+            }
+            Msg::RequestCancel => {
+                if self.ui.type_editor.is_dirty() {
+                    self.ui.type_editor.confirm = Some(ConfirmKind::Discard);
+                } else {
+                    self.ui.type_editor.close();
+                }
+            }
+            Msg::ConfirmDiscard => {
+                self.ui.type_editor.close();
+            }
+            Msg::Save => return self.save_type_editor(),
+            other => self.ui.type_editor.apply_local(other),
+        }
+        Task::none()
+    }
+
+    fn save_type_editor(&mut self) -> Task<Message> {
+        let outcome = match self.ui.type_editor.build_save_outcome() {
+            Ok(out) => out,
+            Err(err) => return self.toasts.show(err),
+        };
+        self.save_current_page();
+        let mut snap = self.snapshot_model("Edit area types");
+        snap.area_codes = Some(self.area_codes.clone());
+        snap.pages = Some(self.pages.pages.clone());
+        self.undo.push(snap);
+
+        let und_name = outcome
+            .codes
+            .iter()
+            .find(|c| c.code == "UND")
+            .map(|c| c.name.clone())
+            .unwrap_or_else(|| "Undefined".to_string());
+
+        for page in &mut self.pages.pages {
+            apply_type_remaps_to_polygons(
+                &mut page.polygons,
+                &mut page.lines,
+                &outcome.remaps,
+                &und_name,
+            );
+        }
+        apply_type_remaps_to_polygons(
+            &mut self.drawing.polygons,
+            &mut self.drawing.lines,
+            &outcome.remaps,
+            &und_name,
+        );
+
+        if let Some(armed) = self.workflow.armed.clone() {
+            match outcome.remaps.get(&armed) {
+                Some(ui::type_editor::RemapTarget::Deleted) => {
+                    self.workflow.armed = None;
+                    self.drawing.selected_area_type = None;
+                    self.drawing.selected_area_name = None;
+                }
+                Some(ui::type_editor::RemapTarget::Updated {
+                    new_code,
+                    new_name,
+                    ..
+                }) => {
+                    self.workflow.armed = Some(new_code.clone());
+                    self.drawing.selected_area_type = Some(new_code.clone());
+                    self.drawing.selected_area_name = Some(new_name.clone());
+                }
+                None => {}
+            }
+        }
+
+        self.area_codes = outcome.codes.clone();
+        self.dock.area_codes = outcome.codes;
+        self.persist_area_codes();
+        self.ui.type_editor.close();
+        self.refresh_dirty();
+        self.sync_inspector_area_draft(true);
+        self.sync_canvas();
+        self.toasts.show("Area types saved.".to_string())
+    }
+
     /// `persistLibraryState`: the text library and the favourite symbols.
     fn persist_library(&self) {
         let _ = persist::write_json("text-library-labels.json", &self.dock.text_labels);
@@ -6522,40 +7512,6 @@ impl App {
                 Err(_) => Vec::new(),
             },
         }
-    }
-
-    fn symbol_organizer_msg(&mut self, m: symbol_organizer::SymbolOrganizerMsg) -> Task<Message> {
-        use symbol_organizer::SymbolOrganizerMsg as M;
-        match m {
-            M::Open => {
-                let current = self.favorite_types();
-                self.symbol_organizer.open(&current);
-                return Task::none();
-            }
-            M::Close => {
-                self.symbol_organizer.close();
-                return Task::none();
-            }
-            M::Save => {
-                if self.symbol_organizer.update(M::Save, &[]) {
-                    self.symbol_favorites = Some(self.symbol_organizer.checked.clone());
-                    self.persist_library();
-                    return self.toasts.show("Favorite symbols updated.".to_string());
-                }
-                return Task::none();
-            }
-            M::Defaults => {
-                let defaults: Vec<String> = match &*self.symbols {
-                    Ok(ix) => ix.favorites.iter().map(|i| i.id.clone()).collect(),
-                    Err(_) => Vec::new(),
-                };
-                self.symbol_organizer.update(M::Defaults, &defaults);
-                return Task::none();
-            }
-            _ => {}
-        }
-        self.symbol_organizer.update(m, &[]);
-        Task::none()
     }
 
     /// `clearLayerSelection(descendantLayerIds)`: the selection entries
@@ -6998,21 +7954,41 @@ impl App {
     /// `undo()` / `redo()`: restore a snapshot and drop the selection, as the
     /// original does (`clearSelection` after every step).
     fn undo_step(&mut self) -> Task<Message> {
-        let current = self.snapshot_model("Edit");
+        let include_types = self.undo.next_undo_has_types();
+        if include_types {
+            self.save_current_page();
+        }
+        let mut current = self.snapshot_model("Edit");
+        if include_types {
+            current.area_codes = Some(self.area_codes.clone());
+            current.pages = Some(self.pages.pages.clone());
+        }
         if let Some(snap) = self.undo.undo(current) {
             self.restore_snapshot(&snap);
             self.selection.clear();
             self.sync_edit_tools();
+            self.sync_inspector_area_draft(true);
+            self.sync_canvas();
         }
         Task::none()
     }
 
     fn redo_step(&mut self) -> Task<Message> {
-        let current = self.snapshot_model("Edit");
+        let include_types = self.undo.next_redo_has_types();
+        if include_types {
+            self.save_current_page();
+        }
+        let mut current = self.snapshot_model("Edit");
+        if include_types {
+            current.area_codes = Some(self.area_codes.clone());
+            current.pages = Some(self.pages.pages.clone());
+        }
         if let Some(snap) = self.undo.redo(current) {
             self.restore_snapshot(&snap);
             self.selection.clear();
             self.sync_edit_tools();
+            self.sync_inspector_area_draft(true);
+            self.sync_canvas();
         }
         Task::none()
     }
@@ -7020,7 +7996,7 @@ impl App {
     /// The text group's values (`syncContextualControls`): a selected label
     /// wins; otherwise the area whose label / size block is selected, with
     /// the auto-post font and size standing in for what it has not set.
-    fn text_tools(&self) -> Option<ribbon::TextTools> {
+    fn text_tools(&self) -> Option<ui::inspector::TextTools> {
         let color_of = |hex: &str, fallback: u32| {
             crate::render::parse_hex(hex).unwrap_or(theme::hex(fallback))
         };
@@ -7037,7 +8013,7 @@ impl App {
             .iter()
             .find(|t| self.selection.texts.contains(&t.id))
         {
-            return Some(ribbon::TextTools {
+            return Some(ui::inspector::TextTools {
                 font: if t.font_family.is_empty() {
                     "Arial".into()
                 } else {
@@ -7073,7 +8049,7 @@ impl App {
         } else {
             poly.name.clone()
         };
-        Some(ribbon::TextTools {
+        Some(ui::inspector::TextTools {
             font: poly
                 .label_font_family
                 .clone()
@@ -7098,7 +8074,7 @@ impl App {
     }
 
     /// The first selected area's Edit Tools values.
-    fn area_tools(&self) -> Option<ribbon::AreaTools> {
+    fn area_tools(&self) -> Option<ui::inspector::AreaTools> {
         let poly = self
             .drawing
             .polygons
@@ -7110,7 +8086,7 @@ impl App {
                 .and_then(crate::render::parse_hex)
                 .unwrap_or(theme::hex(fallback))
         };
-        Some(ribbon::AreaTools {
+        Some(ui::inspector::AreaTools {
             pattern: match area_props::shown_pattern(poly) {
                 "none" => "None",
                 "diagonal" => "Diagonal",
@@ -7135,10 +8111,9 @@ impl App {
         })
     }
 
-    /// The Edit Tools panel's live values (`updateAreaActionStates`): the
-    /// selected wall's length to 2dp, its style and colour, and which handle
-    /// a length edit moves.
-    fn edit_tools_data(&self) -> Option<ribbon::EditToolsData> {
+    /// The Edit Tools inspector's live values: selected wall length, style,
+    /// colour, endpoint handle, text, and area appearance.
+    fn edit_tools_data(&self) -> Option<ui::inspector::EditToolsData> {
         if self.selection.is_empty() {
             return None;
         }
@@ -7148,20 +8123,15 @@ impl App {
             && self.selection.symbols.is_empty()
             && self.has_text_selection()
         {
-            return Some(ribbon::EditToolsData {
+            return Some(ui::inspector::EditToolsData {
                 length_text: String::new(),
                 endpoint_label: "Text",
-                style_text: "",
                 color: theme::hex(0x2B6CB0),
-                has_symbols: false,
-                hosted: false,
-                has_text: true,
-                has_line: false,
                 text: self.text_tools().map(|mut t| {
                     // A box being typed in shows what is typed.
                     match &self.text_edit {
-                        Some((ribbon::TextField::Size, v)) => t.size = v.clone(),
-                        Some((ribbon::TextField::Value, v)) => t.value = v.clone(),
+                        Some((ui::inspector::TextField::Size, v)) => t.size = v.clone(),
+                        Some((ui::inspector::TextField::Value, v)) => t.value = v.clone(),
                         None => {}
                     }
                     t
@@ -7169,37 +8139,23 @@ impl App {
                 area,
             });
         }
-        // Symbol-only selection: a minimal data block so the Edit Tools tab
+        // Symbol-only selection: a minimal data block so the Inspector
         // can host the symbol flip/opening-width buttons.
         if self.selection.lines.is_empty() && !self.selection.symbols.is_empty() {
-            return Some(ribbon::EditToolsData {
+            return Some(ui::inspector::EditToolsData {
                 length_text: String::new(),
                 endpoint_label: "Symbol",
-                style_text: "",
                 color: theme::hex(0x2B6CB0),
-                has_symbols: true,
-                hosted: self
-                    .drawing
-                    .symbols
-                    .iter()
-                    .any(|s| self.selection.symbols.contains(&s.id) && s.wall_id.is_some()),
-                has_text: false,
-                has_line: false,
                 text: None,
                 area,
             });
         }
         let Some(line) = self.drawing.first_selected_line(&self.selection) else {
             // An area-only selection: just the area group.
-            return area.map(|area| ribbon::EditToolsData {
+            return area.map(|area| ui::inspector::EditToolsData {
                 length_text: String::new(),
                 endpoint_label: "",
-                style_text: "",
                 color: theme::hex(0x2B6CB0),
-                has_symbols: false,
-                hosted: false,
-                has_text: false,
-                has_line: false,
                 text: None,
                 area: Some(area),
             });
@@ -7211,48 +8167,60 @@ impl App {
             .map(|(_, start)| start)
             .unwrap_or(false);
         let length = sketch_core::geometry::distance(line.start, line.end);
-        Some(ribbon::EditToolsData {
+        Some(ui::inspector::EditToolsData {
             length_text: format!("{length:.2}"),
             endpoint_label: if at_start {
                 "Length · Start handle"
             } else {
                 "Length · End handle"
             },
-            style_text: match line.line_style.as_deref() {
-                Some("dashed") => "Dashed",
-                Some("dotted") => "Dotted",
-                _ => "Solid",
-            },
             color: line
                 .color
                 .as_deref()
                 .and_then(crate::render::parse_hex)
                 .unwrap_or(theme::hex(0x2B6CB0)),
-            has_symbols: false,
-            hosted: false,
-            has_text: false,
-            has_line: true,
             text: None,
             area,
         })
     }
 
-    /// The Edit Tools tab exists only with a selection; selecting switches to
-    /// it and clearing the selection returns to the tab that was showing.
+    /// Clear transient text/length drafts and refresh the Inspector's inline
+    /// area properties draft to match the active selection.
     fn sync_edit_tools(&mut self) {
         self.text_edit = None;
-        let has = !self.selection.is_empty();
-        if has && self.active_tab != ribbon::TabId::EditTools {
-            self.tab_before_edit_tools = Some((self.active_tab, self.body));
-            self.active_tab = ribbon::TabId::EditTools;
-            self.body = ribbon::Body::EditTools;
-        } else if !has && self.active_tab == ribbon::TabId::EditTools {
-            let (tab, body) = self
-                .tab_before_edit_tools
-                .take()
-                .unwrap_or((ribbon::TabId::Home, ribbon::Body::Home));
-            self.active_tab = tab;
-            self.body = body;
+        self.line_length_edit = None;
+        self.sync_inspector_area_draft(false);
+    }
+
+    /// Keep the Next-shell Inspector's inline `AreaDialog` draft aligned with
+    /// the first selected polygon without popping the Classic modal dialog.
+    fn sync_inspector_area_draft(&mut self, force: bool) {
+        if self.area_dialog.open {
+            return;
+        }
+        let poly = self
+            .drawing
+            .polygons
+            .iter()
+            .find(|p| self.selection.polys.contains(&p.id));
+        let next_id = poly.map(|p| p.id);
+        if !force && self.ui.inspector_area_id == next_id {
+            return;
+        }
+        self.ui.inspector_area_id = next_id;
+        if let Some(poly) = poly {
+            let props = area_props::AreaProperties::from_area(poly);
+            let codes: Vec<String> = self
+                .area_codes
+                .iter()
+                .map(|c| format!("{} - {}", c.code, c.name))
+                .collect();
+            let positive = poly.factor_override.unwrap_or(poly.factor) >= 0.0;
+            self.area_dialog = area_dialog::AreaDialog::open_with(props, codes);
+            self.area_dialog.open = false;
+            self.area_dialog.positive = positive;
+        } else {
+            self.area_dialog = area_dialog::AreaDialog::default();
         }
     }
 
@@ -7285,6 +8253,14 @@ impl App {
                     area_props::set_selected_area_style(&mut self.drawing, &self.selection, &style);
                     self.color_target = color_dialog::ColorTarget::DrawColor;
                     self.sync_canvas();
+                }
+                color_dialog::ColorTarget::TypeEditorLine => {
+                    self.ui.type_editor.set_line_color(hex);
+                    self.color_target = color_dialog::ColorTarget::DrawColor;
+                }
+                color_dialog::ColorTarget::TypeEditorFill => {
+                    self.ui.type_editor.set_fill_color(hex);
+                    self.color_target = color_dialog::ColorTarget::DrawColor;
                 }
             }
         }
@@ -7329,6 +8305,8 @@ impl App {
             poly.factor_override = Some(signed);
             poly.factor = signed;
         }
+        self.sync_inspector_area_draft(true);
+        self.sync_canvas();
         self.toasts.show(format!(
             "Area{} {}.",
             if ids.len() == 1 { "" } else { "s" },
@@ -7526,9 +8504,8 @@ impl App {
             }
             Action::AddPage => self.add_page(),
             Action::New => {
-                // `newSketch`: resetToBlank + the File menu/submenu hide.
+                // `newSketch`: resetToBlank.
                 self.reset_to_blank();
-                self.close_file_menu();
             }
             Action::DeleteSelected => self.delete_selected(),
             Action::DeletePage => {
@@ -7552,6 +8529,8 @@ impl App {
             }
             Action::PhotoRemove => {
                 self.bg_image = reference_image::BgImage::default();
+                self.ui.inspector_image_adjust = false;
+                self.sync_canvas();
             }
             Action::PhotoScale => {
                 // handleScaleClick's tail: an invalid measure cancels the
@@ -7596,6 +8575,17 @@ impl App {
                 let value = d.input.unwrap_or_default();
                 return self.update(Message::GeoAddressValue(value));
             }
+            Action::RenameDocument => {
+                let clean = d.input.unwrap_or_default();
+                let trimmed = clean.trim();
+                if !trimmed.is_empty() {
+                    self.file_name = trimmed.to_owned();
+                }
+            }
+            Action::RenamePage(index) => {
+                let value = d.input.unwrap_or_default();
+                self.pages.set_page_name(index, &value);
+            }
         }
         Task::none()
     }
@@ -7609,6 +8599,9 @@ impl App {
     }
 
     fn add_page(&mut self) {
+        if self.symbol_edit_session.is_some() {
+            return;
+        }
         // addPage(): saveCurrentPage, insert after current, load the new
         // (blank) page — the live drawing empties like the original's
         // page switch.
@@ -7619,6 +8612,9 @@ impl App {
     }
 
     fn go_to_page(&mut self, index: usize) {
+        if self.symbol_edit_session.is_some() {
+            return;
+        }
         self.save_current_page();
         if self.pages.go_to(index) {
             self.load_page_data();
@@ -7806,33 +8802,13 @@ impl App {
         self.autosave_baseline();
     }
 
-    /// The `.tab` click handler of ui-manager.js: the clicked tab becomes
-    /// `.active`; File toggles the backstage (leaving the body as is), any
-    /// other tab closes it and shows its own body.
-    fn click_tab(&mut self, id: TabId) {
-        self.active_tab = id;
-        match id.body() {
-            None => {
-                self.file_menu = !self.file_menu;
-            }
-            Some(body) => {
-                self.file_menu = false;
-                self.body = body;
-            }
-        }
-    }
-
-    /// `closeFileMenu()` — hides the menu; the File tab stays `.active`.
-    fn close_file_menu(&mut self) {
-        self.file_menu = false;
-        // The Recent Files submenu hides with the menu (ui-manager.js:694).
-        self.recent_open = false;
-    }
-
     /// `saveCurrentPage()` — copy the live drawing into the page record
     /// (refs/sketch-app.js:4981). The page's `northAngle` lives on the
     /// record already, so only the arrays move.
     fn save_current_page(&mut self) {
+        if self.symbol_edit_session.is_some() {
+            return;
+        }
         let page = &mut self.pages.pages[self.pages.current];
         page.lines = self.drawing.lines.clone();
         page.polygons = self.drawing.polygons.clone();
@@ -7864,6 +8840,123 @@ impl App {
         self.selection.clear();
         self.sync_edit_tools();
         self.sync_canvas();
+    }
+
+    pub(crate) fn start_symbol_shape_edit(&mut self, id: &str) -> Task<Message> {
+        if self.symbol_edit_session.is_some() {
+            return self
+                .toasts
+                .show("Finish or cancel the active symbol shape edit first.".into());
+        }
+        let Some(sym) = self.symbols_lib().symbol(id).cloned() else {
+            return self.toasts.show("Symbol not found.".into());
+        };
+        let (temp_drawing, locked_entities) = symbol_shape::symbol_to_drawing(&sym);
+        self.ui.symbol_library.open = false;
+        self.ui.symbol_library.medium_editor_open = false;
+        self.ui.ledger_open = false;
+
+        let saved = SymbolEditSession {
+            symbol_id: sym.id.clone(),
+            symbol_name: sym.name.clone(),
+            saved_drawing: std::mem::take(&mut self.drawing),
+            saved_undo: std::mem::take(&mut self.undo),
+            saved_selection: std::mem::take(&mut self.selection),
+            saved_grid_size: self.view.grid_size,
+            saved_pan: self.view.pan,
+            saved_zoom: self.view.zoom,
+            saved_mode: self.view.mode,
+            saved_dimensions: self.view.dimensions,
+            locked_entities,
+        };
+        let locked_count = saved.locked_entities.len();
+        self.symbol_edit_session = Some(saved);
+        self.drawing = temp_drawing;
+        self.undo = undo::UndoStack::default();
+        self.selection = selection::Selection::default();
+        self.view.grid_size = 1.0 / 12.0;
+        self.view.dimensions = false;
+        self.view.mode = view_state::Mode::Select;
+        self.sync_edit_tools();
+        self.sync_canvas();
+        let bounds = self.sketch_view_bounds().or(Some((
+            view_state::World { x: -1.0, y: -1.0 },
+            view_state::World { x: 1.0, y: 1.0 },
+        )));
+        self.view.center_and_fit(bounds);
+        self.invalidate_canvas();
+        if locked_count > 0 {
+            self.toasts.show(format!(
+                "{locked_count} non-editable entity/entities locked while editing."
+            ))
+        } else {
+            Task::none()
+        }
+    }
+
+    fn finish_symbol_shape_edit(&mut self, save: bool) -> Task<Message> {
+        let Some(session) = self.symbol_edit_session.take() else {
+            return Task::none();
+        };
+        let edited = save.then(|| {
+            symbol_shape::drawing_to_geometry(
+                &self.drawing.lines,
+                &self.drawing.texts,
+                &session.locked_entities,
+            )
+        });
+        self.drawing = session.saved_drawing;
+        self.undo = session.saved_undo;
+        self.selection = session.saved_selection;
+        self.view.grid_size = session.saved_grid_size;
+        self.view.pan = session.saved_pan;
+        self.view.zoom = session.saved_zoom;
+        self.view.mode = session.saved_mode;
+        self.view.dimensions = session.saved_dimensions;
+        self.sync_edit_tools();
+        self.sync_canvas();
+        self.invalidate_canvas();
+
+        let Some((entities, bounds)) = edited else {
+            return Task::none();
+        };
+
+        match symlib::try_edit_library(|lib| {
+            sketch_core::symbol_edit::replace_geometry(
+                lib,
+                &session.symbol_id,
+                &entities,
+                bounds,
+            )
+        }) {
+            Ok(_) => {
+                self.rebuild_symbols();
+                self.toasts.show("Symbol shape saved.".into())
+            }
+            Err((_, true)) => {
+                if let Some(mut sym) = self.symbols_lib().symbol(&session.symbol_id).cloned() {
+                    sym.geometry = entities;
+                    sym.bounds = bounds;
+                    self.symbol_changes.custom.insert(sym.id.clone(), sym);
+                    let t = self.store_symbols();
+                    return Task::batch([
+                        t,
+                        self.toasts
+                            .show("Saved for this user only (library file is read-only).".into()),
+                    ]);
+                }
+                self.toasts.show("Could not locate symbol to update.".into())
+            }
+            Err((err, false)) => {
+                if let Some(sym) = self.symbol_changes.custom.get_mut(&session.symbol_id) {
+                    sym.geometry = entities;
+                    sym.bounds = bounds;
+                    let t = self.store_symbols();
+                    return Task::batch([t, self.toasts.show("Symbol shape saved.".into())]);
+                }
+                self.toasts.show(err)
+            }
+        }
     }
 
     /// The named layer id a saved entity's 1-based layer index maps to
@@ -7945,6 +9038,17 @@ impl App {
             serde_json::to_value(&self.drawing.options).unwrap_or_else(|_| serde_json::json!({}));
         let page_layout =
             serde_json::to_value(&self.page_layout).unwrap_or_else(|_| serde_json::json!({}));
+        let mut sidebar = serde_json::json!({
+            "active": self.dock.active.key(),
+            "open": self.dock.open,
+            "pinned": self.dock.pinned,
+        });
+        if let (Some(map), Some(w)) = (sidebar.as_object_mut(), self.dock.width) {
+            map.insert("width".to_owned(), serde_json::json!(w));
+        }
+        if let (Some(map), Some(w)) = (sidebar.as_object_mut(), self.ui.ledger_width) {
+            map.insert("ledgerWidth".to_owned(), serde_json::json!(w));
+        }
         let settings = serde_json::json!({
             "defineFirst": self.drawing.options.define_first,
             "dimensionsEnabled": self.view.dimensions,
@@ -7953,11 +9057,7 @@ impl App {
             "canvasTheme": canvas_theme::current().key(),
             "pageLayout": page_layout,
             "autoPost": self.drawing.auto_post,
-            "sidebar": {
-                "active": self.dock.active.key(),
-                "open": self.dock.open,
-                "pinned": self.dock.pinned,
-            },
+            "sidebar": sidebar,
             "textLibraryLabels": self.text_labels_save(),
             "symbolFavorites": match &self.symbol_favorites {
                 Some(list) => serde_json::json!(list),
@@ -8321,7 +9421,6 @@ impl App {
         self.file_name = name;
         self.autosave_clean();
         self.record_recent(&recent_name, &model.to_string());
-        self.close_file_menu();
         match fallback_toast.filter(|_| json_fallback) {
             Some(toast) => self.toasts.show(toast),
             None => Task::none(),
@@ -8574,6 +9673,13 @@ impl App {
             if let Some(p) = sb.get("pinned").and_then(|v| v.as_bool()) {
                 self.dock.pinned = p;
             }
+            if let Some(w) = sb.get("width").and_then(|v| v.as_f64()) {
+                self.dock.width = Some(dock::clamp_width(w as f32, self.window_size.width));
+            }
+            self.ui.ledger_width = sb
+                .get("ledgerWidth")
+                .and_then(|v| v.as_f64())
+                .map(|w| ui::ledger::clamp_width(w as f32, self.window_size.width));
         }
         if let Some(labels) = s.get("textLibraryLabels") {
             self.dock.text_labels = labels
@@ -8597,6 +9703,9 @@ impl App {
     /// as keyboard input. Drawing coordinates and keyboard distances are feet.
     fn disto_measurement(&mut self, meters: f64) -> Task<Message> {
         use sketch_core::disto::{buffer_text, round_distance, DistoRounding};
+        if meters.is_finite() && meters > 0.0 {
+            self.last_disto_meters = Some(meters);
+        }
         if !meters.is_finite()
             || meters <= 0.0
             || !self.view.mode.is_drawing()
@@ -8614,12 +9723,10 @@ impl App {
                 || self.text_manager.open
                 || self.symbol_manager.open
                 || self.autosave_prompt
-                || self.symbol_organizer.open
                 || self.shortcuts.open
                 || self.guide.open
                 || self.breakdown.open
                 || self.command_palette_open
-                || self.file_menu
                 || self.print_preview.open
                 || self.line_length_edit.is_some()
                 || self.scale_edit.is_some()
@@ -8715,7 +9822,7 @@ impl App {
         } else {
             Subscription::none()
         };
-        // The backstage close rules are routed through the root `EventTap`
+        // Menu/overlay close rules are routed through the root `EventTap`
         // (see view()), not a subscription.
         // The palette's input keydown handler: a focused text box swallows
         // keys before the EventTap, so Escape, the arrows and Ctrl+K ride
@@ -8753,6 +9860,16 @@ impl App {
                 .map(|_| Message::ActivateWindow),
             None => Subscription::none(),
         };
+        let sym_lib_mods = if self.ui.symbol_library.open {
+            event::listen_with(|event, _status, _window| match &event {
+                Event::Keyboard(iced::keyboard::Event::ModifiersChanged(mods)) => {
+                    Some(Message::SymbolLibraryMods(mods.command()))
+                }
+                _ => None,
+            })
+        } else {
+            Subscription::none()
+        };
         Subscription::batch([
             trace,
             autosave::subscription(self.drawing.options.auto_save_enabled),
@@ -8763,6 +9880,7 @@ impl App {
             rename_cancel,
             drop_guard,
             palette_keys,
+            sym_lib_mods,
             Subscription::run(disto::event_stream).map(Message::Disto),
         ])
     }
@@ -8819,226 +9937,116 @@ impl App {
     }
 
     fn view(&self) -> Element<'_, Message> {
-        // The Calcs panel reflects the polygons the canvas is drawing.
-        let calcs_model = calcs::build(&self.drawing.polygons, &self.computed);
-        let columns = row![
-            rail::view(self.view.mode, self.pages_nav_open),
-            // 1px gap between the rail's border and the canvas (body bg).
-            container(theme::rect(1.0, 1.0, theme::bg_app()))
-                .height(Length::Fill)
-                .style(|_| container::Style {
-                    background: Some(theme::bg_app().into()),
-                    ..container::Style::default()
-                }),
-            if self.pages_nav_open {
-                pages_nav::view(&self.pages, self.pages_nav_hover)
-            } else {
-                iced::widget::Space::new().into()
-            },
-            // The drawing canvas (CanvasEngine): background + grid.
-            iced::widget::canvas(sketch_canvas::SketchCanvas {
-                cache: Some(&self.canvas_cache),
-                pointer: Some(&self.canvas_pointer),
-                pan: iced::Vector::new(self.view.pan.0 as f32, self.view.pan.1 as f32),
-                zoom: self.view.zoom as f32,
-                grid: self.view.grid,
-                mode: self.view.mode,
-                panning: self.view.pan_from.is_some(),
-                space_pan: self.view.space_pan,
-                scene: render::Scene {
-                    live_pointer: None,
-                    area_codes: &self.area_codes,
-                    computed: &self.computed,
-                    drawing: &self.drawing,
-                    selection: &self.selection,
-                    gates: &self.gates_cache,
-                    photo: &self.bg_image,
-                    ctx: self.draw_ctx(),
-                    pan: self.view.pan,
-                    zoom: self.view.zoom,
-                    filters: self.view.filters,
-                    dimensions: self.view.dimensions,
-                    placement: self.view.dimension_placement,
-                    symbols: &self.drawing.symbols,
-                    symbol_lib: Some(self.symbols_lib()),
-                    texts: &self.drawing.texts,
-                    measure_points: &self.drawing.measure_points,
-                    measure_runs: &self.drawing.measure_runs,
-                    curve_tool: self.view.mode == view_state::Mode::Curve,
-                    select_mode: self.view.mode == view_state::Mode::Select,
-                    drag: self.view.drag.as_ref(),
-                    drag_moved: self.drag_banked,
-                    text_zoom_floor: 0.0,
-                    curve_drag: match &self.view.drag {
-                        Some(view_state::Drag::Curve { line_id, .. }) => {
-                            Some((*line_id, self.drag_banked))
-                        }
-                        _ => None,
-                    },
-                    underlay: self
-                        .pages
-                        .underlay
-                        .filter(|&u| u != self.pages.current)
-                        .and_then(|u| self.pages.pages.get(u)),
-                },
-                text_preview: self
-                    .dock_drag
-                    .as_ref()
-                    .filter(|d| d.active)
-                    .and_then(|d| match &d.item {
-                        dock::DragItem::Text(text) => Some(text.as_str()),
-                        _ => None,
-                    })
-                    .or(self.placing_text.as_deref()),
-                symbol_preview: self
-                    .dock_drag
-                    .as_ref()
-                    .filter(|d| d.active)
-                    .and_then(|d| match &d.item {
-                        dock::DragItem::Symbol(id) => Some(id.as_str()),
-                        _ => None,
-                    })
-                    .or(self.placing_symbol.as_deref()),
-                symbol_drag: self
-                    .dock_drag
-                    .as_ref()
-                    .is_some_and(|d| d.active && matches!(d.item, dock::DragItem::Symbol(_))),
-                workflow: Some(&self.workflow),
-                drop_hint: self
-                    .dock_drag
-                    .as_ref()
-                    .and_then(|d| d.hover.as_ref())
-                    .map(|(ring, color)| (ring.as_slice(), *color)),
-                dragging: self.view.drag.is_some(),
-                fence: self.view.fence.map(|(a, b)| {
-                    let (ax, ay) = self.view.to_screen(a);
-                    let (bx, by) = self.view.to_screen(b);
-                    (
-                        Point::new(ax as f32, ay as f32),
-                        Point::new(bx as f32, by as f32),
-                    )
-                }),
-            })
-            .width(Length::Fill)
-            .height(Length::Fill),
-            dock::view(
-                &self.dock,
-                &self.symbols,
-                &calcs_model,
-                self.calcs_totals,
-                &self.layers,
-                &self.area_layer_filter(),
-                dock::PanelContext {
-                    dimensions: self.view.dimensions,
-                    placement: self.view.dimension_placement,
-                    favorites: self.symbol_favorites.as_deref(),
-                    workflow: &self.workflow,
-                    auto_post: &self.drawing.auto_post
-                },
-            ),
-        ]
-        .height(Length::Fill);
-        // The resize handle straddles the canvas/dock boundary, above both.
-        let workspace = stack![columns, dock::resize_handle(&self.dock)].height(Length::Fill);
+        ui::view(self)
+    }
 
-        let chrome = column![
-            theme::nudged(0.5, || titlebar::view(
-                self.close_hover,
-                self.maximized,
-                self.save_state(),
-                self.undo.can_undo(),
-                self.undo.can_redo(),
-                format!(
-                    "Appraisal Sketch - {} (page {})",
-                    self.file_name,
-                    self.pages.current + 1
-                ),
-            )),
-            theme::nudged(0.33, || ribbon::view(
-                self.active_tab,
-                self.body,
-                self.pages.can_go_prev(),
-                self.edit_tools_data().as_ref(),
-                self.undo.can_undo(),
-                self.undo.can_redo(),
-                ribbon::PhotoRibbon {
-                    edit_active: self.bg_image.edit_mode,
-                    intensity: self.bg_image.opacity * 100.0,
+    fn window_title(&self) -> String {
+        format!("Sketch Rust - {}", self.file_name)
+    }
+
+    /// The drawing canvas (`CanvasEngine`): background + grid + scene.
+    pub(crate) fn canvas_element(&self) -> Element<'_, Message> {
+        iced::widget::canvas(sketch_canvas::SketchCanvas {
+            cache: Some(&self.canvas_cache),
+            pointer: Some(&self.canvas_pointer),
+            pan: iced::Vector::new(self.view.pan.0 as f32, self.view.pan.1 as f32),
+            zoom: self.view.zoom as f32,
+            grid: self.view.grid,
+            mode: self.view.mode,
+            panning: self.view.pan_from.is_some(),
+            space_pan: self.view.space_pan,
+            touch_gestures: true,
+            finger_pan_only: self.drawing.options.input_mode == "pen-ink",
+            scene: render::Scene {
+                touch_handles: matches!(self.ui.density, ui::tokens::Density::Touch),
+                live_pointer: None,
+                area_codes: &self.area_codes,
+                computed: &self.computed,
+                drawing: &self.drawing,
+                selection: &self.selection,
+                gates: &self.gates_cache,
+                photo: &self.bg_image,
+                ctx: self.draw_ctx(),
+                pan: self.view.pan,
+                zoom: self.view.zoom,
+                filters: self.view.filters,
+                dimensions: self.view.dimensions,
+                placement: self.view.dimension_placement,
+                symbols: &self.drawing.symbols,
+                symbol_lib: Some(self.symbols_lib()),
+                texts: &self.drawing.texts,
+                measure_points: &self.drawing.measure_points,
+                measure_runs: &self.drawing.measure_runs,
+                curve_tool: self.view.mode == view_state::Mode::Curve,
+                select_mode: self.view.mode == view_state::Mode::Select,
+                drag: self.view.drag.as_ref(),
+                drag_moved: self.drag_banked,
+                text_zoom_floor: 0.0,
+                curve_drag: match &self.view.drag {
+                    Some(view_state::Drag::Curve { line_id, .. }) => {
+                        Some((*line_id, self.drag_banked))
+                    }
+                    _ => None,
                 },
-                self.disto.chip_label(),
-            )),
-            workspace,
-            theme::nudged(0.5, || {
-                let scale_text = self
-                    .scale_edit
-                    .clone()
-                    .unwrap_or_else(|| view_state::js_number(self.view.drawing_scale));
-                let (areas, area_selected) = self.status_areas();
-                statusbar::view(
-                    &self.view,
-                    scale_text,
-                    &statusbar::PageView {
-                        pages: &self.pages,
-                        totals: self.calcs_totals.unwrap_or_default(),
-                        area_count: areas.len(),
-                        areas: &areas,
-                        area_selected,
-                        areas_disabled: self.areas_disabled,
-                        hud: &self.drawing.hud,
-                        width: self.window_size.width,
-                        scroll: self.status_scroll,
-                    },
+                underlay: self
+                    .pages
+                    .underlay
+                    .filter(|&u| u != self.pages.current)
+                    .and_then(|u| self.pages.pages.get(u)),
+                locked_symbol_entities: self
+                    .symbol_edit_session
+                    .as_ref()
+                    .map_or(&[], |s| s.locked_entities.as_slice()),
+            },
+            text_preview: self
+                .dock_drag
+                .as_ref()
+                .filter(|d| d.active)
+                .and_then(|d| match &d.item {
+                    dock::DragItem::Text(text) => Some(text.as_str()),
+                    _ => None,
+                })
+                .or(self.placing_text.as_deref()),
+            symbol_preview: self
+                .dock_drag
+                .as_ref()
+                .filter(|d| d.active)
+                .and_then(|d| match &d.item {
+                    dock::DragItem::Symbol(id) => Some(id.as_str()),
+                    _ => None,
+                })
+                .or(self.placing_symbol.as_deref()),
+            symbol_drag: self
+                .dock_drag
+                .as_ref()
+                .is_some_and(|d| d.active && matches!(d.item, dock::DragItem::Symbol(_))),
+            workflow: Some(&self.workflow),
+            drop_hint: self
+                .dock_drag
+                .as_ref()
+                .and_then(|d| d.hover.as_ref())
+                .map(|(ring, color)| (ring.as_slice(), *color)),
+            dragging: self.view.drag.is_some(),
+            fence: self.view.fence.map(|(a, b)| {
+                let (ax, ay) = self.view.to_screen(a);
+                let (bx, by) = self.view.to_screen(b);
+                (
+                    Point::new(ax as f32, ay as f32),
+                    Point::new(bx as f32, by as f32),
                 )
             }),
-        ]
+        })
         .width(Length::Fill)
-        .height(Length::Fill);
+        .height(Length::Fill)
+        .into()
+    }
 
-        // The chrome stays the stack's first child in both states so its
-        // widget state survives the backstage closing mid-click: the press
-        // that closes the menu and the release that clicks a tab belong to
-        // the same button (ui-manager.js lets that press through).
-        let overlay: Element<'_, Message> = if self.file_menu {
-            backstage::layer(self.recent_open, &self.recent)
-        } else {
-            iced::widget::Space::new().into()
-        };
+    /// Overlay stack for popups, menus, toasts, and edge resize handles.
+    pub(crate) fn overlay_layers(&self) -> Vec<Element<'_, Message>> {
         let toast_layer: Element<'_, Message> = match self.toasts.text() {
             Some(t) => toast::layer(t),
             None => iced::widget::Space::new().into(),
         };
-        let filter_layer: Element<'_, Message> = if self.view.filter_open {
-            filter::layer(&self.view.filters)
-        } else {
-            iced::widget::Space::new().into()
-        };
-        let shapes_layer: Element<'_, Message> = shapes::layer(&shapes::ShapesView {
-            shapes: &self.shapes,
-        })
-        .unwrap_or_else(|| iced::widget::Space::new().into());
-        let dialog_layer: Element<'_, Message> = match &self.dialog {
-            Some(d) => dialog::layer(d),
-            None => iced::widget::Space::new().into(),
-        };
-        let breakdown_layer: Element<'_, Message> = breakdown_dialog::layer(
-            &self.breakdown,
-            self.breakdown_report(),
-            breakdown_dialog::preview(&self.drawing.polygons),
-        )
-        .unwrap_or_else(|| iced::widget::Space::new().into());
-        let def_layer: Element<'_, Message> = def_editor::layer(&self.def_editor)
-            .unwrap_or_else(|| iced::widget::Space::new().into());
-        let new_code_layer: Element<'_, Message> = new_code_dialog::layer(&self.new_code)
-            .unwrap_or_else(|| iced::widget::Space::new().into());
-        let codes_editor_layer: Element<'_, Message> = codes_editor::layer(&self.codes_editor)
-            .unwrap_or_else(|| iced::widget::Space::new().into());
-        let attr_dialog_layer: Element<'_, Message> = attr_dialog::layer(&self.attr_dialog)
-            .unwrap_or_else(|| iced::widget::Space::new().into());
-        let area_dialog_layer: Element<'_, Message> =
-            match area_dialog::layer(&self.area_dialog, &self.area_dialog.codes) {
-                Some(l) => l,
-                None => iced::widget::Space::new().into(),
-            };
         let context_layer: Element<'_, Message> =
             context_menu::layer(&self.context).unwrap_or_else(|| iced::widget::Space::new().into());
         let select_layer: Element<'_, Message> = select_menu::layer(&self.select_menu)
@@ -9050,106 +10058,41 @@ impl App {
             (self.window_size.width, self.window_size.height),
         )
         .unwrap_or_else(|| iced::widget::Space::new().into());
-        let disto_layer: Element<'_, Message> =
-            disto::layer(&self.disto).unwrap_or_else(|| iced::widget::Space::new().into());
-        let history_layer: Element<'_, Message> =
-            undo_history::layer(&self.history, &self.undo.labels())
-                .unwrap_or_else(|| iced::widget::Space::new().into());
-        let color_layer: Element<'_, Message> = if self.color.open {
-            self.color.view()
+        let cp_layer: Element<'_, Message> =
+            command_palette::layer_next(self).unwrap_or_else(|| iced::widget::Space::new().into());
+        let manager_layer: Element<'_, Message> = if self.symbol_manager.context {
+            self.manager_layer()
         } else {
             iced::widget::Space::new().into()
         };
-        let cp_layer: Element<'_, Message> = command_palette::layer(
-            self.command_palette_open,
-            &self.command_palette_query,
-            self.command_palette_selected,
-            (self.window_size.width, self.window_size.height),
-        )
-        .unwrap_or_else(|| iced::widget::Space::new().into());
-        let touch_layer: Element<'_, Message> =
-            touch_panel::layer(self.touch_panel_open, self.touch_distance)
-                .unwrap_or_else(|| iced::widget::Space::new().into());
-        let room_shapes_layer: Element<'_, Message> = room_shapes::layer(&self.room_shapes)
-            .unwrap_or_else(|| iced::widget::Space::new().into());
-        let subject_info_layer: Element<'_, Message> =
-            subject_info::layer(&self.subject_dialog, self.subject_auto_filled)
-                .unwrap_or_else(|| iced::widget::Space::new().into());
-        let options_layer: Element<'_, Message> = options_dialog::layer(&self.options_dialog)
-            .unwrap_or_else(|| iced::widget::Space::new().into());
-        let page_layout_layer: Element<'_, Message> = page_layout::layer(&self.page_layout_dialog)
-            .unwrap_or_else(|| iced::widget::Space::new().into());
-        let text_manager_layer: Element<'_, Message> =
-            text_manager::layer(&self.text_manager, &self.dock.text_labels)
-                .unwrap_or_else(|| iced::widget::Space::new().into());
-        let organizer_layer: Element<'_, Message> = match &*self.symbols {
-            Ok(ix) => symbol_organizer::layer(&self.symbol_organizer, ix)
-                .unwrap_or_else(|| iced::widget::Space::new().into()),
-            Err(_) => iced::widget::Space::new().into(),
-        };
-        let geo_layer: Element<'_, Message> = reference_image::geo_layer(self.geo_menu.open)
-            .unwrap_or_else(|| iced::widget::Space::new().into());
-        let shortcuts_layer: Element<'_, Message> =
-            shortcuts::layer(&self.shortcuts).unwrap_or_else(|| iced::widget::Space::new().into());
-        let mini_map_layer: Element<'_, Message> =
-            minimap::layer(self.mini_map.as_ref(), self.dock.width())
-                .unwrap_or_else(|| iced::widget::Space::new().into());
-        let print_layer: Element<'_, Message> =
-            print::layer(&self.print_preview).unwrap_or_else(|| iced::widget::Space::new().into());
-        let root = stack![
-            chrome,
-            overlay,
-            filter_layer,
-            shapes_layer,
-            area_dialog_layer,
-            attr_dialog_layer,
-            codes_editor_layer,
-            new_code_layer,
-            def_layer,
-            breakdown_layer,
+        vec![
             context_layer,
             select_layer,
-            history_layer,
             popup_layer,
-            disto_layer,
-            dialog_layer,
-            color_layer,
             cp_layer,
-            touch_layer,
-            room_shapes_layer,
-            subject_info_layer,
-            options_layer,
-            page_layout_layer,
-            text_manager_layer,
-            organizer_layer,
-            self.manager_layer(),
-            self.recovery_layer(),
-            geo_layer,
-            mini_map_layer,
-            shortcuts_layer,
-            guide::layer(&self.guide, self.window_size)
-                .unwrap_or_else(|| iced::widget::Space::new().into()),
-            print_layer,
+            manager_layer,
             area_workflow::drag_ghost(self.dock_drag.as_ref(), &self.area_codes, self.window_size)
                 .unwrap_or_else(|| iced::widget::Space::new().into()),
-            area_workflow::chooser_layer(&self.workflow, &self.area_codes, self.window_size)
-                .unwrap_or_else(|| iced::widget::Space::new().into()),
+            ui::chooser::layer(self).unwrap_or_else(|| iced::widget::Space::new().into()),
             area_workflow::menu_layer(
                 &self.workflow,
                 &self.area_codes,
                 self.selection.polys.len(),
-                self.window_size
+                self.window_size,
             )
             .unwrap_or_else(|| iced::widget::Space::new().into()),
             toast_layer,
-            self.resize_layer()
+            self.resize_layer(),
         ]
-        .width(Length::Fill)
-        .height(Length::Fill);
-        // The tap is always the root (stable widget tree); it only reports
-        // what someone is listening for: backstage close rules while the
-        // File menu is open, pointer capture while the dock is resized.
-        let mut tap = event_tap::EventTap::new(root).on_right_press(Message::RightPress);
+    }
+
+    /// Root `EventTap` for keyboard shortcuts, right-press context menus,
+    /// pointer capture and modal Escape/Enter routing.
+    pub(crate) fn wrap_event_tap<'a>(&self, root: Element<'a, Message>) -> Element<'a, Message> {
+        let mut tap = event_tap::EventTap::new(root)
+            .on_right_press(Message::RightPress)
+            .on_touch(Message::Ui(ui::Msg::TouchDetected))
+            .on_hardware_key(Message::Ui(ui::Msg::HardwareKeyPressed));
         let workflow_dialog = self.workflow.chooser.is_some();
         let workflow_escape = self.dialog.is_none()
             && !self.def_editor.open
@@ -9159,23 +10102,94 @@ impl App {
                 || self.workflow.menu.is_some()
                 || self.view.mode == view_state::Mode::DefineArea);
         let management_modal = self.symbol_manager.open || self.autosave_prompt;
-        tap = tap.capture_key(move |key, mods| match key.as_ref() {
-            iced::keyboard::Key::Named(iced::keyboard::key::Named::Tab) if workflow_dialog => Some(
-                Message::AreaWorkflow(area_workflow::Msg::Focus(mods.shift())),
-            ),
-            iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape)
-                if workflow_escape || management_modal =>
-            {
-                Some(Message::Key(input::KeyCmd::Escape))
+        let next_menu_open =
+            self.ui.menu_open && self.dialog.is_none() && !self.command_palette_open;
+        let next_color_open = self.color.open;
+        let next_type_editor_open = self.ui.type_editor.open && !self.color.open;
+        let next_symbol_library_open = self.ui.symbol_library.open;
+        let next_modal_escape = if self.dialog.is_none()
+            && !self.shortcuts.open
+            && !self.guide.open
+        {
+            if self.options_dialog.open {
+                Some(Message::Options(options_dialog::OptMsg::Cancel))
+            } else if self.subject_dialog.open {
+                Some(Message::SubjectInfo(subject_info::SubjectMsg::Close))
+            } else if self.page_layout_dialog.open {
+                Some(Message::PageLayout(page_layout::LayoutMsg::Cancel))
+            } else if self.breakdown.open {
+                Some(Message::Breakdown(breakdown_dialog::BreakdownMsg::Close))
+            } else if self.codes_editor.open {
+                Some(Message::CodesEditor(ui::dialogs::CodesMsg::Close))
+            } else if self.attr_dialog.open {
+                Some(Message::AreaAttributes(attr_dialog::AttrMsg::Cancel))
+            } else if self.area_dialog.open {
+                Some(Message::AreaDialog(area_dialog::AreaDialogMsg::Cancel))
+            } else if self.new_code.open {
+                Some(Message::NewCode(new_code_dialog::NewCodeMsg::Cancel))
+            } else if self.def_editor.open {
+                Some(Message::DefEditor(def_editor::DefMsg::Cancel))
+            } else if self.room_shapes.open {
+                Some(Message::RoomShapeCancel)
+            } else if self.disto.open() {
+                Some(Message::Disto(disto::DistoMsg::Cancel))
+            } else if self.text_manager.open {
+                Some(Message::TextLibraryManager(
+                    text_manager::TextManagerMsg::Close,
+                ))
+            } else if self.geo_menu.open {
+                Some(Message::Ui(ui::Msg::CloseOverlays))
+            } else if self.print_preview.open {
+                Some(Message::PrintPreview(print::PreviewMsg::Close))
+            } else if self.ui.start.open {
+                Some(Message::Ui(ui::Msg::Start(ui::start::Msg::Close)))
+            } else {
+                None
             }
-            _ => None,
+        } else {
+            None
+        };
+        tap = tap.capture_key(move |key, mods| {
+            use iced::keyboard::{key::Named, Key};
+            match key.as_ref() {
+                Key::Named(Named::Tab) if workflow_dialog => Some(Message::AreaWorkflow(
+                    area_workflow::Msg::Focus(mods.shift()),
+                )),
+                Key::Named(Named::Escape) if next_color_open => {
+                    Some(Message::Color(color_dialog::ColorMsg::Close))
+                }
+                Key::Named(Named::Escape) if next_type_editor_open => Some(Message::Ui(
+                    ui::Msg::TypeEditor(ui::type_editor::Msg::RequestCancel),
+                )),
+                Key::Named(Named::Escape) if next_symbol_library_open => Some(Message::Ui(
+                    ui::Msg::SymbolLibrary(ui::symbol_library::Msg::Escape),
+                )),
+                Key::Named(Named::Escape) if next_modal_escape.is_some() => {
+                    next_modal_escape.clone()
+                }
+                Key::Named(Named::Escape) if next_menu_open => Some(Message::Ui(ui::Msg::CloseMenu)),
+                Key::Named(Named::ArrowDown) if next_menu_open => {
+                    Some(Message::Ui(ui::Msg::MenuMove(1)))
+                }
+                Key::Named(Named::ArrowUp) if next_menu_open => {
+                    Some(Message::Ui(ui::Msg::MenuMove(-1)))
+                }
+                Key::Named(Named::ArrowLeft) if next_menu_open => {
+                    Some(Message::Ui(ui::Msg::MenuSwitchGroup(-1)))
+                }
+                Key::Named(Named::ArrowRight) if next_menu_open => {
+                    Some(Message::Ui(ui::Msg::MenuSwitchGroup(1)))
+                }
+                Key::Named(Named::Enter) if next_menu_open => {
+                    Some(Message::Ui(ui::Msg::MenuEnter))
+                }
+                Key::Named(Named::Escape) if workflow_escape || management_modal => {
+                    Some(Message::Key(input::KeyCmd::Escape))
+                }
+                _ => None,
+            }
         });
-        if self.file_menu {
-            tap = tap
-                .on_press(Message::PointerDown)
-                .on_escape(Message::Escape);
-        }
-        if self.dock.resizing {
+        if self.dock.resizing || self.ui.ledger_resizing || self.ui.pad_dragging {
             tap = tap
                 .on_move(Message::PointerMoved)
                 .on_release(Message::PointerUp);
@@ -9184,22 +10198,21 @@ impl App {
                 .on_move(Message::DockDragMove)
                 .on_release(Message::DockDragRelease);
         }
-        // The dialog's capture-phase key listener: Escape dismisses (and
-        // stops propagation), Enter = OK.
         let dialog_open = self.dialog.is_some();
         if dialog_open {
             tap = tap.on_escape(Message::Dialog(dialog::DialogMsg::Dismiss));
         }
-        // The cheat sheet's own key listener (ui-manager.js: the overlay
-        // stops Escape/F1 in the capture phase): Escape closes it. F1 is
-        // handled by the key map's toggle.
         if self.shortcuts.open {
             tap = tap.on_escape(Message::Shortcuts(shortcuts::ShortcutsMsg::Close));
         }
         if self.guide.open {
             tap = tap.on_escape(Message::Guide(guide::GuideMsg::Close));
+        } else if self.ui.has_open_overlays()
+            || self.history.open.is_some()
+            || self.pages_nav_open
+        {
+            tap = tap.on_escape(Message::Ui(ui::Msg::CloseOverlays));
         }
-        // InputController.handleKeyDown / handleKeyUp (see input.rs).
         let areas_keyboard = self.dock.active == dock::DockTab::Areas;
         let ctx = input::KeyContext {
             drawing: self.view.mode.is_drawing(),
@@ -9323,39 +10336,88 @@ fn app_icon() -> window::Icon {
 fn program(
     ui_scale: f32,
 ) -> iced::Application<impl iced::Program<State = App, Message = Message, Theme = iced::Theme>> {
+    let (min_w, min_h) = (window_state::NEXT_MIN_W, window_state::NEXT_MIN_H);
     // Reopen where the window was left; `App::boot` reads the same file.
-    let placement = window_state::load(ui_scale, system_scale());
-    iced::application(move || App::boot(ui_scale), App::update, App::view)
-        // Present frames without waiting for the display refresh: with
-        // vsync the wall being drawn trails the mouse cursor by a frame or
-        // two. Frames are only drawn in response to input, so this does not
-        // spin the GPU. `ICED_PRESENT_MODE=vsync` in the environment turns
-        // it back on. Must come before the calls below, which edit settings.
-        .settings(iced::Settings {
-            vsync: false,
-            ..iced::Settings::default()
-        })
-        .title("Appraisal Sketch - Untitled")
-        .subscription(App::subscription)
-        .scale_factor(|app: &App| app.ui_scale)
-        .default_font(theme::SEGOE)
-        .theme(|_: &App| iced::Theme::Dark)
-        .window(window::Settings {
-            size: placement.map_or(Size::new(WINDOW_W, WINDOW_H), |p| p.size()),
-            maximized: placement.is_some_and(|p| p.maximized),
-            // `min_size` is in OS-logical px: undo the app's own scale.
-            min_size: Some(Size::new(
-                window_state::MIN_W * ui_scale,
-                window_state::MIN_H * ui_scale,
-            )),
-            decorations: false,
-            exit_on_close_request: false,
-            position: placement
-                .and_then(|p| p.restore_position(ui_scale))
-                .map_or(window::Position::Centered, window::Position::Specific),
-            icon: Some(app_icon()),
-            ..window::Settings::default()
-        })
+    let placement = window_state::load_with_min(ui_scale, system_scale(), min_w, min_h);
+    iced::application(
+        move || App::boot(ui_scale),
+        App::update,
+        App::view,
+    )
+    // Present frames without waiting for the display refresh: with
+    // vsync the wall being drawn trails the mouse cursor by a frame or
+    // two. Frames are only drawn in response to input, so this does not
+    // spin the GPU. `ICED_PRESENT_MODE=vsync` in the environment turns
+    // it back on. Must come before the calls below, which edit settings.
+    .settings(iced::Settings {
+        vsync: false,
+        fonts: ui::fonts::ALL_FONTS
+            .iter()
+            .map(|b| std::borrow::Cow::Borrowed(*b))
+            .collect(),
+        ..iced::Settings::default()
+    })
+    .title(App::window_title)
+    .subscription(App::subscription)
+    .scale_factor(|app: &App| app.ui_scale)
+    .default_font(theme::SEGOE)
+    .theme(|_: &App| iced::Theme::Dark)
+    .window(window::Settings {
+        size: placement.map_or(Size::new(WINDOW_W, WINDOW_H), |p| p.size()),
+        maximized: placement.is_some_and(|p| p.maximized),
+        // `min_size` is in OS-logical px: undo the app's own scale.
+        min_size: Some(Size::new(min_w * ui_scale, min_h * ui_scale)),
+        decorations: false,
+        exit_on_close_request: false,
+        position: placement
+            .and_then(|p| p.restore_position(ui_scale))
+            .map_or(window::Position::Centered, window::Position::Specific),
+        icon: Some(app_icon()),
+        ..window::Settings::default()
+    })
+}
+
+fn apply_type_remaps_to_polygons(
+    polygons: &mut [sketch_core::model::Polygon],
+    lines: &mut [sketch_core::model::SketchLine],
+    remaps: &std::collections::BTreeMap<String, ui::type_editor::RemapTarget>,
+    und_name: &str,
+) {
+    use ui::type_editor::RemapTarget;
+    for poly in polygons.iter_mut() {
+        let Some(target) = remaps.get(&poly.kind) else {
+            continue;
+        };
+        match target {
+            RemapTarget::Deleted => {
+                poly.kind = "UND".to_string();
+                poly.name = und_name.to_string();
+            }
+            RemapTarget::Updated {
+                new_code,
+                new_name,
+                old_name,
+                new_color,
+                code_changed,
+                name_changed,
+                color_changed,
+            } => {
+                if *code_changed {
+                    poly.kind = new_code.clone();
+                }
+                if *name_changed && (poly.name == *old_name || poly.name.trim().is_empty()) {
+                    poly.name = new_name.clone();
+                }
+                if *color_changed || *code_changed {
+                    for edge in &poly.edges {
+                        if let Some(line) = lines.iter_mut().find(|l| Some(l.id) == edge.line_id) {
+                            line.color = Some(new_color.clone());
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn main() -> iced::Result {
@@ -9776,60 +10838,8 @@ mod tests {
     fn default_view_builds_without_missing_icons() {
         // Every icon is resolved while the view is built; a name missing
         // from the embedded table panics here instead of at launch.
-        let (mut app, _) = App::boot(1.0);
+        let (app, _) = App::boot(1.0);
         let _ = app.view();
-        // ...and every ribbon body plus the backstage.
-        for (id, _, _) in ribbon::TABS {
-            let _ = app.update(Message::TabClicked(*id));
-            let _ = app.view();
-        }
-    }
-
-    #[test]
-    fn tab_clicks_follow_ui_manager() {
-        let (mut app, _) = App::boot(1.0);
-        assert_eq!(
-            (app.active_tab, app.body, app.file_menu),
-            (TabId::Home, Body::Home, false)
-        );
-        let _ = app.update(Message::TabClicked(TabId::View));
-        assert_eq!((app.active_tab, app.body), (TabId::View, Body::View));
-        // File: becomes active, opens the menu, keeps the View body.
-        let _ = app.update(Message::TabClicked(TabId::File));
-        assert_eq!(
-            (app.active_tab, app.body, app.file_menu),
-            (TabId::File, Body::View, true)
-        );
-        // File again: closes it; File stays active.
-        let _ = app.update(Message::TabClicked(TabId::File));
-        assert_eq!((app.active_tab, app.file_menu), (TabId::File, false));
-        // Reopen, then a tab click closes it and switches.
-        let _ = app.update(Message::TabClicked(TabId::File));
-        let _ = app.update(Message::TabClicked(TabId::Help));
-        assert_eq!(
-            (app.active_tab, app.body, app.file_menu),
-            (TabId::Help, Body::Help, false)
-        );
-    }
-
-    #[test]
-    fn backstage_closes_on_outside_press_and_escape_only() {
-        let (mut app, _) = App::boot(1.0);
-        let _ = app.update(Message::TabClicked(TabId::File));
-        // Inside the menu and on the File tab: stays open.
-        for p in [Point::new(100.0, 300.0), Point::new(20.0, 40.0)] {
-            let _ = app.update(Message::PointerDown(p));
-            assert!(app.file_menu);
-        }
-        // On the canvas: closes; File stays active, body unchanged.
-        let _ = app.update(Message::PointerDown(Point::new(600.0, 400.0)));
-        assert_eq!(
-            (app.file_menu, app.active_tab, app.body),
-            (false, TabId::File, Body::Home)
-        );
-        let _ = app.update(Message::TabClicked(TabId::File));
-        let _ = app.update(Message::Escape);
-        assert!(!app.file_menu);
     }
 
     #[test]

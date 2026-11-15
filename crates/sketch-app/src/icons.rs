@@ -6,7 +6,6 @@
 use iced::widget::svg;
 use iced::{Color, Element};
 
-use crate::theme::ink;
 use crate::Message;
 
 macro_rules! icon_table {
@@ -52,6 +51,10 @@ icon_table! {
         "folder-simple", "lock-simple", "lock-simple-open", "export", "eye", "eye-slash",
         // Wall-shape menu (UIManager.showWallShapeMenu).
         "rectangle", "line-segment",
+        // Next shell chrome & tool tray icons (Phosphor 2.1.1).
+        "arrow-counter-clockwise", "arrow-down", "arrow-left", "arrow-right", "arrow-up",
+        "backspace", "caret-up", "check", "compass", "dots-six-vertical", "dots-three",
+        "files", "list", "plus-circle", "push-pin",
     ],
     fill: [
         "arrow-clockwise", "arrow-counter-clockwise", "arrow-square-in", "arrow-square-out",
@@ -71,12 +74,11 @@ fn handle(name: &str, fill: bool) -> svg::Handle {
 }
 
 fn glyph<'a>(h: svg::Handle, size: f32, color: Color) -> Element<'a, Message> {
-    ink(move || {
-        svg(h.clone())
-            .width(size)
-            .height(size)
-            .style(move |_, _| svg::Style { color: Some(color) })
-    })
+    svg(h)
+        .width(size)
+        .height(size)
+        .style(move |_, _| svg::Style { color: Some(color) })
+        .into()
 }
 
 /// `<i class="ph ph-NAME">` (or `ph-fill`) at `size` px in `color`.
@@ -89,30 +91,18 @@ pub fn ph<'a>(name: &str, size: f32, color: Color) -> Element<'a, Message> {
     icon(name, false, size, color)
 }
 
-/// Fill-weight icon element.
-pub fn ph_fill<'a>(name: &str, size: f32, color: Color) -> Element<'a, Message> {
-    icon(name, true, size, color)
+/// Single-pass monochrome icon element for Next chrome (no double-ink pass).
+pub fn mono<'a>(name: &str, size: f32, color: Color) -> Element<'a, Message> {
+    mono_icon(name, false, size, color)
 }
 
-/// Icon rotated in place (CSS `transform: rotate(deg)`). The rotation is
-/// baked into the SVG (about the 256-unit viewBox center) because the
-/// tiny-skia backend mis-sizes rotated vector images.
-pub fn rotated<'a>(
-    name: &str,
-    fill: bool,
-    size: f32,
-    color: Color,
-    degrees: f32,
-) -> Element<'a, Message> {
-    let src = std::str::from_utf8(bytes(name, fill)).unwrap_or_default();
-    let open_end = src.find('>').map_or(0, |i| i + 1);
-    let close = src.rfind("</svg>").unwrap_or(src.len());
-    let rotated = format!(
-        "{}<g transform=\"rotate({degrees} 128 128)\">{}</g></svg>",
-        &src[..open_end],
-        &src[open_end..close]
-    );
-    glyph(svg::Handle::from_memory(rotated.into_bytes()), size, color)
+/// Single-pass monochrome icon element with optional fill weight.
+pub fn mono_icon<'a>(name: &str, fill: bool, size: f32, color: Color) -> Element<'a, Message> {
+    svg(handle(name, fill))
+        .width(size)
+        .height(size)
+        .style(move |_, _| svg::Style { color: Some(color) })
+        .into()
 }
 
 /// The 20x20 application logo at the left of the title bar.

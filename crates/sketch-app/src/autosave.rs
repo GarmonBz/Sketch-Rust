@@ -224,45 +224,4 @@ impl App {
         }
         Task::none()
     }
-    pub(crate) fn recovery_layer(&self) -> iced::Element<'_, Message> {
-        use iced::widget::{button, column, container, opaque, row, text};
-        use iced::Length;
-        if !self.autosave_prompt {
-            return iced::widget::Space::new().into();
-        }
-        let title = self
-            .autosave
-            .recovery
-            .as_ref()
-            .and_then(|(_, m)| m.get("fileName"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("sketch");
-        let card = container(
-            column![
-                text(format!("Recover autosaved sketch: {title}?")),
-                text("Recovery stays available until you recover and manually save it.").size(12),
-                row![
-                    button("Recover").on_press(Message::RecoverAutosave(true)),
-                    button("Later").on_press(Message::RecoverAutosave(false))
-                ]
-                .spacing(12)
-            ]
-            .spacing(16)
-            .padding(24),
-        )
-        .style(|_| container::Style {
-            background: Some(crate::theme::bg_panel().into()),
-            text_color: Some(crate::theme::text_main()),
-            ..Default::default()
-        });
-        opaque(
-            container(opaque(card))
-                .center_x(Length::Fill)
-                .center_y(Length::Fill)
-                .style(|_| container::Style {
-                    background: Some(iced::Color::from_rgba(0., 0., 0., 0.5).into()),
-                    ..Default::default()
-                }),
-        )
-    }
 }

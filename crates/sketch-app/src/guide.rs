@@ -5,10 +5,8 @@
 //! Shortcuts sheet. The text is static and lives in this file so it ships
 //! inside the exe and always matches the build.
 
-use iced::widget::{button, column, container, mouse_area, opaque, row, scrollable, text, Space};
-use iced::{Background, Border, Color, Element, Length, Task};
+use iced::Task;
 
-use crate::theme::*;
 use crate::Message;
 
 #[cfg(windows)]
@@ -45,22 +43,22 @@ pub const TOPICS: &[Topic] = &[
     Topic {
         title: "Getting started",
         blocks: &[
-            Para("Sketch draws floor plans to scale and calculates their areas. A sketch is made of walls, the areas they enclose, and symbols and text placed on top."),
-            Heading("The window"),
+            Para("Sketch draws floor plans to scale and calculates their areas. A sketch is made of exterior and interior walls, the areas they enclose, and symbols and room labels placed on top."),
+            Heading("The workspace"),
             Points(&[
-                "Title bar: Save, Undo, Redo and the command search, with a pill that reads Unsaved or Saved. The caret opens New, Open, Save As and Options.",
-                "Tabs: File opens the file menu. Home, View, Tools, Reference Image and Help each show a ribbon of commands. Edit Tools appears while something is selected.",
-                "Left rail: the tools - Select, drawing walls, Measure and the rest. Hover a tool to see its name.",
-                "Right dock: panels for defining areas, calculations, symbols, text and layers.",
-                "Status bar: the current page, zoom and live totals.",
+                "Top bar: Menu, document name and Save status pill, Page tabs, Undo/Redo with history, Command search (Ctrl + K), and Send to report or Export.",
+                "Areas drawer (F4 / F6): Drawn areas grouped by type with live totals and GLA, the area Types palette, and Layers.",
+                "Tool tray: Floating bottom bar with Select, Wall, Inner, Area, Shape, Curve, Measure, Label, Insert, and Pan. Click a tool twice or tap its chevron for fly-outs (Circle, Cutout, Bay window).",
+                "Inspector: Appears on the right whenever something is selected so you can adjust lengths, line styles, area properties, labels, symbols, or background images.",
+                "Canvas controls: Zoom bar bottom-left, compass top-right, and Grid, Snap, step size, Show filters, and Dimension controls bottom-right.",
             ]),
             Heading("A first sketch"),
             Steps(&[
-                "Press E to draw exterior walls.",
-                "Click a starting point, then type a length and press an arrow key for the direction - for example 40 then Right arrow draws 40 feet to the right.",
-                "Carry on around the building. Press A to close the shape back to the start.",
-                "Choose what the area is (First Floor, Garage and so on) in the Define Area panel (F4).",
-                "Open the Calculations panel (F6) to see the totals.",
+                "Press E or select Wall in the tool tray.",
+                "Click a starting point, then type a length in the live length strip (or tap the Pad) and press an arrow key - for example 40 then Right arrow draws 40 feet to the right.",
+                "Carry on around the building. Press A (or Close area) to close the shape back to the start.",
+                "Choose what the area is (Living space / First Floor, Garage, Porch, and so on) in the chooser that opens or in the Areas drawer (F4).",
+                "Review totals at the bottom of the Areas drawer or open Area breakdown (Tools > Area breakdown).",
                 "Save with Ctrl + S.",
             ]),
             Para("Help > Keyboard Shortcuts (F1) lists every key."),
@@ -69,26 +67,26 @@ pub const TOPICS: &[Topic] = &[
     Topic {
         title: "Drawing walls",
         blocks: &[
-            Para("Press E for exterior walls or I for interior walls. Walls can be drawn with the mouse, the keyboard, or both."),
-            Heading("With the mouse"),
+            Para("Press E for exterior walls (Wall) or I for interior walls (Inner). Walls can be drawn with the mouse, keyboard, touch, or the on-screen Pad."),
+            Heading("With the pointer"),
             Points(&[
-                "Click to set each corner. The wall preview follows the pointer and snaps to existing corners.",
-                "Dashed guide lines appear when the pointer lines up with another corner.",
+                "Click or tap to set each corner. The live preview snaps to grid steps and existing corners.",
+                "Dashed alignment guides appear when the pointer lines up with another corner.",
                 "Press Esc to stop drawing.",
             ]),
-            Heading("With the keyboard"),
+            Heading("With the keyboard or Pad"),
             Points(&[
-                "Type a length, then press an arrow key: 12 then Up arrow draws 12 feet up.",
+                "Type a length into the floating length strip, then press an arrow key: 12 then Up arrow draws 12 feet up.",
                 "10x5 draws a diagonal that rises 10 and runs 5.",
                 "10<45 draws 10 feet at 45 degrees.",
                 "10l or 10r turns left or right from the last wall (90 degrees unless you give an angle).",
                 "Tab types a decimal point; Backspace erases the last character typed.",
-                "A closes the area back to its starting point. J jumps the cursor to the nearest corner.",
+                "A closes the area back to its starting point. J jumps the cursor to the nearest corner. D toggles curve height vs angle mode.",
             ]),
-            Heading("Changing walls afterwards"),
+            Heading("Editing walls afterwards"),
             Points(&[
-                "Press P for the Select tool, then click a wall or area. The Edit Tools tab shows what can be changed: length, line style, thickness and color.",
-                "Drag a corner to move it. Insert adds a corner in the middle of a wall.",
+                "Press P (or pick Select) and click a wall or area. The Inspector opens with Length, Line style, Thickness, Colour, and Remove.",
+                "Drag a corner to move it, or switch to Wall > Insert vertex (Insert) to add a corner along a wall.",
                 "Arrow keys nudge the selection; Delete removes it; Ctrl + Z undoes.",
             ]),
         ],
@@ -96,40 +94,40 @@ pub const TOPICS: &[Topic] = &[
     Topic {
         title: "Areas and calculations",
         blocks: &[
-            Para("A closed run of exterior walls becomes an area. Each area has an area code - such as First Floor, Second Floor, Garage or Porch - that decides how it counts in the totals."),
+            Para("A closed run of exterior walls becomes an area. Each area has an area type (such as GLA1, GAR, POR) that controls its name, colour, fill, and whether it counts toward Living space (GLA)."),
             Heading("Defining an area"),
             Steps(&[
-                "Open the Define Area panel (F4).",
-                "Pick the area code, either before you draw or afterwards by dragging the code onto a drawn area.",
-                "The area takes the code's name, color and fill, and joins the calculations.",
+                "Close a perimeter or open the Areas drawer (F4).",
+                "Pick the area type in the chooser modal, from the Inspector when selected, or from the Types tab in the Areas drawer.",
+                "The area takes the type's name, colour and fill, and updates the Totals footer immediately.",
             ]),
             Heading("Reading the numbers"),
             Points(&[
-                "The Calculations panel (F6) lists each area with its size and perimeter, grouped by code, with the living-area total.",
-                "Tools > Area Breakdown shows how each area was calculated, piece by piece.",
-                "Tools > Area Codes edits the list of codes: names, colors, and whether a code counts toward living area.",
+                "The Drawn view in the Areas drawer lists each area with its size and net sf grouped under Living space or Non-living, plus live GLA and Non-GLA totals.",
+                "Tools > Area breakdown shows the rectangle and bow math behind every area.",
+                "Click Edit area types in the Types tab (or Menu > Areas > Area types) to customize codes, names, colours, multipliers, and calculation rules.",
             ]),
             Heading("Subtracting one area from another"),
-            Para("Select an area and switch on Edit Tools > Auto Subtract to take it out of the area around it - for example an open-to-below space inside a second floor."),
-            Note("An unclosed run of walls is not an area and is left out of the totals. Close it with A, or by clicking back on its first corner."),
+            Para("Select an area and turn on Subtract from surrounding area in the Inspector (or assign a negative type) to deduct open-to-below or inner voids from the enclosing area."),
+            Note("An unclosed run of walls is not counted as an area. Close it with A, Close area, or by clicking back on its starting corner."),
         ],
     },
     Topic {
-        title: "Symbols and text",
+        title: "Symbols and labels",
         blocks: &[
             Heading("Symbols"),
             Points(&[
-                "Press S to open the symbol library. Pick a category, or search by name.",
-                "Click a symbol, then click the drawing to place it. You can also drag it from the panel onto the drawing.",
-                "Doors and windows snap onto a wall and cut an opening in it. For a door, the side of the wall you click on is the side it swings to.",
-                "Select a placed symbol to move, rotate or resize it with its handles. Resizing a door or window resizes its opening too.",
-                "Manage symbols chooses your Favorites and renames, hides, moves and deletes library symbols.",
+                "Press S or tap Insert in the tool tray to open the Insert drawer.",
+                "Browse Favorites or categories, click a symbol, then click the drawing to place it (or drag straight from Favorites onto the canvas).",
+                "Doors and windows snap onto a wall and cut an opening automatically; the side of the wall you click sets the door swing.",
+                "Select a placed symbol to drag, rotate, flip, resize, or open Edit shape in the Inspector.",
+                "Open Symbol library from the Insert drawer or Menu > Insert to manage categories, edit symbol properties, import DXF blocks, or draw custom symbol shapes.",
             ]),
-            Heading("Text"),
+            Heading("Room labels"),
             Points(&[
-                "Press T to open the text library, pick a label and click the drawing to place it.",
-                "Select a label to change its wording, font, size and color on the Edit Tools tab.",
-                "Drag the handle above a selected label to rotate it.",
+                "Press T (or switch the Insert drawer to Room labels) to pick a label and place it on the canvas.",
+                "Select any label to edit its text, font, size, colour, or rotation in the Inspector.",
+                "Open Manage room labels to add, rename, or remove reusable presets.",
             ]),
         ],
     },
@@ -137,19 +135,18 @@ pub const TOPICS: &[Topic] = &[
         title: "Pages, printing and export",
         blocks: &[
             Heading("Pages"),
-            Para("A sketch can have several pages, for example one per floor. Use the page buttons on the View tab or the status bar to add, delete and move between pages."),
+            Para("A sketch can have several pages, such as Main floor, Upper floor, and Site. Use the page tabs in the top bar to switch pages, add pages with +, or open the page menu to rename, duplicate, delete, or set a floor underlay."),
             Heading("Printing"),
             Points(&[
-                "File > Print Preview shows the pages as they will print, with the area summary and breakdown tables beneath the drawing.",
-                "File > Page Layout sets the paper size and what is printed.",
-                "File > Print sends the previewed pages to the printer.",
+                "Menu > File > Print preview shows rendered pages with summary tables before printing or saving a PDF.",
+                "Menu > File > Page layout sets paper size (Legal, Letter, A4), addendum form layout, and custom headings.",
+                "Menu > File > Print sends the report to the printer.",
             ]),
             Heading("Export and import"),
             Points(&[
-                "File > Export as PDF, PNG, SVG or DXF writes the drawing in that format.",
-                "File > Email opens a message to support in your mail program.",
-                "File > Import CAD brings in a DXF or DWG drawing.",
-                "The Reference Image tab loads a picture - a scan or an old sketch - behind the drawing so it can be traced. Set Scale matches it to real measurements.",
+                "Top bar Export (or Menu > File > Export as PNG, SVG, DXF, PDF) saves images, CAD vectors, or formatted addenda.",
+                "Menu > File > Import CAD brings in a DXF or DWG floor plan.",
+                "Menu > Image loads a scanned floor plan or photo behind the sketch; use Set scale and Opacity in the Inspector to trace accurately.",
             ]),
         ],
     },
@@ -157,27 +154,27 @@ pub const TOPICS: &[Topic] = &[
         title: "Saving and recovery",
         blocks: &[
             Points(&[
-                "Ctrl + S saves to the current file. The first save asks where to put it; Save As (F12) saves a copy under a new name and carries on in that copy.",
-                "The pill in the title bar reads Unsaved while there are changes that are not in the file. Closing with unsaved changes asks whether to save them.",
-                "File > Recent Files reopens a sketch you worked on lately.",
-                "Drop a sketch file on the window to open it. Each window holds one sketch; opening a sketch that is already open brings its window forward.",
+                "Ctrl + S saves to the current .skx file. Save As (F12) writes a copy under a new name and continues editing that copy.",
+                "The pill next to the title reads Saved or Unsaved; clicking the file title renames the sketch.",
+                "The Start screen and Menu > File > Recent sketches reopen recent work with live outline thumbnails.",
+                "Drop any .skx or .sketchie file anywhere on the window (or Start screen) to open it.",
             ]),
             Heading("Autosave"),
-            Para("While you work, Sketch keeps a recovery copy of the open sketch. If Sketch closes unexpectedly, the next start offers to restore it; File > Recover Autosave does the same at any time. Autosave is switched on, and its interval set, in Options."),
-            Note("The recovery copy is a safety net, not a save. It is removed once you save or deliberately discard your changes."),
+            Para("While you work, Sketch Rust writes atomic recovery snapshots automatically. If the app closes unexpectedly, the next launch offers to restore your recovery snapshot, or use Menu > File > Recover autosave at any time. Configure intervals in Menu > Tools > Preferences."),
+            Note("Recovery snapshots are cleared once you explicitly save or discard changes."),
         ],
     },
     Topic {
         title: "Appraise-It reports",
         blocks: &[
-            Para("Keep the editable drawing in a Sketchie or SKX file. On Windows, use the controls above to send sketch pages to UAD 3.6 reports and legacy reports that support Sketch addenda."),
+            Para("Keep your editable source in a .skx file. On Windows, use Send to report in the top bar (and the controls below) to check an open Appraise-It Pro report, preview pages, optionally transfer GLA totals, and append sketch addenda."),
             Heading("Export a sketch for your report"),
             Steps(&[
-                "Use File > Export as PNG for a sketch image or File > Export as PDF for a document with calculations.",
-                "Attach the image or PDF using the controls available for your report type in Appraise-It Pro. Review the sketch and enter the area totals in the appropriate report fields.",
+                "Use Send to report when Appraise-It Pro is open, or Export > Export PNG / Export PDF for manual attachment.",
+                "Verify area totals against the Inspector and Area breakdown before finalising report fields.",
             ]),
             Heading("If you used a previous preview with Appraise-It Pro"),
-            Para("Ask SFREP or Apex support to restore the original sketch provider if the report button still points to Sketch Rust. Open existing AXF workfiles in the licensed Apex app."),
+            Para("Ask SFREP or Apex support to restore the original sketch provider if needed, and open legacy AXF workfiles in Apex."),
         ],
     },
 ];
@@ -188,19 +185,19 @@ pub struct Guide {
     pub open: bool,
     pub topic: usize,
     #[cfg(windows)]
-    report_busy: bool,
+    pub(crate) report_busy: bool,
     #[cfg(windows)]
-    report_status: Option<String>,
+    pub(crate) report_status: Option<String>,
     #[cfg(windows)]
-    report_target: Option<Report>,
+    pub(crate) report_target: Option<Report>,
     #[cfg(windows)]
-    sketch_preview: Vec<(usize, Handle)>,
+    pub(crate) sketch_preview: Vec<(usize, Handle)>,
     #[cfg(windows)]
-    area_target: Option<Result<AreaTarget, String>>,
+    pub(crate) area_target: Option<Result<AreaTarget, String>>,
     #[cfg(windows)]
-    area_preview: Option<Result<AreaTransfer, String>>,
+    pub(crate) area_preview: Option<Result<AreaTransfer, String>>,
     #[cfg(windows)]
-    include_areas: bool,
+    pub(crate) include_areas: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -372,268 +369,6 @@ impl Guide {
         }
         Task::none()
     }
-}
-
-const BODY: f32 = 12.5;
-
-fn para(s: &'static str, color: Color) -> Element<'static, Message> {
-    text(s)
-        .font(SEGOE)
-        .size(BODY)
-        .line_height(iced::widget::text::LineHeight::Relative(1.45))
-        .color(color)
-        .width(Length::Fill)
-        .into()
-}
-
-/// A list row: a fixed-width marker, then the wrapped text.
-fn item(marker: String, s: &'static str) -> Element<'static, Message> {
-    row![
-        text(marker)
-            .font(SEGOE_SEMIBOLD)
-            .size(BODY)
-            .line_height(iced::widget::text::LineHeight::Relative(1.45))
-            .color(muted())
-            .width(22),
-        para(s, text_main()),
-    ]
-    .into()
-}
-
-fn block(b: &'static Block) -> Element<'static, Message> {
-    match b {
-        Heading(s) => container(text(*s).font(SEGOE_SEMIBOLD).size(13.5).color(text_main()))
-            .padding(iced::Padding {
-                top: 8.0,
-                ..iced::Padding::ZERO
-            })
-            .into(),
-        Para(s) => para(s, text_main()),
-        Steps(steps) => column(
-            steps
-                .iter()
-                .enumerate()
-                .map(|(i, s)| item(format!("{}.", i + 1), s)),
-        )
-        .spacing(5)
-        .into(),
-        Points(points) => column(points.iter().map(|s| item("\u{2022}".into(), s)))
-            .spacing(5)
-            .into(),
-        Note(s) => container(para(s, text_main()))
-            .padding([8, 10])
-            .width(Length::Fill)
-            .style(|_| container::Style {
-                background: Some(Background::Color(bg_app())),
-                border: Border {
-                    color: border(),
-                    width: 1.0,
-                    radius: 3.0.into(),
-                },
-                ..container::Style::default()
-            })
-            .into(),
-    }
-}
-
-/// The guide's layer, or None when closed. `size` is the window's, so the
-/// card fits a small window.
-pub fn layer(guide: &Guide, size: iced::Size) -> Option<Element<'static, Message>> {
-    if !guide.open {
-        return None;
-    }
-    let current = guide.topic.min(TOPICS.len() - 1);
-    let topic = &TOPICS[current];
-
-    let mut list = column![text("USER GUIDE")
-        .font(SEGOE_SEMIBOLD)
-        .size(11.0)
-        .color(muted())]
-    .spacing(2)
-    .width(190);
-    list = list.push(Space::new().height(4));
-    for (i, t) in TOPICS.iter().enumerate() {
-        let active = i == current;
-        list = list.push(
-            button(
-                container(text(t.title).font(SEGOE).size(12.5).color(if active {
-                    WHITE
-                } else {
-                    text_main()
-                }))
-                .padding([6, 10])
-                .width(Length::Fill),
-            )
-            .padding(0)
-            .width(Length::Fill)
-            .on_press(Message::Guide(GuideMsg::Topic(i)))
-            .style(move |_, status| button::Style {
-                background: if active {
-                    Some(Background::Color(accent()))
-                } else if matches!(status, button::Status::Hovered | button::Status::Pressed) {
-                    Some(Background::Color(bg_hover()))
-                } else {
-                    None
-                },
-                border: Border {
-                    radius: 3.0.into(),
-                    ..Border::default()
-                },
-                ..button::Style::default()
-            }),
-        );
-    }
-
-    let mut body = column![text(topic.title)
-        .font(SEGOE_SEMIBOLD)
-        .size(18.0)
-        .color(text_main())]
-    .spacing(9)
-    .padding(iced::Padding {
-        right: 16.0,
-        ..iced::Padding::ZERO
-    });
-    #[cfg(windows)]
-    if current == INTEGRATION_TOPIC {
-        body = body.push(para(
-            "Select an Appraise-It Pro session to choose the destination report.",
-            text_main(),
-        ));
-        body = body.push(
-            button(text("Check open report").font(SEGOE).size(BODY)).on_press_maybe(
-                (!guide.report_busy).then_some(Message::Guide(GuideMsg::CheckReport)),
-            ),
-        );
-        if let Some(status) = &guide.report_status {
-            body = body.push(
-                text(status.clone())
-                    .font(SEGOE)
-                    .size(BODY)
-                    .color(text_main())
-                    .width(Length::Fill),
-            );
-        }
-        if guide.report_target.is_some() && guide.sketch_preview.is_empty() {
-            let label = if guide.report_busy {
-                "Rendering sketch…"
-            } else {
-                "Preview sketch"
-            };
-            body = body.push(button(text(label).font(SEGOE).size(BODY)).on_press_maybe(
-                (!guide.report_busy).then_some(Message::Guide(GuideMsg::PreviewSketch)),
-            ));
-        }
-        if let Some(report) = guide
-            .report_target
-            .as_ref()
-            .filter(|_| !guide.sketch_preview.is_empty())
-        {
-            body = body.push(
-                text(format!(
-                    "Sending appends these pages to {}.",
-                    report.sketch_destination()
-                ))
-                .font(SEGOE)
-                .size(BODY)
-                .color(text_main())
-                .width(Length::Fill),
-            );
-            for (number, image) in &guide.sketch_preview {
-                body = body
-                    .push(text(format!("Sketch page {number}")).font(SEGOE).size(BODY))
-                    .push(
-                        iced::widget::image(image.clone())
-                            .width(Length::Fill)
-                            .height(260),
-                    );
-            }
-            match &guide.area_preview {
-                Some(Ok(preview)) => {
-                    body = body.push(
-                        iced::widget::checkbox(guide.include_areas)
-                            .label("Include area totals")
-                            .on_toggle(|value| Message::Guide(GuideMsg::IncludeAreas(value))),
-                    );
-                    if guide.include_areas {
-                        body = body.push(para(
-                            "Review the replacements for the subject living unit. Mark above-grade outlines as GLA only when they qualify as standard finished area.",
-                            text_main(),
-                        )).push(text(preview.summary()).font(SEGOE).size(BODY).width(Length::Fill));
-                    }
-                }
-                Some(Err(reason)) => {
-                    body = body.push(
-                        text(reason.clone())
-                            .font(SEGOE)
-                            .size(BODY)
-                            .width(Length::Fill),
-                    );
-                }
-                None => {}
-            }
-            let send_label = if guide.include_areas {
-                "Send sketch and area totals"
-            } else {
-                "Send sketch images"
-            };
-            body = body.push(
-                button(text(send_label).font(SEGOE).size(BODY))
-                    .on_press(Message::Guide(GuideMsg::SendSketch)),
-            );
-        }
-    }
-    for b in topic.blocks {
-        body = body.push(block(b));
-    }
-
-    let close =
-        button(container(text("Close").font(SEGOE).size(12.0).color(WHITE)).padding([5, 12]))
-            .padding(0)
-            .on_press(Message::Guide(GuideMsg::Close))
-            .style(move |_, _| button::Style {
-                background: Some(Background::Color(accent())),
-                ..button::Style::default()
-            });
-
-    let reading = column![
-        scrollable(body).width(Length::Fill).height(Length::Fill),
-        row![Space::new().width(Length::Fill), close],
-    ]
-    .spacing(10);
-
-    let divider =
-        container(Space::new().width(1).height(Length::Fill)).style(|_| container::Style {
-            background: Some(Background::Color(border())),
-            ..container::Style::default()
-        });
-
-    let card = container(row![list, divider, reading].spacing(14).padding(14))
-        .width(860.0_f32.min((size.width - 32.0).max(320.0)))
-        .height(620.0_f32.min((size.height - 48.0).max(240.0)))
-        .style(|_| container::Style {
-            background: Some(Background::Color(bg_panel())),
-            border: Border {
-                color: border(),
-                width: 1.0,
-                radius: 5.0.into(),
-            },
-            ..container::Style::default()
-        });
-
-    // The card swallows its own presses; the backdrop closes.
-    let centred = container(opaque(card))
-        .center_x(Length::Fill)
-        .center_y(Length::Fill);
-    let backdrop = container(centred)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .style(|_| container::Style {
-            background: Some(Color::from_rgba(0.0, 0.0, 0.0, 0.46).into()),
-            ..container::Style::default()
-        });
-    Some(opaque(
-        mouse_area(backdrop).on_press(Message::Guide(GuideMsg::Close)),
-    ))
 }
 
 #[cfg(test)]

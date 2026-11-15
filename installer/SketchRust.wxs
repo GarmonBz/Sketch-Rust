@@ -62,14 +62,14 @@
 
     <!-- Shortcuts. A per-user component needs a registry value as its key path. -->
     <Component Id="StartMenuShortcutComponent" Directory="ProgramMenuFolder">
-      <Shortcut Id="StartMenuShortcut" Name="Sketch Rust" Description="Appraisal Sketch"
+      <Shortcut Id="StartMenuShortcut" Name="Sketch Rust" Description="Sketch Rust"
                 Target="[INSTALLFOLDER]sketch-app.exe" WorkingDirectory="INSTALLFOLDER"
                 Icon="SketchRust.ico" />
       <RegistryValue Root="HKCU" Key="Software\SketchRust" Name="StartMenuShortcut"
                      Type="integer" Value="1" KeyPath="yes" />
     </Component>
     <Component Id="DesktopShortcutComponent" Directory="DesktopFolder">
-      <Shortcut Id="DesktopShortcut" Name="Sketch Rust" Description="Appraisal Sketch"
+      <Shortcut Id="DesktopShortcut" Name="Sketch Rust" Description="Sketch Rust"
                 Target="[INSTALLFOLDER]sketch-app.exe" WorkingDirectory="INSTALLFOLDER"
                 Icon="SketchRust.ico" />
       <RegistryValue Root="HKCU" Key="Software\SketchRust" Name="DesktopShortcut"

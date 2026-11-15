@@ -102,23 +102,23 @@ this file and need a separate review.
 
 Tick a phase only when its acceptance checks in `03-phases.md` pass.
 
-- [ ] P0 Preparation: branch, shell switch, test harness for "next"
-- [ ] P1 Tokens, fonts, widget kit
-- [ ] P2 Size classes and the empty shell
-- [ ] P3 Command registry and Menu
-- [ ] P4 Top bar and page tabs
-- [ ] P5 Tool tray and fly-outs
-- [ ] P6 Ledger: Drawn, Types, Layers, totals
-- [ ] P7 Inspector
-- [ ] P8 Insert drawer: symbols and room labels
-- [ ] P9 Drawing controls, length strip, area chooser
-- [ ] P10 Touch input and the Pad
-- [ ] P11 Area type editor and new default colours
-- [ ] P12 Symbol library and symbol editing
-- [ ] P13 Start screen, dialogs restyle, guide and shortcut sheet rewrite
-- [ ] P14 Coverage audit: every row of `coverage.csv` closed
+- [x] P0 Preparation: branch, shell switch, test harness for "next"
+- [x] P1 Tokens, fonts, widget kit
+- [x] P2 Size classes and the empty shell
+- [x] P3 Command registry and Menu
+- [x] P4 Top bar and page tabs
+- [x] P5 Tool tray and fly-outs
+- [x] P6 Ledger: Drawn, Types, Layers, totals
+- [x] P7 Inspector
+- [x] P8 Insert drawer: symbols and room labels
+- [x] P9 Drawing controls, length strip, area chooser
+- [x] P10 Touch input and the Pad
+- [x] P11 Area type editor and new default colours
+- [x] P12 Symbol library and symbol editing
+- [x] P13 Start screen, dialogs restyle, guide and shortcut sheet rewrite
+- [x] P14 Coverage audit: every row of `coverage.csv` closed
 - [ ] P15 Cutover: make "next" the default, delete classic chrome and `refs/`
-- [ ] P16 Android feasibility spike (separate from the desktop release)
+- [x] P16 Android feasibility spike (separate from the desktop release — see [P16-android-feasibility.md](P16-android-feasibility.md))
 
 ## Outside the interface (not solved by this plan)
 

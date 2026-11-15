@@ -626,6 +626,48 @@ pub fn js_number(n: f64) -> String {
     }
 }
 
+/// Interactive tool buttons (used by the tool tray and commands).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RailTool {
+    Select,
+    Fence,
+    Lasso,
+    Pan,
+    DrawExterior,
+    DrawInterior,
+    InsertVertex,
+    Curve,
+    Measure,
+    ChainDim,
+    Shapes,
+    DefineArea,
+    Text,
+    Symbols,
+    Touch,
+    Geo,
+    Pages,
+}
+
+impl RailTool {
+    /// The drawing/navigation mode represented by this tool, if any.
+    pub fn mode(self) -> Option<Mode> {
+        Some(match self {
+            RailTool::Select => Mode::Select,
+            RailTool::DefineArea => Mode::DefineArea,
+            RailTool::Fence => Mode::Fence,
+            RailTool::Lasso => Mode::Lasso,
+            RailTool::Pan => Mode::Pan,
+            RailTool::DrawExterior => Mode::DrawExterior,
+            RailTool::DrawInterior => Mode::DrawInterior,
+            RailTool::InsertVertex => Mode::InsertVertex,
+            RailTool::Curve => Mode::Curve,
+            RailTool::Measure => Mode::Measure,
+            RailTool::ChainDim => Mode::ChainDim,
+            _ => return None,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

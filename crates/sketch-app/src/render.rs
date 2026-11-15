@@ -152,6 +152,10 @@ pub struct Scene<'a> {
     /// `exportTextZoom`: the least zoom text is sized by (0 = none; an
     /// export fits the sketch small, so its text is held up to this).
     pub text_zoom_floor: f64,
+    /// Touch density: render transform/curve/endpoint/resize handles at 12 px.
+    pub touch_handles: bool,
+    /// Non-editable symbol entities rendered muted/locked during symbol shape editing.
+    pub locked_symbol_entities: &'a [sketch_core::symbols::Entity],
 }
 
 impl Scene<'_> {
@@ -731,15 +735,26 @@ fn draw_lines(frame: &mut Frame, scene: &Scene) {
             );
         }
         if selected {
-            // The curve handle: a green square on the wall's arc.
+            // The curve handle: a green square on the wall's arc (12 px in Touch density).
+            let hs = if scene.touch_handles { 12.0 } else { 8.0 };
             let at = scene.screen(crate::drawing::curve_handle(line));
-            let top_left = Point::new(at.x - 4.0, at.y - 4.0);
-            let size = iced::Size::new(8.0, 8.0);
+            let top_left = Point::new(at.x - hs / 2.0, at.y - hs / 2.0);
+            let size = iced::Size::new(hs, hs);
             frame.fill_rectangle(top_left, size, CURVE_GUIDE);
             frame.stroke(
                 &Path::rectangle(top_left, size),
                 Stroke::default().with_color(hex(0xECFDF5)).with_width(1.0),
             );
+            if scene.touch_handles && scene.select_mode {
+                for ep in [start, end] {
+                    let dot = Path::circle(ep, 6.0);
+                    frame.fill(&dot, crate::theme::ICON_BLUE);
+                    frame.stroke(
+                        &dot,
+                        Stroke::default().with_color(Color::WHITE).with_width(1.5),
+                    );
+                }
+            }
         }
         if !is_curve_drag {
             draw_line_dimension(frame, scene, line, color, &covered, active);
@@ -1388,7 +1403,7 @@ fn draw_symbols(frame: &mut Frame, scene: &Scene) {
                 iced::Size::new(bw_px, bh_px),
             );
             frame.stroke(&rect, Stroke::default().with_color(accent).with_width(1.0));
-            let hs = 7.0f32;
+            let hs = if scene.touch_handles { 12.0f32 } else { 7.0f32 };
             for (hx, hy) in [
                 (-bw_px / 2.0, -bh_px / 2.0),
                 (bw_px / 2.0, -bh_px / 2.0),
@@ -2059,9 +2074,9 @@ fn draw_rotation_angle(
     );
 }
 
-/// The handle circle: an 8px green disc with a light ring.
-fn handle_circle(frame: &mut Frame, at: (f64, f64)) {
-    let c = Path::circle(Point::new(at.0 as f32, at.1 as f32), 8.0);
+/// The handle circle: an 8px green disc (or 12 px diameter in Touch) with a light ring.
+fn handle_circle(frame: &mut Frame, at: (f64, f64), radius: f32) {
+    let c = Path::circle(Point::new(at.0 as f32, at.1 as f32), radius);
     frame.fill(&c, CURVE_GUIDE);
     frame.stroke(
         &c,
@@ -2127,15 +2142,17 @@ fn draw_transform_handles(frame: &mut Frame, scene: &Scene) {
         };
         frame.stroke(&outline, dashed_stroke);
         frame.stroke(&Path::line(pt(b.top_anchor), pt(b.handle)), dashed_stroke);
+        let corner_sz = if scene.touch_handles { 12.0f32 } else { 8.0f32 };
+        let rotate_r = if scene.touch_handles { 6.0f32 } else { 8.0f32 };
         for c in &b.corners {
-            let (x, y) = (c.0 as f32 - 4.0, c.1 as f32 - 4.0);
-            frame.fill_rectangle(Point::new(x, y), iced::Size::new(8.0, 8.0), green);
+            let (x, y) = (c.0 as f32 - corner_sz / 2.0, c.1 as f32 - corner_sz / 2.0);
+            frame.fill_rectangle(Point::new(x, y), iced::Size::new(corner_sz, corner_sz), green);
             frame.stroke(
-                &Path::rectangle(Point::new(x, y), iced::Size::new(8.0, 8.0)),
+                &Path::rectangle(Point::new(x, y), iced::Size::new(corner_sz, corner_sz)),
                 Stroke::default().with_color(light).with_width(1.1),
             );
         }
-        handle_circle(frame, b.handle);
+        handle_circle(frame, b.handle, rotate_r);
         if let Some(crate::view_state::Drag::RotateText {
             kind, id, preview, ..
         }) = scene.drag
@@ -2198,7 +2215,8 @@ fn draw_transform_handles(frame: &mut Frame, scene: &Scene) {
         let top = scene.screen(rotate_world(Pt::new(c.x, area.max_y)));
         let handle = scene.screen(rotate_world(handle_world));
         frame.stroke(&Path::line(top, handle), dashed_stroke);
-        handle_circle(frame, (f64::from(handle.x), f64::from(handle.y)));
+        let rotate_r = if scene.touch_handles { 6.0f32 } else { 8.0f32 };
+        handle_circle(frame, (f64::from(handle.x), f64::from(handle.y)), rotate_r);
         draw_rotation_angle(
             frame,
             area.center,
@@ -2208,7 +2226,8 @@ fn draw_transform_handles(frame: &mut Frame, scene: &Scene) {
         );
     } else {
         frame.stroke(&Path::line(pt(area.top), pt(area.handle)), dashed_stroke);
-        handle_circle(frame, area.handle);
+        let rotate_r = if scene.touch_handles { 6.0f32 } else { 8.0f32 };
+        handle_circle(frame, area.handle, rotate_r);
     }
 }
 
@@ -2233,6 +2252,24 @@ pub fn draw_scene_base(frame: &mut Frame, scene: &Scene) {
 
 /// Keep live guides, previews and the pointer outside the floorplan cache.
 pub fn draw_scene_overlay(frame: &mut Frame, scene: &Scene, w: f32, h: f32) {
+    if !scene.locked_symbol_entities.is_empty() {
+        let origin = scene.screen(Pt::new(0.0, 0.0));
+        let s = PIXELS_PER_FOOT * scene.zoom / 12.0;
+        let pal = crate::canvas_theme::current();
+        let stroke = Color {
+            a: 0.42,
+            ..pal.dim_label()
+        };
+        crate::symlib::render_entities(
+            frame,
+            scene.locked_symbol_entities,
+            s,
+            f64::from(origin.x),
+            f64::from(origin.y),
+            stroke,
+            pal.bg(),
+        );
+    }
     draw_witness_lines(frame, scene, w, h);
     draw_vertices(frame, scene);
     // `filters.symbols` / `filters.labels` gate their passes.
