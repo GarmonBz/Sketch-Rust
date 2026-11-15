@@ -348,7 +348,7 @@ impl App {
             .unwrap_or(default_name)
             .trim()
             .to_string();
-        self.push_undo("Define Area");
+        self.push_undo("Set area type");
         define_area::define(&mut self.drawing, id, code, &name);
         if let Some(post) = post {
             let p = self
@@ -750,7 +750,7 @@ impl App {
                     let ids: HashSet<_> =
                         ids.into_iter().filter(|id| gates.selectable(*id)).collect();
                     if !ids.is_empty() {
-                        self.push_undo("Redefine Area");
+                        self.push_undo("Change area type");
                         let name = self
                             .drawing
                             .selected_area_name

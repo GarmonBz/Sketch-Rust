@@ -152,7 +152,7 @@ impl Disto {
                     RadioEvent::Measurement(_) => Effect::None,
                     RadioEvent::Disconnected => {
                         self.connected = None;
-                        Effect::Toast("DISTO disconnected.".into())
+                        Effect::Toast("Laser disconnected.".into())
                     }
                 }
             }
@@ -250,7 +250,7 @@ impl Disto {
                         "Bluetooth device access is not available on this computer.".into(),
                     ),
                     Err(Failure::Failed(reason)) => {
-                        Effect::Toast(format!("DISTO connection was not completed: {reason}"))
+                        Effect::Toast(format!("Laser connection was not completed: {reason}"))
                     }
                 }
             }
@@ -349,7 +349,7 @@ mod tests {
         let session = d.session;
         assert_eq!(
             d.update(DistoMsg::Radio(session, RadioEvent::Disconnected)),
-            Effect::Toast("DISTO disconnected.".into())
+            Effect::Toast("Laser disconnected.".into())
         );
         assert!(d.chip_label().is_none());
         assert_eq!(
@@ -428,7 +428,7 @@ mod tests {
         d.update(DistoMsg::Choose);
         assert_eq!(
             d.update(DistoMsg::Connected(Err(Failure::Failed("x".into())))),
-            Effect::Toast("DISTO connection was not completed: x".into())
+            Effect::Toast("Laser connection was not completed: x".into())
         );
         assert_eq!(d.chip_label(), None);
     }

@@ -767,7 +767,7 @@ static COMMANDS: &[Command] = &[
     },
     Command {
         id: "toggle-calcs",
-        label: "View calcs",
+        label: "Show totals",
         group: Group::View,
         shortcut: "",
         enabled: always,
@@ -948,7 +948,7 @@ static COMMANDS: &[Command] = &[
     // --- Areas ---
     Command {
         id: "define-area",
-        label: "Define area tool",
+        label: "Area tool",
         group: Group::Areas,
         shortcut: "A",
         enabled: always,
@@ -1056,7 +1056,7 @@ static COMMANDS: &[Command] = &[
     },
     Command {
         id: "area-new-code",
-        label: "New area code...",
+        label: "New area type...",
         group: Group::Areas,
         shortcut: "",
         enabled: always,
@@ -1065,7 +1065,7 @@ static COMMANDS: &[Command] = &[
     },
     Command {
         id: "area-edit-definitions",
-        label: "Edit area definitions...",
+        label: "Edit area types...",
         group: Group::Areas,
         shortcut: "",
         enabled: always,
@@ -1165,7 +1165,7 @@ static COMMANDS: &[Command] = &[
     },
     Command {
         id: "tool-symbols",
-        label: "Symbols drawer",
+        label: "Insert symbols",
         group: Group::Insert,
         shortcut: "F6",
         enabled: always,
@@ -1174,7 +1174,7 @@ static COMMANDS: &[Command] = &[
     },
     Command {
         id: "tool-text",
-        label: "Text labels drawer",
+        label: "Insert room labels",
         group: Group::Insert,
         shortcut: "F5",
         enabled: always,
@@ -1228,30 +1228,17 @@ static COMMANDS: &[Command] = &[
     },
     Command {
         id: "edit-text-library",
-        label: "Manage text library...",
+        label: "Room labels list...",
         group: Group::Insert,
         shortcut: "",
         enabled: always,
         checked: None,
         run: |_| Message::Dock(dock::DockMsg::EditTextLibrary),
     },
-    Command {
-        id: "manage-symbols",
-        label: "Manage symbols...",
-        group: Group::Insert,
-        shortcut: "",
-        enabled: always,
-        checked: None,
-        run: |_| {
-            Message::Ui(crate::ui::Msg::SymbolLibrary(
-                crate::ui::symbol_library::Msg::Open(None),
-            ))
-        },
-    },
     // --- Image ---
     Command {
         id: "photo-load",
-        label: "Load reference image...",
+        label: "Load trace image...",
         group: Group::Image,
         shortcut: "",
         enabled: always,
@@ -1260,7 +1247,7 @@ static COMMANDS: &[Command] = &[
     },
     Command {
         id: "photo-show",
-        label: "Show reference image",
+        label: "Show trace image",
         group: Group::Image,
         shortcut: "",
         enabled: has_photo,
@@ -1269,7 +1256,7 @@ static COMMANDS: &[Command] = &[
     },
     Command {
         id: "photo-hide",
-        label: "Hide reference image",
+        label: "Hide trace image",
         group: Group::Image,
         shortcut: "",
         enabled: has_photo,
@@ -1278,7 +1265,7 @@ static COMMANDS: &[Command] = &[
     },
     Command {
         id: "photo-remove",
-        label: "Remove reference image",
+        label: "Remove trace image",
         group: Group::Image,
         shortcut: "",
         enabled: has_photo,
@@ -1296,7 +1283,7 @@ static COMMANDS: &[Command] = &[
     },
     Command {
         id: "photo-smaller",
-        label: "Shrink reference image",
+        label: "Shrink trace image",
         group: Group::Image,
         shortcut: "",
         enabled: has_photo,
@@ -1305,7 +1292,7 @@ static COMMANDS: &[Command] = &[
     },
     Command {
         id: "photo-larger",
-        label: "Enlarge reference image",
+        label: "Enlarge trace image",
         group: Group::Image,
         shortcut: "",
         enabled: has_photo,
@@ -1414,7 +1401,7 @@ static COMMANDS: &[Command] = &[
     },
     Command {
         id: "subject-info",
-        label: "Subject info",
+        label: "Property details",
         group: Group::Tools,
         shortcut: "",
         enabled: always,

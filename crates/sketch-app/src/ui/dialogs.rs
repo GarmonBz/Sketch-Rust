@@ -1917,7 +1917,7 @@ fn codes_editor_layer<'a>(
     };
 
     let body = column![
-        body_text("Edit the area code definitions table as JSON."),
+        body_text("Edit the area types as JSON."),
         editor_el,
     ]
     .spacing(SPACE_2)
@@ -1938,7 +1938,7 @@ fn codes_editor_layer<'a>(
 
     Some(dialog_frame(
         DialogFrame {
-            title: "Area Codes Table".into(),
+            title: "Area types (JSON)".into(),
             subtitle: None,
             preferred_w: 760.0,
             preferred_h: Some(580.0),
@@ -2113,7 +2113,7 @@ fn area_dialog_layer<'a>(
                         check_row("Code", post.code, move |b| ad(AreaDialogMsg::Post(PostSwitch::Code, b)), d),
                         check_row("Name", post.name, move |b| ad(AreaDialogMsg::Post(PostSwitch::Name, b)), d),
                         check_row("Dimensions", post.dims, move |b| ad(AreaDialogMsg::Post(PostSwitch::Dims, b)), d),
-                        check_row("Calcs", post.calcs, move |b| ad(AreaDialogMsg::Post(PostSwitch::Calcs, b)), d),
+                        check_row("Math", post.calcs, move |b| ad(AreaDialogMsg::Post(PostSwitch::Calcs, b)), d),
                         check_row("Base", post.base, move |b| ad(AreaDialogMsg::Post(PostSwitch::Base, b)), d),
                         check_row("Factor", post.factor, move |b| ad(AreaDialogMsg::Post(PostSwitch::Factor, b)), d),
                     ]
@@ -2234,7 +2234,7 @@ fn new_code_layer<'a>(
 
     Some(dialog_frame(
         DialogFrame {
-            title: "New Area Code".into(),
+            title: "New area type".into(),
             subtitle: None,
             preferred_w: 500.0,
             preferred_h: None,
@@ -3395,7 +3395,7 @@ impl CodesEditor {
 #[cfg(not(test))]
 pub async fn pick_codes_import() -> Option<std::path::PathBuf> {
     rfd::AsyncFileDialog::new()
-        .add_filter("Area code JSON", &["json"])
+        .add_filter("Area types JSON", &["json"])
         .pick_file()
         .await
         .map(|file| file.path().to_path_buf())
@@ -3404,7 +3404,7 @@ pub async fn pick_codes_import() -> Option<std::path::PathBuf> {
 #[cfg(not(test))]
 pub async fn pick_codes_export() -> Option<std::path::PathBuf> {
     rfd::AsyncFileDialog::new()
-        .add_filter("Area code JSON", &["json"])
+        .add_filter("Area types JSON", &["json"])
         .set_file_name("sketch-area-codes.json")
         .save_file()
         .await

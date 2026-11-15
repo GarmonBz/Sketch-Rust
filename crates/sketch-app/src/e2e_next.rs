@@ -248,7 +248,7 @@ fn p3_command_palette_searches_full_next_registry_and_runs_commands() {
     harness.send(Message::CommandPaletteRun);
 
     harness.send(Message::CommandPaletteOpen);
-    harness.send(Message::CommandPaletteQuery("calcs".into()));
+    harness.send(Message::CommandPaletteQuery("totals".into()));
     harness.send(Message::CommandPaletteRun);
 
     let app = state(harness);
@@ -2033,8 +2033,8 @@ fn p12_symbol_library_and_shape_editing_across_sizes() {
             assert!(symlib::original_library_path().is_some());
             let (mut app, _) = crate::App::boot(1.0);
 
-            // Open via Next shell command ("manage-symbols" -> UiMsg::SymbolLibrary).
-            let cmd = crate::ui::commands::find("manage-symbols").unwrap();
+            // Open via the "symbol-library" command.
+            let cmd = crate::ui::commands::find("symbol-library").unwrap();
             let _ = app.update((cmd.run)(&app));
             assert!(app.ui.symbol_library.open);
             assert_eq!(app.symbols_lib().library.symbols.len(), 639);
@@ -2640,5 +2640,89 @@ fn p14_coverage_audit_themes_and_menu_workflows_across_sizes() {
         let app = state(h);
         assert_eq!(app.pages.pages.len(), 2, "second page added at {label}");
         assert_eq!(app.pages.underlay, Some(0), "underlay active at {label}");
+    }
+}
+
+/// Canvas-local screen point `t` of the way along the first wall of the
+/// closed square, plus the pixel length of one foot.
+fn drawn_square_wall_point(w: f32, h: f32, t: f64) -> ((f32, f32), f32) {
+    let mut tmp = harness_next_at(iced::Size::new(w, h));
+    draw_closed_square(&mut tmp);
+    let app = state(tmp);
+    let line = &app.drawing.lines[0];
+    let wx = line.start.x + (line.end.x - line.start.x) * t;
+    let wy = line.start.y + (line.end.y - line.start.y) * t;
+    let (sx, sy) = app.view.to_screen(crate::view_state::World { x: wx, y: wy });
+    let (ox, _) = app.view.to_screen(crate::view_state::World { x: wx + 1.0, y: wy });
+    ((sx as f32, sy as f32), (ox - sx).abs() as f32)
+}
+
+fn ring_area(points: &[sketch_core::geometry::Pt]) -> f64 {
+    let n = points.len();
+    let twice: f64 = (0..n)
+        .map(|i| {
+            let (a, b) = (points[i], points[(i + 1) % n]);
+            a.x * b.y - b.x * a.y
+        })
+        .sum();
+    (twice / 2.0).abs()
+}
+
+/// Grabbing a wall in Select and dragging it stretches its neighbours and
+/// resizes the area: on a fresh press, and on a wall that is already selected.
+#[test]
+fn select_drag_on_a_wall_resizes_the_area_across_sizes() {
+    for &(label, w, h, _) in SIZES {
+        let ((x, y), foot) = drawn_square_wall_point(w, h, 0.25);
+        for preselect in [false, true] {
+            let mut h_app = harness_next_at(iced::Size::new(w, h));
+            draw_closed_square(&mut h_app);
+            h_app.send(Message::Key(KeyCmd::Select));
+            if preselect {
+                // Click the wall first, as a user does, then grab it.
+                h_app.send(Message::CanvasPress(x, y));
+                h_app.send(Message::CanvasDragEnd);
+            }
+            h_app.send(Message::CanvasPress(x, y));
+            h_app.send(Message::CanvasDrag(x, y + foot, false));
+            h_app.send(Message::CanvasDrag(x, y + 2.0 * foot, false));
+            h_app.send(Message::CanvasDragEnd);
+            let app = state(h_app);
+            assert_eq!(app.drawing.lines.len(), 4, "four walls remain at {label}");
+            assert_eq!(app.drawing.polygons.len(), 1, "one area remains at {label}");
+            let area = ring_area(&app.drawing.polygons[0].points);
+            assert!(
+                (area - 120.0).abs() < 0.01 || (area - 80.0).abs() < 0.01,
+                "dragging a wall 2 ft resizes the 100 sf area at {label} \
+                 (preselect {preselect}): got {area}"
+            );
+        }
+    }
+}
+
+/// Dragging the endpoint dot of a selected wall moves that corner, and the
+/// walls that meet there follow it.
+#[test]
+fn select_drag_on_a_wall_endpoint_moves_the_corner_across_sizes() {
+    for &(label, w, h, _) in SIZES {
+        let ((qx, qy), foot) = drawn_square_wall_point(w, h, 0.25);
+        let ((ex, ey), _) = drawn_square_wall_point(w, h, 0.0);
+        let mut h_app = harness_next_at(iced::Size::new(w, h));
+        draw_closed_square(&mut h_app);
+        h_app.send(Message::Key(KeyCmd::Select));
+        h_app.send(Message::CanvasPress(qx, qy));
+        h_app.send(Message::CanvasDragEnd);
+        h_app.send(Message::CanvasPress(ex, ey));
+        h_app.send(Message::CanvasDrag(ex, ey + foot, false));
+        h_app.send(Message::CanvasDrag(ex, ey + 2.0 * foot, false));
+        h_app.send(Message::CanvasDragEnd);
+        let app = state(h_app);
+        assert_eq!(app.drawing.lines.len(), 4, "four walls remain at {label}");
+        assert_eq!(app.drawing.polygons.len(), 1, "one area remains at {label}");
+        let area = ring_area(&app.drawing.polygons[0].points);
+        assert!(
+            ((area - 100.0).abs() - 10.0).abs() < 0.01,
+            "moving a corner 2 ft changes the 100 sf area by 10 sf at {label}: got {area}"
+        );
     }
 }

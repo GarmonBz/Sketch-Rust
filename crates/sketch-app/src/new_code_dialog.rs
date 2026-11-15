@@ -110,7 +110,7 @@ impl NewCodeDialog {
             return Err("Name is required.".into());
         }
         if existing.iter().any(|c| c.code == code) {
-            return Err(format!("Area code \"{code}\" already exists."));
+            return Err(format!("Area type \"{code}\" already exists."));
         }
         let description = {
             let d = self.description.trim();
@@ -194,7 +194,7 @@ mod tests {
         d.update(NewCodeMsg::Code("gla1".into()));
         assert_eq!(
             d.create(&existing).unwrap_err(),
-            "Area code \"GLA1\" already exists."
+            "Area type \"GLA1\" already exists."
         );
     }
 

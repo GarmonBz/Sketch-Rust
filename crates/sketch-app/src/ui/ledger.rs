@@ -456,7 +456,7 @@ fn drawing_in_progress_row<'a>(app: &'a App) -> Element<'a, Message> {
     let detail = format!(
         "{wall_count} wall{} · {:.1}'",
         if wall_count == 1 { "" } else { "s" },
-        total_len
+        total_len + 0.0
     );
     container(
         row![

@@ -553,7 +553,6 @@ pub fn symbol_to_drawing(sym: &Symbol) -> (Drawing, Vec<Entity>) {
         }
     }
 
-    drop(push_line);
     for t in &mut drawing.texts {
         t.id = next_id;
         next_id += 1;

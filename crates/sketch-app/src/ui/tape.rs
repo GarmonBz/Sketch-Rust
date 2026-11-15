@@ -326,6 +326,29 @@ fn strip_position(app: &App, card_w: f32, card_h: f32) -> (f32, f32) {
         }
     }
 
+    // Keep the strip out from under the floating Pad (its readout mirrors
+    // the strip, but the strip must stay readable beside it).
+    if app.touch_panel_open && !matches!(sc, SizeClass::Compact) {
+        let origin = crate::ui::pad::floating_origin(app);
+        let (pl, pt) = (origin.x - rect.x - 8.0, origin.y - rect.y - 8.0);
+        let (pr, pb) = (
+            pl + crate::ui::pad::FLOAT_W + 16.0,
+            pt + crate::ui::pad::FLOAT_H + 16.0,
+        );
+        let under = |cx: f32, cy: f32| {
+            cx < pr && cx + card_w > pl && cy < pb && cy + card_h > pt
+        };
+        if under(x, y) {
+            let left_x = (pl - card_w).clamp(min_x, max_x);
+            let above_y = (pt - card_h).clamp(min_y, max_y);
+            if !under(left_x, y) {
+                x = left_x;
+            } else if !under(x, above_y) {
+                y = above_y;
+            }
+        }
+    }
+
     (x, y)
 }
 

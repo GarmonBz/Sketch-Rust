@@ -1,44 +1,57 @@
-# UI Redesign Handoff Note
+# UI redesign handoff note
 
 - **Branch:** `ui-redesign`
-- **Workspace version:** `0.2.0` (`Cargo.toml`)
-- **Working tree:** Uncommitted P0–P9 changes on `ui-redesign` (mapped from `XPS152023` `X:\Sketch Rust` directly to `\\mediaserver\AIProjects\Sketch Rust` — all changes are already on Mediaserver). Open the **local folder path** directly on Mediaserver rather than a UNC share for normal `git` ownership and faster builds.
+- **Workspace version:** `0.2.0`
+- **State:** P0 to P13, P15 and P16 are done and committed. P14 is open only for owner sign-off.
 
-## Status: P0–P9 Complete & Verified
+## Verified on 2026-11-15
 
-Phases **P0 through P9** are implemented, visually inspected via headless `iced_test` screenshots (`target/e2e-next/`), and ticked `[x]` in `docs/ui-redesign/README.md`:
+- `cargo build -p sketch-app`: passes.
+- `cargo test --workspace`: passes (app and core).
+- `cargo clippy --workspace -- -D warnings`: passes.
 
-- **P0–P1:** `ui/tokens.rs`, `ui/fonts.rs`, `ui/kit.rs`, `ui/gallery.rs`, `e2e_support.rs`, `e2e_next.rs` (`Shell::Classic` / `Shell::Next` via `SKETCH_UI=next`).
-- **P2:** `ui/layout.rs` (responsive `Compact < 700px`, `Medium 700..1100px`, `Wide >= 1100px`), `ui/mod.rs`.
-- **P3:** `ui/commands.rs`, `ui/menu.rs` (unified command registry + Menu + `Ctrl+K` command search).
-- **P4:** `ui/topbar.rs` (top bar, page tabs, page context menu, undo/redo history menu, export primary/menu, Areas/Totals drawer triggers).
-- **P5:** `ui/tray.rs` (floating/compact tool tray + fly-outs + keyboard shortcuts).
-- **P6:** `ui/ledger.rs` (Drawn / Types / Layers / totals breakdown trigger / drag-to-place & drag-to-assign + ledger resize).
-- **P7:** `ui/inspector.rs` (contextual properties panel / slide-over / bottom sheet across all selection kinds).
-- **P8:** `ui/insert.rs` (Symbols & Room labels drawer, Favorites, vector symbol previews via `symlib::render_fitted`, Pin toggle, `dock::ALPHA` filters & custom label placement).
-- **P9:** `ui/controls.rs`, `ui/tape.rs`, `ui/chooser.rs` (Zoom/Fit/Scale/Grid/Snap/Pitch/AreaSnap/AngleStep/Show/Dimensions/North/Underlay/Mini-map/Touch `Pad`+`Laser` controls, amber Length Strip in `Wall`/`Inner`/`Measure`, responsive Area Chooser with empty-search all-types list in `area_workflow.rs`).
+Run one `cargo` command at a time; the target directory is shared.
 
-### `crates/sketch-app/src/ui/` Modules
-`mod.rs`, `tokens.rs`, `fonts.rs`, `kit.rs`, `gallery.rs`, `layout.rs`, `commands.rs`, `menu.rs`, `topbar.rs`, `tray.rs`, `ledger.rs`, `inspector.rs`, `insert.rs`, `controls.rs`, `tape.rs`, `chooser.rs`.
+## Fixed after the first audit (2026-11-15)
 
-## Last Verification Snapshot (before pause at P9)
-- `cargo clippy --workspace --offline -- -D warnings`: passed (0 warnings).
-- `cargo test -p sketch-core --offline`: `178 passed; 0 failed; 0 ignored`.
-- `cargo test -p sketch-app --offline --bin sketch-app -- --skip e2e::`: `348 passed; 0 failed; 3 ignored; 281 filtered out` (includes `e2e_next::next_shell_boots_at_all_four_sizes` and `e2e_next::p1`–`p9` tests).
-- `cargo build -p sketch-app --offline`: passed.
-- `target\debug\sketch-app.exe --check-installation` with `SKETCH_UI=classic` and `SKETCH_UI=next`: both exited `0`.
-- `rg -n "theme::at|theme::ink|INK_PASSES" crates/sketch-app/src/ui/`: matches only doc comments in `kit.rs` and `tokens.rs`.
+- Select tool: pressing a wall that is already selected now drags it, so its
+  neighbours stretch and the area resizes. Before, only the endpoint dots worked.
+  Tests: `e2e_next::select_drag_on_a_wall_resizes_the_area_across_sizes`,
+  `e2e_next::select_drag_on_a_wall_endpoint_moves_the_corner_across_sizes`.
+- Toasts sit above the tool tray. The length strip moves out from under the Pad.
+- Old vocabulary removed from command labels, toasts, dialog titles and undo names.
+- `coverage.csv`: 49 rows pointed at tests that did not exist; corrected.
+- Duplicate "Manage symbols..." command removed (it opened the Symbol library).
 
-*(On Mediaserver, omit `--offline` on the first Cargo run if Cargo's local registry cache needs to fetch crates, and expect a one-time rebuild if the local disk path differs from `X:\Sketch Rust`.)*
+## Still open
 
-## Constraints to Preserve
-- Keep `Shell::Classic` building and passing `--check-installation` alongside `Shell::Next` until **P15** cutover.
-- Never use `theme::at`, `theme::ink`, or `INK_PASSES` in `crates/sketch-app/src/ui/`; use single-pass `icons::mono` and `ui/kit.rs` primitives.
-- Keep one responsive implementation per screen (no per-size-class duplication) and emit existing `Message` variants whenever possible.
-- Never run two `cargo` commands concurrently on the same target directory.
-- Tick each phase `[x]` in `docs/ui-redesign/README.md` only after all acceptance checks and `e2e_next` tests + screenshot checks pass.
+1. **Owner sign-off** on the 11 rows marked RETIRED in `coverage.csv` (P14).
+2. **Dead screens.** `symbol_manager.rs`, `new_code_dialog.rs`, `def_editor.rs`,
+   `text_manager.rs` and the JSON area-types dialog in `ui/dialogs.rs` are no
+   longer opened by any command, but their state and messages are still wired
+   into `main.rs` (`symbol_manager::Changes` is used by the insert drawer).
+   Remove the views and keep the types `update` needs.
+3. **Thin tests.** There is one large headless test per phase. Rotate-handle,
+   curve-handle and marquee drags (coverage rows S6-067, S6-071, S6-072) still
+   cite a transform unit test that never drags. Add drag tests like the two above.
+4. **Platform isolation** (`07-touch-and-android.md` section 5): `rfd` is called
+   from `file_dialogs.rs`, `layer_io.rs`, `main.rs`, `symbol_manager.rs`,
+   `ui/dialogs.rs` and `ui/symbol_library.rs`; `ui/commands.rs`, `ui/dialogs.rs`
+   and `ui/start.rs` contain `#[cfg(windows)]`. Move both behind `platform.rs`.
+5. **`apex.calculation`** attribute key in `sketch-core/src/area_calc.rs` and
+   `sketch-app/src/area_repair.rs`: rename with a read-compatible alias.
+6. **Android (P16)** is a desk study. No Android toolchain was installed, so the
+   experiments in `07-touch-and-android.md` section 5 have not been run.
+7. **Command search** has no entry for recent sketches, nudge, trace image
+   intensity, underlay or label defaults. Each is reachable elsewhere (Menu,
+   page tab menu, inspector, ledger menu).
+8. **Mini map** draws an empty dark box when the sketch is empty; check in the
+   running app.
+9. Unstyled controls: the "Snaps to wall" pick list in the Symbol library and
+   the fill opacity slider in Area types use iced defaults, not the tokens.
 
-## Next Up: P10 (Touch input and the Pad) -> P16
-1. Read `docs/ui-redesign/07-touch-and-android.md`, `docs/ui-redesign/01-design-spec.md` §5.11, and `docs/ui-redesign/03-phases.md` P10.
-2. Implement long-press (500 ms, <= 8 px drift) context menu triggers, touch 1-finger/2-finger canvas gestures, `ui/pad.rs` (including diagonals on hold, `Turn L`/`Turn R`, `Pen`, `Close area`, `Laser`, hold More actions, docked in Compact / draggable floating panel in Wide+Medium, auto-show in Touch density during `Wall`/`Inner`/`Measure` and auto-hide on hardware key), `"Select more"` additive toggle, tap-to-preview + second-tap-to-open chooser in Area mode, `"Pen as Ink"` stylus behavior, and a full 3-area floor plan `p10_*` test in `e2e_next.rs`.
-3. Continue sequentially through **P11** (`05-area-types.md`), **P12** (`06-symbol-library.md`), **P13**, **P14** (`04-feature-map.md` + `coverage.csv`), **P15**, and **P16**.
+## Constraints to preserve
+
+- Never use fixed coordinates in `crates/sketch-app/src/ui/`.
+- One responsive implementation per screen; emit existing `Message` variants.
+- Update `coverage.csv` in the same change that moves a feature.

@@ -742,7 +742,7 @@ fn area_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
         ]
         .spacing(SPACE_2),
         row![
-            styled_checkbox("Calcs", post.calcs, |v| {
+            styled_checkbox("Math", post.calcs, |v| {
                 Message::AreaDialog(AreaDialogMsg::Post(PostSwitch::Calcs, v))
             }),
             styled_checkbox("Base", post.base, |v| {

@@ -2326,7 +2326,7 @@ impl App {
                         self.disto_measurement(meters)
                     } else {
                         self.toasts
-                            .show("Laser ready — trigger Disto to measure.".into())
+                            .show("Laser ready. Take a reading to measure.".into())
                     }
                 }
                 ui::Msg::PadPopover(popover) => {
@@ -3021,10 +3021,16 @@ impl App {
                 };
                 match hit {
                     // A press on an endpoint handle of a selected wall drags
-                    // that vertex (`type: 'line-endpoint'`).
+                    // that vertex (`type: 'line-endpoint'`). Anywhere else on
+                    // the wall drags the wall itself, so its neighbours
+                    // stretch and the area resizes.
                     Some(selection::Hit::Line(id)) if self.selection.lines.contains(&id) => {
                         if let Some((start, at)) = self.endpoint_handle(id, world) {
                             self.view.drag_start_endpoint(id, start, at);
+                        } else {
+                            let (bx, by) = self.selection_bounds();
+                            self.view
+                                .drag_start_move(w, view_state::World { x: bx, y: by });
                         }
                     }
                     Some(_) => {
@@ -4362,7 +4368,7 @@ impl App {
                             self.area_codes.push(entry);
                             self.persist_area_codes();
                             self.new_code.open = false;
-                            return self.toasts.show(format!("Area code \"{code}\" created."));
+                            return self.toasts.show(format!("Area type \"{code}\" created."));
                         }
                         Err(notice) => return self.toasts.show(notice),
                     },
@@ -4476,7 +4482,7 @@ impl App {
                                     Err(error) => {
                                         return self
                                             .toasts
-                                            .show(format!("Could not import area codes: {error}"))
+                                            .show(format!("Could not import area types: {error}"))
                                     }
                                 }
                             }
@@ -4492,7 +4498,7 @@ impl App {
                                 if let Err(error) = std::fs::write(&path, body) {
                                     return self
                                         .toasts
-                                        .show(format!("Could not export area codes: {error}"));
+                                        .show(format!("Could not export area types: {error}"));
                                 }
                             }
                         }
@@ -4510,7 +4516,7 @@ impl App {
                                 self.area_codes = codes;
                                 self.persist_area_codes();
                                 self.codes_editor.close();
-                                return self.toasts.show("Area code table updated.".to_string());
+                                return self.toasts.show("Area types updated.".to_string());
                             }
                             Err(e) => {
                                 return self.toasts.show(e.to_string());
@@ -6390,7 +6396,7 @@ impl App {
         else {
             return self
                 .toasts
-                .show("Use Edit Tools to change the selected item.".to_string());
+                .show("Use the inspector to change the selected item.".to_string());
         };
         let props = area_props::AreaProperties::from_area(poly);
         let codes: Vec<String> = sketch_core::geometry::area_codes::default_area_codes()
@@ -6814,7 +6820,7 @@ impl App {
                 }
             })
             .unwrap_or_else(|| code.to_string());
-        self.push_undo("Define Area");
+        self.push_undo("Set area type");
         define_area::define(&mut self.drawing, id, code, &name);
         // The area's auto-generated layer ("Area") takes its name.
         let layer = self
@@ -7254,7 +7260,7 @@ impl App {
                 Ok(next) => {
                     self.subject_info = next;
                     self.subject_dialog.close();
-                    return self.toasts.show("Subject information updated.".to_string());
+                    return self.toasts.show("Property details updated.".to_string());
                 }
                 Err(msg) => return self.toasts.show(msg.to_string()),
             },
@@ -7352,7 +7358,7 @@ impl App {
                             Err(error) => {
                                 return self
                                     .toasts
-                                    .show(format!("Could not import area codes: {error}"));
+                                    .show(format!("Could not import area types: {error}"));
                             }
                         }
                     }
@@ -7368,7 +7374,7 @@ impl App {
                         if let Err(error) = std::fs::write(&path, body) {
                             return self
                                 .toasts
-                                .show(format!("Could not export area codes: {error}"));
+                                .show(format!("Could not export area types: {error}"));
                         }
                     }
                 }
@@ -9502,7 +9508,7 @@ impl App {
                 None => {
                     return self
                         .toasts
-                        .show("Area code table is not valid; defaults kept.".to_string())
+                        .show("Area types are not valid; defaults kept.".to_string())
                 }
             }
             let codes = self.dock.area_codes.clone();
@@ -10044,7 +10050,7 @@ impl App {
     /// Overlay stack for popups, menus, toasts, and edge resize handles.
     pub(crate) fn overlay_layers(&self) -> Vec<Element<'_, Message>> {
         let toast_layer: Element<'_, Message> = match self.toasts.text() {
-            Some(t) => toast::layer(t),
+            Some(t) => toast::layer(t, self.ui.density.tray_button().1 + 44.0),
             None => iced::widget::Space::new().into(),
         };
         let context_layer: Element<'_, Message> =

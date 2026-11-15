@@ -314,7 +314,7 @@ fn label_switches<'a>(c: &crate::area_workflow::Chooser, d: Density) -> Element<
     .spacing(SPACE_1);
 
     let switches2 = row![
-        kit::chip("Calcs", c.post.calcs, Some(send(WorkflowMsg::Post(Post::Calcs, !c.post.calcs))), d),
+        kit::chip("Math", c.post.calcs, Some(send(WorkflowMsg::Post(Post::Calcs, !c.post.calcs))), d),
         kit::chip("Base", c.post.base, Some(send(WorkflowMsg::Post(Post::Base, !c.post.base))), d),
         kit::chip("Factor", c.post.factor, Some(send(WorkflowMsg::Post(Post::Factor, !c.post.factor))), d),
     ]

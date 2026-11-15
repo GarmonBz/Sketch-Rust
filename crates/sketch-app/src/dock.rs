@@ -375,9 +375,9 @@ impl DockState {
                 self.pinned = !self.pinned;
                 return Effect::Toast(
                     if self.pinned {
-                        "Dock stays open after placing."
+                        "Drawer stays open after placing."
                     } else {
-                        "Dock hides after placing."
+                        "Drawer hides after placing."
                     }
                     .into(),
                 );
@@ -596,12 +596,12 @@ mod tests {
         assert_eq!(st.active.key(), "calcs");
         assert_eq!(
             st.update(DockMsg::TogglePin),
-            Effect::Toast("Dock hides after placing.".into())
+            Effect::Toast("Drawer hides after placing.".into())
         );
         assert!(!st.pinned);
         assert_eq!(
             st.update(DockMsg::TogglePin),
-            Effect::Toast("Dock stays open after placing.".into())
+            Effect::Toast("Drawer stays open after placing.".into())
         );
     }
 }

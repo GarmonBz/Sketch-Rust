@@ -53,7 +53,9 @@ impl Toasts {
 }
 
 /// The overlay layer (pointer-events: none — it holds no interactive widget).
-pub fn layer<'a>(message: &str) -> Element<'a, Message> {
+/// `bottom` is the clearance from the window's bottom edge, so the toast
+/// sits above the tool tray instead of over it.
+pub fn layer<'a>(message: &str, bottom: f32) -> Element<'a, Message> {
     let toast = container(
         text(message.to_owned())
             .size(16.0)
@@ -91,7 +93,7 @@ pub fn layer<'a>(message: &str) -> Element<'a, Message> {
             toast,
             Space::new().width(Length::Fill)
         ],
-        Space::new().height(54),
+        Space::new().height(bottom),
     ]
     .width(Length::Fill)
     .height(Length::Fill)

@@ -231,7 +231,7 @@ impl TypeEditor {
                 ));
             }
             if !seen.insert(code.to_string()) {
-                return Some(format!("Duplicate area code \"{code}\"."));
+                return Some(format!("Duplicate code \"{code}\"."));
             }
             match d.multiplier_text.trim().parse::<f64>() {
                 Ok(m) if m.is_finite() && m >= 0.0 => {}
