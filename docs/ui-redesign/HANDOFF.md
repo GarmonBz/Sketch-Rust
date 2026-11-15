@@ -2,7 +2,7 @@
 
 - **Branch:** `ui-redesign`
 - **Workspace version:** `0.2.0`
-- **State:** P0 to P13, P15 and P16 are done and committed. P14 is open only for owner sign-off.
+- **State:** P0 to P16 are done and committed. The owner approved the 11 RETIRED rows on 2026-11-15.
 
 ## Verified on 2026-11-15
 
@@ -25,7 +25,6 @@ Run one `cargo` command at a time; the target directory is shared.
 
 ## Still open
 
-1. **Owner sign-off** on the 11 rows marked RETIRED in `coverage.csv` (P14).
 2. **Dead screens.** `symbol_manager.rs`, `new_code_dialog.rs`, `def_editor.rs`,
    `text_manager.rs` and the JSON area-types dialog in `ui/dialogs.rs` are no
    longer opened by any command, but their state and messages are still wired

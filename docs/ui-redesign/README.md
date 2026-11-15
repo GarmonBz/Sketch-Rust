@@ -116,7 +116,7 @@ Tick a phase only when its acceptance checks in `03-phases.md` pass.
 - [x] P11 Area type editor and new default colours
 - [x] P12 Symbol library and symbol editing
 - [x] P13 Start screen, dialogs restyle, guide and shortcut sheet rewrite
-- [ ] P14 Coverage audit: every row of `coverage.csv` closed (all rows filled; 11 RETIRED rows still need owner sign-off)
+- [x] P14 Coverage audit: every row of `coverage.csv` closed (owner approved the 11 RETIRED rows on 2026-11-15)
 - [x] P15 Cutover: make "next" the default, delete classic chrome and `refs/` (done in the working tree; see `HANDOFF.md` for what is left)
 - [x] P16 Android feasibility spike (separate from the desktop release — see [P16-android-feasibility.md](P16-android-feasibility.md))
 
