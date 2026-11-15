@@ -1631,3 +1631,69 @@ pub fn panel_card<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, M
         })
         .into()
 }
+
+// ---------------------------------------------------------------------------
+// Token styles for stock iced controls (pick lists and sliders)
+// ---------------------------------------------------------------------------
+
+/// Pick list field drawn from the tokens instead of iced's default theme.
+pub fn pick_list_style(
+    _theme: &iced::Theme,
+    _status: iced::widget::pick_list::Status,
+) -> iced::widget::pick_list::Style {
+    iced::widget::pick_list::Style {
+        text_color: tokens::text(),
+        placeholder_color: tokens::muted(),
+        handle_color: tokens::muted(),
+        background: Background::Color(tokens::input_bg()),
+        border: Border {
+            color: tokens::rule(),
+            width: 1.0,
+            radius: RADIUS_CONTROL.into(),
+        },
+    }
+}
+
+/// The drop-down list of a pick list, drawn from the tokens.
+pub fn pick_menu_style(_theme: &iced::Theme) -> iced::overlay::menu::Style {
+    iced::overlay::menu::Style {
+        background: Background::Color(tokens::panel()),
+        border: Border {
+            color: tokens::rule(),
+            width: 1.0,
+            radius: RADIUS_CONTROL.into(),
+        },
+        text_color: tokens::text(),
+        selected_text_color: tokens::on_accent(),
+        selected_background: Background::Color(tokens::accent()),
+        shadow: tokens::floating_shadow(),
+    }
+}
+
+/// Slider with an accent-filled rail and a round accent handle.
+pub fn slider_style(
+    _theme: &iced::Theme,
+    _status: iced::widget::slider::Status,
+) -> iced::widget::slider::Style {
+    use iced::widget::slider::{Handle, HandleShape, Rail, Style};
+    Style {
+        rail: Rail {
+            backgrounds: (
+                Background::Color(tokens::accent()),
+                Background::Color(tokens::rule()),
+            ),
+            width: 4.0,
+            border: Border {
+                radius: 2.0.into(),
+                width: 0.0,
+                color: Color::TRANSPARENT,
+            },
+        },
+        handle: Handle {
+            shape: HandleShape::Circle { radius: 7.0 },
+            background: Background::Color(tokens::accent()),
+            border_width: 2.0,
+            border_color: tokens::panel(),
+        },
+    }
+}

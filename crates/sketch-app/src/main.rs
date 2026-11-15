@@ -2237,8 +2237,8 @@ impl App {
                     }
                     Task::none()
                 }
-                ui::Msg::ToggleWallsList => {
-                    self.ui.inspector_walls_expanded = !self.ui.inspector_walls_expanded;
+                ui::Msg::InspectorTab(n) => {
+                    self.ui.inspector_tab = n;
                     Task::none()
                 }
                 ui::Msg::ChainSideFlip => {
@@ -3344,10 +3344,7 @@ impl App {
             Message::SaveFile => self.save_to_file(false),
             Message::SaveFileAs => self.save_to_file(true),
             Message::ExportPng => {
-                if let Some(path) = rfd::FileDialog::new()
-                    .add_filter("PNG image", &["png"])
-                    .set_file_name(format!("{}.png", self.file_name))
-                    .save_file()
+                if let Some(path) = crate::platform::save_file("PNG image", &["png"], format!("{}.png", self.file_name))
                 {
                     match self.png_export_bytes() {
                         Some(bytes) => {
@@ -3373,10 +3370,7 @@ impl App {
                     .as_ref()
                     .ok()
                     .map(|index| &index.library);
-                if let Some(path) = rfd::FileDialog::new()
-                    .add_filter("SVG image", &["svg"])
-                    .set_file_name(format!("{}.svg", self.file_name))
-                    .save_file()
+                if let Some(path) = crate::platform::save_file("SVG image", &["svg"], format!("{}.svg", self.file_name))
                 {
                     let svg = sketch_core::export_svg::export_svg(&page, &options, &codes, library);
                     let _ = std::fs::write(&path, svg);
@@ -3388,10 +3382,7 @@ impl App {
                 let page = exporter::build_export_page(&self.drawing, north, &self.area_codes);
                 let options = exporter::export_options(&self.drawing);
                 let codes = self.area_codes.clone();
-                if let Some(path) = rfd::FileDialog::new()
-                    .add_filter("DXF drawing", &["dxf"])
-                    .set_file_name(format!("{}.dxf", self.file_name))
-                    .save_file()
+                if let Some(path) = crate::platform::save_file("DXF drawing", &["dxf"], format!("{}.dxf", self.file_name))
                 {
                     let dxf = sketch_core::export_dxf::export_dxf(&page, &options, &codes);
                     let _ = std::fs::write(&path, dxf);
@@ -3399,10 +3390,7 @@ impl App {
                 Task::none()
             }
             Message::ExportPdf => {
-                if let Some(path) = rfd::FileDialog::new()
-                    .add_filter("PDF document", &["pdf"])
-                    .set_file_name(format!("{}.pdf", self.file_name))
-                    .save_file()
+                if let Some(path) = crate::platform::save_file("PDF document", &["pdf"], format!("{}.pdf", self.file_name))
                 {
                     let _ = std::fs::write(&path, self.report_pdf());
                 }
@@ -3416,9 +3404,7 @@ impl App {
                 // Import undo step — the port re-banks it as a snapshot).
                 // The picker shows .dxf and .dwg; a .dwg is rejected with the
                 // conversion hint (`runImport`).
-                if let Some(path) = rfd::FileDialog::new()
-                    .add_filter("CAD drawing", &["dxf", "dwg"])
-                    .pick_file()
+                if let Some(path) = crate::platform::pick_file("CAD drawing", &["dxf", "dwg"])
                 {
                     return self.import_cad_file(&path);
                 }
@@ -4204,9 +4190,7 @@ impl App {
             }
             Message::ImportSketch => {
                 // `importFromFile` (S11-044): the picker, then the merge.
-                if let Some(path) = rfd::FileDialog::new()
-                    .add_filter("Sketch", SKETCH_OPEN_EXTENSIONS)
-                    .pick_file()
+                if let Some(path) = crate::platform::pick_file("Sketch", SKETCH_OPEN_EXTENSIONS)
                 {
                     return self.import_sketch_path(&path);
                 }
@@ -4401,10 +4385,7 @@ impl App {
                         // AreaBreakdown.toJSON → area-breakdown.json.
                         let results = self.breakdown_results();
                         let data = sketch_core::breakdown::to_json(&results, &self.area_codes);
-                        if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("Breakdown JSON", &["json"])
-                            .set_file_name("area-breakdown.json")
-                            .save_file()
+                        if let Some(path) = crate::platform::save_file("Breakdown JSON", &["json"], "area-breakdown.json")
                         {
                             let _ = std::fs::write(
                                 &path,
@@ -4426,10 +4407,7 @@ impl App {
                             &results,
                             &self.area_codes,
                         );
-                        if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("Breakdown XML", &["xml"])
-                            .set_file_name("area-breakdown.xml")
-                            .save_file()
+                        if let Some(path) = crate::platform::save_file("Breakdown XML", &["xml"], "area-breakdown.xml")
                         {
                             let _ = std::fs::write(&path, xml);
                         }
@@ -7697,10 +7675,7 @@ impl App {
         } else {
             safe
         };
-        if let Some(path) = rfd::FileDialog::new()
-            .add_filter("Sketch layer", &["json"])
-            .set_file_name(format!("{safe}-layer.json"))
-            .save_file()
+        if let Some(path) = crate::platform::save_file("Sketch layer", &["json"], format!("{safe}-layer.json"))
         {
             if let Ok(body) = serde_json::to_string_pretty(&data) {
                 let _ = std::fs::write(&path, body);
@@ -8756,9 +8731,7 @@ impl App {
     /// visible/centered/auto-fit to ~60 feet, flips reset, the 50
     /// intensity.
     fn photo_load(&mut self) -> Task<Message> {
-        if let Some(path) = rfd::FileDialog::new()
-            .add_filter("Images", &["png", "jpg", "jpeg"])
-            .pick_file()
+        if let Some(path) = crate::platform::pick_file("Images", &["png", "jpg", "jpeg"])
         {
             if let Ok(bytes) = std::fs::read(&path) {
                 let size = reference_image::image_size(&bytes);

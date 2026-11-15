@@ -133,43 +133,67 @@ pub fn panel<'a>(app: &'a App, d: Density, overlay: bool) -> Element<'a, Message
         ));
     }
 
-    let mut sections: Vec<Element<'a, Message>> = Vec::new();
+    // Each selection kind is split into short pages so the whole inspector
+    // fits its panel; the tabs under the title switch between them.
+    let mut pages: Vec<(&'static str, Element<'a, Message>)> = Vec::new();
     if kind_count > 1 {
-        sections.push(multi_kind_section(app, d));
+        pages.push(("Selection", multi_kind_section(app, d)));
         if trace_active {
-            sections.push(kit::divider());
-            sections.push(trace_image_section(app, d));
+            pages.push(("Image", trace_image_section(app, d)));
         }
     } else if has_wall {
-        sections.push(wall_section(app, d));
-        sections.push(kit::divider());
-        sections.push(common_actions_section(app, false, d));
+        pages.push(("Wall", wall_section(app, d)));
+        pages.push(("Edit", common_actions_section(app, false, d)));
     } else if has_area {
-        sections.push(area_section(app, d));
+        pages = area_pages(app, d);
     } else if has_text {
-        sections.push(text_section(app, d));
-        sections.push(kit::divider());
-        sections.push(common_actions_section(app, false, d));
+        pages.push(("Label", text_section(app, d)));
+        pages.push(("Edit", common_actions_section(app, false, d)));
     } else if has_symbol {
-        sections.push(symbol_section(app, d));
-        sections.push(kit::divider());
-        sections.push(common_actions_section(app, false, d));
+        pages.push(("Symbol", symbol_section(app, d)));
+        pages.push(("Edit", common_actions_section(app, false, d)));
     } else if has_chain {
-        sections.push(chain_section(app, d));
+        pages.push(("Chain", chain_section(app, d)));
     } else if trace_active {
-        sections.push(trace_image_section(app, d));
+        pages.push(("Image", trace_image_section(app, d)));
     } else if !app.selection.is_empty() {
-        sections.push(multi_kind_section(app, d));
+        pages.push(("Selection", multi_kind_section(app, d)));
     } else {
-        sections.push(
+        pages.push((
+            "",
             text("Select a wall, area, label, symbol, or chain dimension.")
                 .font(BARLOW)
                 .size(TEXT_12)
                 .color(tokens::muted())
                 .into(),
-        );
+        ));
     }
 
+    let active = (app.ui.inspector_tab as usize).min(pages.len().saturating_sub(1));
+    let tabs: Option<Element<'a, Message>> = (pages.len() > 1).then(|| {
+        kit::segmented(
+            pages
+                .iter()
+                .enumerate()
+                .map(|(i, (label, _))| Segment {
+                    label,
+                    selected: i == active,
+                    focused: false,
+                    on_press: Some(Message::Ui(UiMsg::InspectorTab(i as u8))),
+                })
+                .collect(),
+            d,
+        )
+    });
+    let sections: Vec<Element<'a, Message>> = pages
+        .into_iter()
+        .enumerate()
+        .filter(|(i, _)| *i == active)
+        .map(|(_, (_, page))| page)
+        .collect();
+
+    // The pages are sized to fit; the scroll area only engages when the
+    // window is too short to show a page at all.
     let scroll = make_scrollable(
         Column::with_children(sections)
             .spacing(SPACE_2)
@@ -185,8 +209,13 @@ pub fn panel<'a>(app: &'a App, d: Density, overlay: bool) -> Element<'a, Message
     .width(Length::Fill)
     .height(Length::Fill);
 
-    let body = column![header, kit::divider(), scroll]
-        .spacing(SPACE_2)
+    let mut body = column![header].spacing(SPACE_2);
+    body = match tabs {
+        Some(tabs) => body.push(tabs),
+        None => body.push(kit::divider()),
+    };
+    let body = body
+        .push(scroll)
         .width(Length::Fill)
         .height(Length::Fill);
 
@@ -469,18 +498,21 @@ fn wall_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
 // Area section
 // ---------------------------------------------------------------------------
 
-fn area_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
+fn area_pages<'a>(app: &'a App, d: Density) -> Vec<(&'static str, Element<'a, Message>)> {
     let Some(poly) = app
         .drawing
         .polygons
         .iter()
         .find(|p| app.selection.polys.contains(&p.id))
     else {
-        return text("Select an area.")
-            .font(BARLOW)
-            .size(TEXT_12)
-            .color(tokens::muted())
-            .into();
+        return vec![(
+            "",
+            text("Select an area.")
+                .font(BARLOW)
+                .size(TEXT_12)
+                .color(tokens::muted())
+                .into(),
+        )];
     };
 
     let area_tools = app
@@ -864,35 +896,13 @@ fn area_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
     .spacing(SPACE_1)
     .width(Length::Fill);
 
-    let walls_header = button(
-        row![
-            icons::mono(
-                if app.ui.inspector_walls_expanded {
-                    "caret-down"
-                } else {
-                    "caret-right"
-                },
-                12.0,
-                tokens::muted(),
-            ),
-            text(format!("WALLS ({})", poly.edges.len()))
-                .font(BSC_MEDIUM)
-                .size(TEXT_11)
-                .color(tokens::muted()),
-            Space::new().width(Length::Fill),
-        ]
-        .spacing(SPACE_1)
-        .align_y(Alignment::Center)
-        .width(Length::Fill),
-    )
-    .padding([4, 2])
-    .width(Length::Fill)
-    .on_press(Message::Ui(UiMsg::ToggleWallsList))
-    .style(|_, _| button::Style::default());
-
-    let mut walls_block = Column::new().push(walls_header).spacing(2).width(Length::Fill);
-    if app.ui.inspector_walls_expanded {
-        for (idx, edge) in poly.edges.iter().enumerate() {
+    // Every wall of the area, two to a row, so a long outline stays short.
+    let mut walls_block = Column::new().spacing(SPACE_1).width(Length::Fill);
+    let wall_buttons: Vec<Element<'a, Message>> = poly
+        .edges
+        .iter()
+        .enumerate()
+        .map(|(idx, edge)| {
             let next = poly.points.get((idx + 1) % poly.points.len());
             let len = match (poly.points.get(idx), next) {
                 (Some(a), Some(b)) => distance(*a, *b),
@@ -900,54 +910,86 @@ fn area_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
             };
             let label = format!("Wall {} · {len:.1}'", idx + 1);
             let msg = edge.line_id.map(|id| Message::Ui(UiMsg::SelectWall(id)));
-            walls_block = walls_block.push(kit::text_button(label, msg, d));
+            container(kit::text_button(label, msg, d))
+                .width(Length::FillPortion(1))
+                .into()
+        })
+        .collect();
+    let mut pending: Option<Element<'a, Message>> = None;
+    for btn in wall_buttons {
+        match pending.take() {
+            None => pending = Some(btn),
+            Some(first) => {
+                walls_block =
+                    walls_block.push(row![first, btn].spacing(SPACE_1).width(Length::Fill));
+            }
         }
     }
+    if let Some(last) = pending {
+        walls_block = walls_block.push(
+            row![last, Space::new().width(Length::FillPortion(1))]
+                .spacing(SPACE_1)
+                .width(Length::Fill),
+        );
+    }
 
-    column![
-        kit::group_header("IDENTITY", None),
-        label_caption("Name"),
-        name_row,
-        label_caption("Type"),
-        type_row,
-        column![
-            label_caption("Counts toward"),
-            text(counts_toward)
-                .font(BARLOW_MEDIUM)
-                .size(TEXT_12)
-                .color(tokens::text()),
-        ]
-        .spacing(2),
-        kit::divider(),
-        kit::group_header("SIZE & DIMENSIONS", None),
-        stats,
-        kit::divider(),
-        kit::group_header("CALCULATIONS", None),
-        label_caption("Factor"),
-        factor_row,
-        sign_seg,
-        label_caption("Auto-subtract"),
-        auto_sub_pick,
-        label_caption("Deduct from"),
-        deduct_pick,
-        label_caption("Measure to"),
-        measure_pick,
-        kit::divider(),
-        kit::group_header("APPEARANCE", None),
-        appearance,
-        kit::divider(),
-        kit::group_header("LABEL OPTIONS", None),
-        post_grid,
-        suffix_row,
-        kit::divider(),
-        kit::group_header("ACTIONS", None),
-        actions,
-        kit::divider(),
-        walls_block,
+    let page = |c: Column<'a, Message>| -> Element<'a, Message> {
+        c.spacing(SPACE_2).width(Length::Fill).into()
+    };
+    vec![
+        (
+            "Area",
+            page(column![
+                label_caption("Name"),
+                name_row,
+                label_caption("Type"),
+                type_row,
+                column![
+                    label_caption("Counts toward"),
+                    text(counts_toward)
+                        .font(BARLOW_MEDIUM)
+                        .size(TEXT_12)
+                        .color(tokens::text()),
+                ]
+                .spacing(2),
+                kit::divider(),
+                stats,
+            ]),
+        ),
+        (
+            "Math",
+            page(column![
+                label_caption("Factor"),
+                factor_row,
+                sign_seg,
+                label_caption("Auto-subtract"),
+                auto_sub_pick,
+                label_caption("Deduct from"),
+                deduct_pick,
+                label_caption("Measure to"),
+                measure_pick,
+            ]),
+        ),
+        (
+            "Look",
+            page(column![
+                appearance,
+                kit::divider(),
+                label_caption("Show on the label"),
+                post_grid,
+                suffix_row,
+            ]),
+        ),
+        (
+            "Edit",
+            page(column![
+                actions,
+                kit::divider(),
+                label_caption("Walls"),
+                walls_block,
+            ]),
+        ),
     ]
-    .spacing(SPACE_2)
-    .width(Length::Fill)
-    .into()
 }
 
 // ---------------------------------------------------------------------------
@@ -1310,6 +1352,7 @@ fn trace_image_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
         .align_y(Alignment::Center)
         .width(Length::Fill),
         slider(0.0..=100.0, opacity_pct, Message::PhotoIntensity)
+            .style(kit::slider_style)
             .width(Length::Fill)
             .step(5.0_f32),
         kit::stepper(

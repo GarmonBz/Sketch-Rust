@@ -6,9 +6,7 @@ use std::path::PathBuf;
 pub fn open_sketch() -> Option<PathBuf> {
     #[cfg(not(test))]
     {
-        rfd::FileDialog::new()
-            .add_filter("Sketch", crate::SKETCH_OPEN_EXTENSIONS)
-            .pick_file()
+        crate::platform::pick_file("Sketch", crate::SKETCH_OPEN_EXTENSIONS)
     }
     #[cfg(test)]
     TEST_PICKER.with(|state| {
@@ -33,15 +31,13 @@ pub fn save_sketch(default_name: &str, preferred: &str) -> Option<PathBuf> {
                 ("Sketchy Store (legacy)", "sketchy"),
             ]);
         }
-        let mut dialog = rfd::FileDialog::new().set_file_name(default_name);
-        for (name, ext) in filters
+        let ordered: Vec<(&str, &str)> = filters
             .iter()
             .filter(|(_, ext)| *ext == preferred)
             .chain(filters.iter().filter(|(_, ext)| *ext != preferred))
-        {
-            dialog = dialog.add_filter(*name, &[*ext]);
-        }
-        dialog.save_file()
+            .map(|(name, ext)| (*name, *ext))
+            .collect();
+        crate::platform::save_file_as(default_name, &ordered)
     }
     #[cfg(test)]
     TEST_PICKER.with(|state| {

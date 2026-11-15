@@ -436,9 +436,7 @@ impl App {
             }
             Msg::Import => {
                 #[cfg(not(test))]
-                if let Some(paths) = rfd::FileDialog::new()
-                    .add_filter("Symbol or DXF", &["json", "dxf", "dwg"])
-                    .pick_files()
+                if let Some(paths) = crate::platform::pick_files("Symbol or DXF", &["json", "dxf", "dwg"])
                 {
                     let mut added = 0;
                     let mut errors = vec![];

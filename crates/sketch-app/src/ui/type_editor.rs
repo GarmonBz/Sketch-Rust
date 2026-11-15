@@ -1351,6 +1351,7 @@ fn form_pane<'a>(editor: &'a TypeEditor, d: Density, compact: bool) -> Element<'
             container(
                 slider(0.0..=100.0, opacity_pct, |v| send(Msg::FillOpacity(v)))
                     .step(1.0_f32)
+                    .style(kit::slider_style)
                     .width(Length::Fill),
             )
             .width(Length::Fill),

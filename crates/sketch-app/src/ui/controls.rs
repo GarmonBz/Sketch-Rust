@@ -425,6 +425,7 @@ fn zoom_popover<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
         slider(10.0..=500.0, pct, |v| {
             Message::Status(StatusMsg::ZoomSlider(v))
         })
+        .style(kit::slider_style)
         .width(Length::Fill),
         text("500%")
             .font(BARLOW)

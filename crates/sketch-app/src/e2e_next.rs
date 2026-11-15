@@ -897,15 +897,15 @@ fn p7_inspector_controls_across_selection_kinds_and_sizes() {
         h.script(&["click \"Select\""]);
         let (cx, cy) = drawn_square_center_on_screen(area_vp.width, area_vp.height);
         h.script(&[&format!("click ({cx:.1}, {cy:.1})")]);
-        assert!(h.shows("IDENTITY"));
-        assert!(h.shows("CALCULATIONS"));
-        assert!(h.shows("LABEL OPTIONS"));
+        // The inspector is paged: Area, Math, Look, Edit.
+        assert!(h.shows("Counts toward"));
+        assert!(h.shows("Math") && h.shows("Look") && h.shows("Edit"));
 
         h.send(Message::AreaDialog(AreaDialogMsg::Name("Sunroom".into())));
         h.script(&["click \"Apply\""]);
-        h.script(&["click \"Subtracts (-)\""]);
-        h.script(&["click \"Code\""]);
-        h.script(&["click \"Clone\""]);
+        h.script(&["click \"Math\"", "click \"Subtracts (-)\""]);
+        h.script(&["click \"Look\"", "click \"Code\""]);
+        h.script(&["click \"Edit\"", "click \"Clone\""]);
 
         let mut app = state(h);
         assert!(
@@ -942,14 +942,14 @@ fn p7_inspector_controls_across_selection_kinds_and_sizes() {
         h.script(&["click \"Select\""]);
         let (cx, cy) = drawn_square_center_on_screen(area_vp.width, area_vp.height);
         h.script(&[&format!("click ({cx:.1}, {cy:.1})")]);
-        h.script(&["click \"Clone\""]);
+        h.script(&["click \"Edit\"", "click \"Clone\""]);
         let poly0_id = {
             let mut h2 = harness_next_at(area_vp);
             draw_closed_square(&mut h2);
             state(h2).drawing.polygons[0].id
         };
         h.send(Message::Ui(UiMsg::SetAreaSubtractTarget(Some(poly0_id))));
-        h.send(Message::Ui(UiMsg::ToggleWallsList));
+        h.send(Message::Ui(UiMsg::InspectorTab(3)));
         assert!(h.shows("Wall 1 · 10.0'"));
         let app = state(h);
         assert!(app
@@ -2724,5 +2724,162 @@ fn select_drag_on_a_wall_endpoint_moves_the_corner_across_sizes() {
             ((area - 100.0).abs() - 10.0).abs() < 0.01,
             "moving a corner 2 ft changes the 100 sf area by 10 sf at {label}: got {area}"
         );
+    }
+}
+
+/// Canvas-local screen position of a world point of the closed square.
+fn drawn_square_screen(w: f32, h: f32, pick: impl Fn(&crate::App) -> (f64, f64)) -> (f32, f32) {
+    let mut tmp = harness_next_at(iced::Size::new(w, h));
+    draw_closed_square(&mut tmp);
+    let app = state(tmp);
+    let (x, y) = pick(&app);
+    let (sx, sy) = app.view.to_screen(crate::view_state::World { x, y });
+    (sx as f32, sy as f32)
+}
+
+/// Dragging the middle handle of a selected wall bows it, and the area follows.
+#[test]
+fn select_drag_on_the_curve_handle_bows_the_wall_across_sizes() {
+    for &(label, w, h, _) in SIZES {
+        let ((qx, qy), foot) = drawn_square_wall_point(w, h, 0.25);
+        let ((mx, my), _) = drawn_square_wall_point(w, h, 0.5);
+        let mut h_app = harness_next_at(iced::Size::new(w, h));
+        draw_closed_square(&mut h_app);
+        h_app.send(Message::Key(KeyCmd::Select));
+        h_app.send(Message::CanvasPress(qx, qy));
+        h_app.send(Message::CanvasDragEnd);
+        h_app.send(Message::CanvasPress(mx, my));
+        h_app.send(Message::CanvasDrag(mx, my + foot, false));
+        h_app.send(Message::CanvasDrag(mx, my + 2.0 * foot, false));
+        h_app.send(Message::CanvasDragEnd);
+        let app = state(h_app);
+        let wall = &app.drawing.lines[0];
+        assert!(
+            wall.bow_angle.abs() > 1.0,
+            "the wall is bowed at {label}: bow {}",
+            wall.bow_angle
+        );
+        assert!(
+            (wall.end.x - wall.start.x).hypot(wall.end.y - wall.start.y) > 9.99,
+            "the wall's ends stay put at {label}"
+        );
+    }
+}
+
+/// Dragging from empty canvas across the sketch selects what the rectangle encloses.
+#[test]
+fn select_drag_on_empty_canvas_marquee_selects_across_sizes() {
+    for &(label, w, h, _) in SIZES {
+        let bounds = |app: &crate::App, pad: f64, hi: bool| {
+            let pts = &app.drawing.polygons[0].points;
+            let pick = |f: fn(f64, f64) -> f64, init: f64, get: fn(&sketch_core::geometry::Pt) -> f64| {
+                pts.iter().map(get).fold(init, f)
+            };
+            if hi {
+                (
+                    pick(f64::max, f64::NEG_INFINITY, |p| p.x) + pad,
+                    pick(f64::max, f64::NEG_INFINITY, |p| p.y) + pad,
+                )
+            } else {
+                (
+                    pick(f64::min, f64::INFINITY, |p| p.x) - pad,
+                    pick(f64::min, f64::INFINITY, |p| p.y) - pad,
+                )
+            }
+        };
+        let (ax, ay) = drawn_square_screen(w, h, |app| bounds(app, 1.5, false));
+        let (bx, by) = drawn_square_screen(w, h, |app| bounds(app, 1.5, true));
+        let mut h_app = harness_next_at(iced::Size::new(w, h));
+        draw_closed_square(&mut h_app);
+        h_app.send(Message::Key(KeyCmd::Select));
+        h_app.send(Message::CanvasPress(ax, ay));
+        h_app.send(Message::CanvasDrag((ax + bx) / 2.0, (ay + by) / 2.0, false));
+        h_app.send(Message::CanvasDrag(bx, by, false));
+        h_app.send(Message::CanvasDragEnd);
+        let app = state(h_app);
+        assert_eq!(app.selection.lines.len(), 4, "marquee selects the four walls at {label}");
+        assert!(app.view.fence.is_none(), "marquee ends at {label}");
+    }
+}
+
+/// Dragging the rotation handle of a selected area turns it in 15 degree steps.
+#[test]
+fn select_drag_on_the_rotate_handle_turns_the_area_across_sizes() {
+    for &(label, w, h, _) in SIZES {
+        let centre = |app: &crate::App| {
+            let pts = &app.drawing.polygons[0].points;
+            let n = pts.len() as f64;
+            (
+                pts.iter().map(|p| p.x).sum::<f64>() / n,
+                pts.iter().map(|p| p.y).sum::<f64>() / n,
+            )
+        };
+        let (cx, cy) = drawn_square_screen(w, h, centre);
+        // Where the handle sits once the area is selected.
+        let (hx, hy, pcx, pcy) = {
+            let mut tmp = harness_next_at(iced::Size::new(w, h));
+            draw_closed_square(&mut tmp);
+            tmp.send(Message::Key(KeyCmd::Select));
+            tmp.send(Message::CanvasPress(cx, cy));
+            tmp.send(Message::CanvasDragEnd);
+            let app = state(tmp);
+            let area = crate::handles::selected_area_box(
+                &app.drawing,
+                &app.selection,
+                app.view.pan,
+                app.view.zoom,
+            )
+            .expect("a selected area shows its rotation handle");
+            let (px, py) = app.view.to_screen(crate::view_state::World {
+                x: area.center_world.x,
+                y: area.center_world.y,
+            });
+            (area.handle.0 as f32, area.handle.1 as f32, px as f32, py as f32)
+        };
+        let (dx, dy) = (hx - pcx, hy - pcy);
+        let (s, c) = std::f32::consts::FRAC_PI_4.sin_cos();
+        let (tx, ty) = (pcx + dx * c - dy * s, pcy + dx * s + dy * c);
+
+        let mut h_app = harness_next_at(iced::Size::new(w, h));
+        draw_closed_square(&mut h_app);
+        h_app.send(Message::Key(KeyCmd::Select));
+        h_app.send(Message::CanvasPress(cx, cy));
+        h_app.send(Message::CanvasDragEnd);
+        h_app.send(Message::CanvasPress(hx, hy));
+        h_app.send(Message::CanvasDrag((hx + tx) / 2.0, (hy + ty) / 2.0, false));
+        h_app.send(Message::CanvasDrag(tx, ty, false));
+        h_app.send(Message::CanvasDragEnd);
+        let app = state(h_app);
+        let pts = &app.drawing.polygons[0].points;
+        let width = pts.iter().map(|p| p.x).fold(f64::NEG_INFINITY, f64::max)
+            - pts.iter().map(|p| p.x).fold(f64::INFINITY, f64::min);
+        assert!(
+            (width - 200.0_f64.sqrt()).abs() < 0.05,
+            "a 45 degree turn makes the 10 ft square 14.14 ft wide at {label}: got {width}"
+        );
+        assert!((ring_area(pts) - 100.0).abs() < 0.01, "area is kept at {label}");
+    }
+}
+
+/// The inspector is paged, not scrolled: every page of every selection kind
+/// is captured at the desktop and tablet sizes for visual review.
+#[test]
+fn inspector_pages_render_without_scrolling() {
+    for (name, w, h, touch) in [("wide", 1400.0, 860.0, false), ("tablet", 1280.0, 800.0, true)] {
+        let (cx, cy) = drawn_square_center_on_screen(w, h);
+        let (wx, wy) = drawn_square_wall_mid_on_screen(w, h);
+        for (kind, x, y, pages) in [("area", cx, cy, 4u8), ("wall", wx, wy, 2u8)] {
+            for page in 0..pages {
+                let mut app = harness_next_at(iced::Size::new(w, h));
+                if touch {
+                    app.send(Message::Ui(UiMsg::SetDensity(Density::Touch)));
+                }
+                draw_closed_square(&mut app);
+                app.script(&["click \"Select\"", &format!("click ({x:.1}, {y:.1})")]);
+                app.send(Message::Ui(UiMsg::InspectorTab(page)));
+                let shot = app.screenshot_in("e2e-next", &format!("inspector-{kind}-{name}-{page}"));
+                assert!(shot.exists());
+            }
+        }
     }
 }

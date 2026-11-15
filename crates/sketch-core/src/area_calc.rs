@@ -261,16 +261,26 @@ pub fn recalculate(
         warnings: resolved,
     }
 }
+/// Attribute key that marks an area as carrying its own net calculation.
+pub const NATIVE_CALCULATION_KEY: &str = "native.calculation";
+/// The key older files used for the same marker; still read, never written.
+const LEGACY_CALCULATION_KEY: &str = "apex.calculation";
 
-/// Native AXF areas use signed multipliers independently of the code table and
+/// True when the area asks for the native "net" calculation, under the
+/// current key or the legacy one.
+pub fn uses_native_net(p: &Polygon) -> bool {
+    [NATIVE_CALCULATION_KEY, LEGACY_CALCULATION_KEY]
+        .iter()
+        .any(|key| p.attributes.get(*key).is_some_and(|v| v == "net"))
+}
+
+/// Natively calculated areas use signed multipliers independently of the code table and
 /// deduct the child's recursively calculated net, including its own factor.
 fn apply_native_calculations(polys: &mut [CalcPoly], originals: &[Polygon]) -> Vec<String> {
     let native: Vec<bool> = originals
         .iter()
         .map(|p| {
-            p.attributes
-                .get("apex.calculation")
-                .is_some_and(|v| v == "net")
+            uses_native_net(p)
         })
         .collect();
     for (i, calc) in polys.iter_mut().enumerate() {
@@ -341,7 +351,7 @@ mod native_tests {
             serde_json::from_value(serde_json::json!({
                 "id":id,"type":"GLA1","points":[{"x":0,"y":0},{"x":width,"y":0},{"x":width,"y":10},{"x":0,"y":10}],
                 "factorOverride":factor,"subtractMode":if target==0 {"never"} else {"always"},"subtractTargetId":if target==0 {None} else {Some(target)},
-                "attributes":{"apex.calculation":"net"}
+                "attributes":{"native.calculation":"net"}
             })).unwrap()
         };
         let mut codes = crate::geometry::area_codes::default_area_codes();
@@ -572,9 +582,7 @@ fn rollup(polys: &[CalcPoly], code_table: &[AreaCode], originals: &[Polygon]) ->
             && calc.net <= 0.0
             && !originals.iter().any(|p| {
                 p.id == calc.id
-                    && p.attributes
-                        .get("apex.calculation")
-                        .is_some_and(|v| v == "net")
+                    && uses_native_net(p)
             })
         {
             continue;

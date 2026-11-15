@@ -3394,21 +3394,12 @@ impl CodesEditor {
 
 #[cfg(not(test))]
 pub async fn pick_codes_import() -> Option<std::path::PathBuf> {
-    rfd::AsyncFileDialog::new()
-        .add_filter("Area types JSON", &["json"])
-        .pick_file()
-        .await
-        .map(|file| file.path().to_path_buf())
+    crate::platform::pick_file_async("Area types JSON", &["json"]).await
 }
 
 #[cfg(not(test))]
 pub async fn pick_codes_export() -> Option<std::path::PathBuf> {
-    rfd::AsyncFileDialog::new()
-        .add_filter("Area types JSON", &["json"])
-        .set_file_name("sketch-area-codes.json")
-        .save_file()
-        .await
-        .map(|file| file.path().to_path_buf())
+    crate::platform::save_file_async("Area types JSON", &["json"], "sketch-area-types.json").await
 }
 
 #[cfg(test)]

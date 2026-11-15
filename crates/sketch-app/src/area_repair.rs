@@ -45,10 +45,7 @@ fn matches(original: &Polygon, candidate: &Polygon, live: &HashSet<i64>) -> bool
         return false;
     }
     if original.points.len() < 2 {
-        return original
-            .attributes
-            .get("apex.calculation")
-            .is_some_and(|v| v == "net")
+        return sketch_core::area_calc::uses_native_net(original)
             && original.points.iter().all(|point| {
                 candidate
                     .points
@@ -178,10 +175,7 @@ pub fn deserialize_records<'de, D: serde::Deserializer<'de>>(
         .filter(|r| {
             r.first_replacement_id > r.original.id
                 && (r.original.points.len() >= 2
-                    || r.original
-                        .attributes
-                        .get("apex.calculation")
-                        .is_some_and(|v| v == "net"))
+                    || sketch_core::area_calc::uses_native_net(&r.original))
                 && r.original.points.len() == r.original.edges.len()
         })
         .collect())

@@ -1108,6 +1108,8 @@ fn grid_pane<'a>(
                     pick_list(cat_opts, selected_cat, |c: CategoryChoice| {
                         m(Msg::PromptCategory(c.key))
                     })
+            .style(kit::pick_list_style)
+            .menu_style(kit::pick_menu_style)
                     .width(Length::Fill),
                 ]
                 .spacing(SPACE_2)
@@ -1174,6 +1176,8 @@ fn grid_pane<'a>(
                 pick_list(cat_opts, move_sel, |c: CategoryChoice| {
                     m(Msg::MoveTarget(c.key))
                 })
+            .style(kit::pick_list_style)
+            .menu_style(kit::pick_menu_style)
                 .width(Length::Fixed(130.0)),
             )
             .push(kit::text_button(
@@ -1532,6 +1536,8 @@ fn editor_pane<'a>(
             pick_list(cat_opts, selected_cat, |c: CategoryChoice| {
                 m(Msg::EditCategory(c.key))
             })
+            .style(kit::pick_list_style)
+            .menu_style(kit::pick_menu_style)
             .width(Length::Fill),
         ))
         .push(kit::field(
@@ -1550,6 +1556,8 @@ fn editor_pane<'a>(
             pick_list(SnapOption::ALL, selected_snap, |opt: SnapOption| {
                 m(Msg::EditWallSnap(opt.0))
             })
+            .style(kit::pick_list_style)
+            .menu_style(kit::pick_menu_style)
             .width(Length::Fill),
         ))
         .push(
@@ -2651,9 +2659,7 @@ pub fn restore_original_library(app: &mut App) -> iced::Task<Message> {
 
 fn import_dxf_dialog(app: &mut App) -> iced::Task<Message> {
     #[cfg(not(test))]
-    if let Some(paths) = rfd::FileDialog::new()
-        .add_filter("DXF or Symbol JSON", &["dxf", "json", "dwg"])
-        .pick_files()
+    if let Some(paths) = crate::platform::pick_files("DXF or Symbol JSON", &["dxf", "json", "dwg"])
     {
         return import_dxf_paths(app, &paths);
     }
@@ -2754,10 +2760,7 @@ pub fn import_dxf_paths(app: &mut App, paths: &[std::path::PathBuf]) -> iced::Ta
 
 fn export_library_dialog(app: &mut App, subset: Option<BTreeSet<String>>) -> iced::Task<Message> {
     #[cfg(not(test))]
-    if let Some(dest) = rfd::FileDialog::new()
-        .add_filter("Symbol Library JSON", &["json"])
-        .set_file_name("symbols-export.json")
-        .save_file()
+    if let Some(dest) = crate::platform::save_file("Symbol Library JSON", &["json"], "symbols-export.json")
     {
         return match sketch_core::symbol_edit::export(&symlib::library_path(), &dest, subset.as_ref()) {
             Ok(n) => app.toasts.show(format!("Exported {n} symbol(s).")),
@@ -2770,9 +2773,7 @@ fn export_library_dialog(app: &mut App, subset: Option<BTreeSet<String>>) -> ice
 
 fn import_library_dialog(app: &mut App) -> iced::Task<Message> {
     #[cfg(not(test))]
-    if let Some(src) = rfd::FileDialog::new()
-        .add_filter("Symbol Library JSON", &["json"])
-        .pick_file()
+    if let Some(src) = crate::platform::pick_file("Symbol Library JSON", &["json"])
     {
         return import_library_file(app, &src);
     }
