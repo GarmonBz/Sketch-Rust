@@ -37,6 +37,13 @@ for sym in symbols.values():
     if sym.get("category") in cats:
         sym["categoryName"] = cats[sym["category"]]["name"]
 
+# The original catalog used 0.5 as a midpoint marker. The editor now
+# records offsets in inches from the anchor implied by the snap mode.
+for sid, offset in curation["legacyGapOffsets"].items():
+    symbol = symbols.get(sid)
+    if symbol and symbol.get("wallGapAlignment") == 0.5:
+        symbol["wallGapAlignment"] = offset
+
 retire = curation["retire"]
 aliases = lib.setdefault("aliases", {})
 for sid, replacement in retire.items():

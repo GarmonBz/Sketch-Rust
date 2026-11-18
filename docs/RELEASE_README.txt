@@ -1,4 +1,8 @@
-Sketch Rust 0.2.3 - Windows x64 preview
+Sketch Rust 0.2.4 - Windows x64 cutout test build
+
+Door and window wall gaps now use the symbol library alignment.
+An opening follows its symbol to a new wall or closes when detached.
+
 
 0.2.3 tidies the symbol library. Categories have plain names (Doors &
 windows, Kitchen, Bath & plumbing, Utilities and so on), and the CADdillo

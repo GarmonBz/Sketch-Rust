@@ -684,8 +684,9 @@ impl App {
     }
     /// A placed symbol whose id was retired (by Merge duplicates, or as a
     /// duplicate of a newer symbol, 2026-11-17) takes the id that replaced
-    /// it (`aliases` in `symbols.json`), for sketches saved before.
-    pub(crate) fn resolve_symbol_aliases(
+    /// it (`aliases` in `symbols.json`). Older placements also inherit the
+    /// library's gap offset at their saved scale.
+    pub(crate) fn resolve_placed_symbol_definitions(
         &self,
         symbols: &mut [crate::placed_symbol::PlacedSymbol],
     ) {
@@ -695,6 +696,11 @@ impl App {
                 if let Some(to) = lib.library.aliases.get(&s.symbol_type) {
                     s.symbol_type = to.clone();
                 }
+            }
+            if s.wall_gap_offset.is_none() && s.wall_gap_width > 0.0 {
+                s.wall_gap_offset = lib
+                    .symbol(&s.symbol_type)
+                    .map(|def| def.wall_gap_alignment / 12.0 * s.scale);
             }
         }
     }

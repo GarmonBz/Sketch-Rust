@@ -32,6 +32,9 @@ pub struct PlacedSymbol {
     /// Gap width in feet (definition inches / 12).
     #[serde(default)]
     pub wall_gap_width: f64,
+    /// Shift in feet along the symbol's local X axis.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wall_gap_offset: Option<f64>,
     /// Along-wall position 0..1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wall_fraction: Option<f64>,
@@ -61,11 +64,8 @@ pub fn openings(symbols: &[PlacedSymbol]) -> Vec<sketch_core::solids::Opening> {
                 x: s.x,
                 y: s.y,
                 gap_width: s.wall_gap_width,
-                snap: if s.wall_snap == WallSnap::Side {
-                    sketch_core::solids::WallSnap::Side
-                } else {
-                    sketch_core::solids::WallSnap::Center
-                },
+                snap: s.wall_snap.into(),
+                gap_offset: s.wall_gap_offset.unwrap_or_default(),
                 flip_h: s.flip_h,
                 side_flip: s.wall_side_flip,
             })
@@ -84,7 +84,11 @@ impl PlacedSymbol {
         } else {
             1.0
         };
-        self.wall_gap_width *= scale / previous;
+        let ratio = scale / previous;
+        self.wall_gap_width *= ratio;
+        if let Some(offset) = &mut self.wall_gap_offset {
+            *offset *= ratio;
+        }
         self.scale = scale;
     }
     /// `ensurePageModel`'s one-time hosted-opening migration recomputes the
@@ -370,7 +374,6 @@ pub fn adjust_opening_width(
 }
 
 /// Resnap selected symbols (uses resolve_symbol_placement with current geometry).
-#[allow(dead_code)]
 pub fn resnap_selected_symbols(
     symbols: &mut [PlacedSymbol],
     selected: &std::collections::HashSet<i64>,
@@ -378,14 +381,9 @@ pub fn resnap_selected_symbols(
     polygons: &[Polygon],
     zoom: f64,
 ) {
-    // Need definition info; caller must supply? We only have symbol_type here.
-    // Resolve using stored wall_snap as def_wall_snap (best-effort) and current gap.
     for sym in symbols.iter_mut() {
-        if !selected.contains(&sym.id) {
+        if !selected.contains(&sym.id) || sym.wall_snap == WallSnap::None {
             continue;
-        }
-        if sym.wall_id.is_none() && sym.wall_snap == WallSnap::None {
-            // nothing to resnap for non-hosted? still resolve position
         }
         let current_side_flip = if sym.wall_id.is_some() {
             Some(sym.wall_side_flip)
@@ -407,13 +405,8 @@ pub fn resnap_selected_symbols(
         if placement.wall_id.is_some() {
             sym.rotation = placement.rotation;
         }
-        if placement.wall_id.is_some() && placement.wall_fraction.is_some() {
-            sym.wall_fraction = placement.wall_fraction;
-            sym.wall_side_flip = placement.wall_side_flip;
-            sym.wall_side_explicit = true;
-            if sym.wall_gap_width == 0.0 && placement.wall_gap_width > 0.0 {
-                sym.wall_gap_width = placement.wall_gap_width;
-            }
-        }
+        sym.wall_fraction = placement.wall_fraction;
+        sym.wall_side_flip = placement.wall_side_flip;
+        sym.wall_side_explicit = placement.wall_id.is_some();
     }
 }

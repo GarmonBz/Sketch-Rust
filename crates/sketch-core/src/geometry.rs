@@ -117,6 +117,8 @@ pub struct DimensionSymbol {
     #[serde(default)]
     pub wall_gap_width: f64,
     #[serde(default)]
+    pub wall_gap_offset: f64,
+    #[serde(default)]
     pub wall_snap: Option<String>,
     #[serde(default)]
     pub wall_side_flip: bool,
@@ -946,28 +948,19 @@ impl GeometryEngine {
                     .and_then(|lib| lib.get(ty))
                     .and_then(|entry| entry.wall_snap.clone())
             });
-            if snap.as_deref() == Some("SIDE") {
-                // Hinge-anchored opening: refs at the hinge and at the far
-                // edge, which lies along the wall direction unless the swing
-                // is flipped.
-                let dir_sign = {
-                    let wall_dir_sign = symbols_sign(&line_by_id(lines, wall_id), &dir);
-                    wall_dir_sign * if symbol.flip_h { -1.0 } else { 1.0 }
-                };
-                add_ref(t, &mut refs);
-                add_ref(
-                    t + dir_sign
-                        * if symbol.wall_side_flip {
-                            -gap_width
-                        } else {
-                            gap_width
-                        },
-                    &mut refs,
-                );
+            let snap = if snap.as_deref() == Some("SIDE") {
+                crate::solids::WallSnap::Side
             } else {
-                add_ref(t - gap_width / 2.0, &mut refs);
-                add_ref(t + gap_width / 2.0, &mut refs);
-            }
+                crate::solids::WallSnap::Center
+            };
+            let against_run = symbols_sign(&line_by_id(lines, wall_id), &dir) < 0.0;
+            let (start, end) = snap.gap_offsets(
+                gap_width,
+                symbol.wall_gap_offset,
+                against_run ^ symbol.flip_h ^ symbol.wall_side_flip,
+            );
+            add_ref(t + start, &mut refs);
+            add_ref(t + end, &mut refs);
         }
         refs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         Some(DimensionChain {
@@ -2500,6 +2493,7 @@ mod tests {
             y: 0.0,
             wall_id: Some(1),
             wall_gap_width: 3.0,
+            wall_gap_offset: 0.0,
             wall_snap: None,
             wall_side_flip: false,
             flip_h: false,

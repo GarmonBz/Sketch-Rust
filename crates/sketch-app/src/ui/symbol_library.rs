@@ -443,31 +443,16 @@ impl<M> canvas::Program<M> for EditorPreview<'_> {
         let cw = bounds.width;
         let ch = bounds.height;
 
+        let (scale, ox, oy) = symlib::fit_transform(self.symbol, cw, ch, 24.0);
         if self.symbol.wall_snap != WallSnap::None {
-            let b = &self.symbol.bounds;
-            let (min_x, min_y, max_x, max_y) = if b.max_x > b.min_x || b.max_y > b.min_y {
-                (b.min_x, b.min_y, b.max_x, b.max_y)
-            } else {
-                (-18.0, -18.0, 18.0, 18.0)
-            };
-            let width = (max_x - min_x).max(1.0);
-            let height = (max_y - min_y).max(1.0);
-            let scale = ((cw as f64 - 24.0).max(4.0) / width)
-                .min((ch as f64 - 24.0).max(4.0) / height);
-            let cx = (min_x + max_x) / 2.0;
-            let cy = (min_y + max_y) / 2.0;
-            let ox = cw as f64 / 2.0 - cx * scale;
-            let wall_y = (ch as f64 / 2.0 + cy * scale) as f32;
+            let wall_y = oy as f32;
             let wall_stroke = Stroke::default().with_color(self.wall_ink).with_width(2.0);
             let gap = self.symbol.wall_gap_width.max(0.0);
-            if gap > 0.1 {
-                let (gap_l, gap_r) = match self.symbol.wall_snap {
-                    WallSnap::Side => (ox, ox + gap * scale),
-                    _ => (
-                        ox - (gap * 0.5 - self.symbol.wall_gap_alignment) * scale,
-                        ox + (gap * 0.5 + self.symbol.wall_gap_alignment) * scale,
-                    ),
-                };
+            if gap > 0.0 {
+                let (start, end) = sketch_core::solids::WallSnap::from(self.symbol.wall_snap)
+                    .gap_offsets(gap, self.symbol.wall_gap_alignment, false);
+                let gap_l = ox + start * scale;
+                let gap_r = ox + end * scale;
                 if gap_l > 8.0 {
                     frame.stroke(
                         &Path::line(Point::new(8.0, wall_y), Point::new(gap_l as f32, wall_y)),
@@ -491,7 +476,7 @@ impl<M> canvas::Program<M> for EditorPreview<'_> {
             }
         }
 
-        symlib::render_fitted(&mut frame, self.symbol, cw, ch, 24.0, self.stroke, self.bg);
+        symlib::render_geometry(&mut frame, self.symbol, scale, ox, oy, self.stroke, self.bg);
         vec![frame.into_geometry()]
     }
 }
@@ -2417,7 +2402,13 @@ fn save_editor_properties(app: &mut App) -> iced::Task<Message> {
         return app.toasts.show("Symbol name cannot be empty.".into());
     }
     let gap = draft.wall_gap.trim().parse::<f64>().unwrap_or(0.0).max(0.0);
-    let align = draft.wall_align.trim().parse::<f64>().unwrap_or(0.0);
+    let align = draft
+        .wall_align
+        .trim()
+        .parse::<f64>()
+        .ok()
+        .filter(|value| value.is_finite())
+        .unwrap_or(0.0);
     let cap = draft.wall_cap.trim().parse::<f64>().unwrap_or(0.0).max(0.0);
     let desc = draft.description.clone();
     let snap = draft.wall_snap;

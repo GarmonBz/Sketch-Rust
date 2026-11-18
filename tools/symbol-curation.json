@@ -23,6 +23,28 @@
     "bedroom": "Bedroom",
     "landscaping": "Landscaping"
   },
+  "legacyGapOffsets": {
+    "doors/french-dbl-45-deg": -36,
+    "doors/french-sgl-45-deg": -36,
+    "doors/french-sgl-90-deg": -36,
+    "doors/garage-dbl": 0,
+    "doors/sliding-5": 0,
+    "doors/sliding-6": 0,
+    "doors/sliding-8": 0,
+    "favorites/cased-opening": 0,
+    "favorites/door-french-dbl-45-deg": -36,
+    "favorites/door-garage-dbl": 0,
+    "favorites/door-sliding-6": 0,
+    "favorites/window-24in-double": 0,
+    "favorites/window-30in-double": 0,
+    "favorites/window-36in-double": 0,
+    "fire/opening-in-wall": 0,
+    "windows/24in-double": 0,
+    "windows/30in": 0,
+    "windows/30in-double": 0,
+    "windows/36in-double": 0,
+    "windows/72in": 0
+  },
   "retire": {
     "bath/bathtub-rect": "caddillo/tub",
     "bath/shower": "caddillo/shower-stall",

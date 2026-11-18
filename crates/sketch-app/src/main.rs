@@ -1215,6 +1215,11 @@ impl App {
                 .collect()
         };
         transform::move_selected(&mut self.drawing, &self.selection, dx, dy);
+        placed_symbol::refresh_hosted_symbols(
+            &mut self.drawing.symbols,
+            &self.selection.symbols,
+            &self.drawing.lines,
+        );
         for (id, now) in pins {
             if let Some(line) = self.drawing.lines.iter_mut().find(|l| l.id == id) {
                 line.dimension_position =
@@ -3201,6 +3206,16 @@ impl App {
             Message::CanvasDragEnd => {
                 if self.view.drag.is_none() && self.view.fence.is_some() {
                     return self.update_inner(Message::FenceEnd);
+                }
+                if self.drag_banked && matches!(self.view.drag, Some(view_state::Drag::Move { .. }))
+                {
+                    placed_symbol::resnap_selected_symbols(
+                        &mut self.drawing.symbols,
+                        &self.selection.symbols,
+                        &self.drawing.lines,
+                        &self.drawing.polygons,
+                        self.view.zoom,
+                    );
                 }
                 let moved = match &self.view.drag {
                     Some(view_state::Drag::Move { moved, .. }) => *moved,
@@ -5743,10 +5758,15 @@ impl App {
     fn place_symbol_at(&mut self, world: sketch_core::geometry::Pt, symbol_type: String) {
         self.push_undo("Place Symbol");
         let id = self.drawing.gen_id();
-        let (def_wall_snap, def_gap_inches) = match self.symbols_lib().symbol(&symbol_type) {
-            Some(def) => (def.wall_snap, def.wall_gap_width),
-            None => (sketch_core::symbols::WallSnap::None, 0.0),
-        };
+        let (def_wall_snap, def_gap_inches, wall_gap_offset) =
+            match self.symbols_lib().symbol(&symbol_type) {
+                Some(def) => (
+                    def.wall_snap,
+                    def.wall_gap_width,
+                    (def.wall_gap_width > 0.0).then_some(def.wall_gap_alignment / 12.0),
+                ),
+                None => (sketch_core::symbols::WallSnap::None, 0.0, None),
+            };
         let placement = placed_symbol::resolve_symbol_placement(
             world,
             def_wall_snap,
@@ -5768,6 +5788,7 @@ impl App {
             wall_id: placement.wall_id,
             wall_snap: placement.wall_snap,
             wall_gap_width: placement.wall_gap_width,
+            wall_gap_offset,
             wall_fraction: placement.wall_fraction,
             wall_side_flip: placement.wall_side_flip,
             wall_side_explicit,
@@ -8891,6 +8912,7 @@ impl App {
                 poly.subtract_mode = "auto".into();
             }
         }
+        self.resolve_placed_symbol_definitions(&mut page.symbols);
         // The hosted-opening swing repair needs the finished edge lists.
         for symbol in &mut page.symbols {
             if let Some(wall_id) = symbol.wall_id {
@@ -8900,7 +8922,6 @@ impl App {
                 }
             }
         }
-        self.resolve_symbol_aliases(&mut page.symbols);
         page.symbols
             .retain(|s| !self.symbol_changes.deleted.contains(&s.symbol_type));
         page
@@ -10566,6 +10587,7 @@ mod tests {
             wall_id: None,
             wall_snap: WallSnap::None,
             wall_gap_width: 0.0,
+            wall_gap_offset: None,
             wall_fraction: None,
             wall_side_flip: false,
             wall_side_explicit: false,
@@ -10659,6 +10681,7 @@ mod tests {
             wall_id: Some(5),
             wall_snap: WallSnap::Side,
             wall_gap_width: 3.0 / 12.0,
+            wall_gap_offset: None,
             wall_fraction: Some(0.5),
             wall_side_flip: false,
             wall_side_explicit: true,

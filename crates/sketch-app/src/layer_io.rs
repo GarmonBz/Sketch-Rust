@@ -216,13 +216,13 @@ impl App {
                 return Err(format!("Conflicting symbol definition: {id}"));
             }
         }
-        self.resolve_symbol_aliases(&mut page.symbols);
-        page.symbols
-            .retain(|s| !self.symbol_changes.deleted.contains(&s.symbol_type));
         // JSON cannot carry non-finite numbers; typed parsing validates required geometry fields.
         self.push_undo("Import Layer");
         self.symbol_changes.custom.extend(custom);
         self.rebuild_symbols();
+        self.resolve_placed_symbol_definitions(&mut page.symbols);
+        page.symbols
+            .retain(|s| !self.symbol_changes.deleted.contains(&s.symbol_type));
         self.layers = layers;
         self.layers.active = imported
             .iter()

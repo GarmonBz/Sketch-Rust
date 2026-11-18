@@ -346,6 +346,11 @@ pub fn render_fitted(
     stroke: Color,
     background: Color,
 ) {
+    let (scale, ox, oy) = fit_transform(def, cw, ch, pad);
+    render_geometry(frame, def, scale, ox, oy, stroke, background);
+}
+
+pub(crate) fn fit_transform(def: &Symbol, cw: f32, ch: f32, pad: f64) -> (f64, f64, f64) {
     let b = &def.bounds;
     let (min_x, min_y, max_x, max_y) = if b.max_x > b.min_x || b.max_y > b.min_y {
         (b.min_x, b.min_y, b.max_x, b.max_y)
@@ -360,7 +365,7 @@ pub fn render_fitted(
     // translate(w/2 - cx*s, h/2 + cy*s) then scale(s, -s).
     let ox = cw as f64 / 2.0 - cx * scale;
     let oy = ch as f64 / 2.0 + cy * scale;
-    render_geometry(frame, def, scale, ox, oy, stroke, background);
+    (scale, ox, oy)
 }
 
 /// renderSymbolGeometry in screen space: symbol point (x, y) maps to

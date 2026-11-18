@@ -195,7 +195,12 @@ mod tests {
         // Every original definition keeps its shape in the library, or (if a
         // newer symbol replaced it, 2026-11-17) its id is an alias for that
         // replacement, so old sketches open with the new symbol in its place.
-        // Only the category and category name of a kept one may differ.
+        // Kept symbols may be recategorized and old midpoint markers are
+        // converted to the equivalent gap offset in inches.
+        let curation: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(root().join("tools/symbol-curation.json")).unwrap(),
+        )
+        .unwrap();
         let shape = |s: &serde_json::Value| {
             let mut s = s.clone();
             let o = s.as_object_mut().unwrap();
@@ -207,7 +212,13 @@ mod tests {
         let aliases = current["aliases"].as_object().unwrap();
         for (id, symbol) in previous["symbols"].as_object().unwrap() {
             match (current["symbols"].get(id), aliases.get(id)) {
-                (Some(now), None) => assert_eq!(shape(now), shape(symbol), "{id}"),
+                (Some(now), None) => {
+                    let mut expected = shape(symbol);
+                    if let Some(offset) = curation["legacyGapOffsets"].get(id) {
+                        expected["wallGapAlignment"] = offset.clone();
+                    }
+                    assert_eq!(shape(now), expected, "{id}");
+                }
                 (None, Some(to)) => {
                     let to = to.as_str().unwrap();
                     assert!(current["symbols"].get(to).is_some(), "{id} -> {to}");
