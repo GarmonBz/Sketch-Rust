@@ -11,22 +11,31 @@ use crate::theme::{self, hex, InterfaceTheme};
 // Colour tokens
 // ---------------------------------------------------------------------------
 
-/// Top bar, pop-ups, sheets, tray (`#2D2D30` / `#263F66` / `#DDE3EA`).
+/// Pop-ups, sheets, tray (`#181C23` / `#263F66` / `#DDE3EA`).
 pub fn bar() -> Color {
     theme::bg_bar()
 }
 
-/// Ledger, inspector, dialogs (`#252526` / `#1E3150` / `#F7F8FA`).
+/// The top bar (`#0A0E15` / `#263F66` / `#DDE3EA`): the deepest surface in
+/// Dark, the same as `bar` in the other themes.
+pub fn chrome() -> Color {
+    match theme::interface_theme() {
+        InterfaceTheme::Dark => theme::DARK_CHROME,
+        _ => theme::bg_bar(),
+    }
+}
+
+/// Ledger, inspector, dialogs (`#181C23` / `#1E3150` / `#F7F8FA`).
 pub fn panel() -> Color {
     theme::bg_panel()
 }
 
-/// Active tab, selected tile, non-input field (`#1E1E1E` / `#17243A` / `#E9EDF2`).
+/// Active tab, selected tile, non-input field (`#20252E` / `#17243A` / `#E9EDF2`).
 pub fn field() -> Color {
     theme::bg_app()
 }
 
-/// Text inputs (`#1E1E1E` / `#17243A` / `#FFFFFF` in Light per spec).
+/// Text inputs (`#20252E` / `#17243A` / `#FFFFFF` in Light per spec).
 pub fn input_bg() -> Color {
     match theme::interface_theme() {
         InterfaceTheme::Light => Color::WHITE,
@@ -34,7 +43,7 @@ pub fn input_bg() -> Color {
     }
 }
 
-/// Hovered and pressed rows and buttons (`#3E3E42` / `#34547F` / `#CFD8E3`).
+/// Hovered and pressed rows and buttons (`#353941` / `#34547F` / `#CFD8E3`).
 pub fn hover() -> Color {
     theme::bg_hover()
 }
@@ -44,7 +53,7 @@ pub fn pressed() -> Color {
     theme::over(accent(), 0.22, hover())
 }
 
-/// Active tool, selection, primary button (`#007ACC` / `#2B8AD6` / `#1677BD`).
+/// Active tool, selection, primary button (`#0091FF` / `#2B8AD6` / `#1677BD`).
 pub fn accent() -> Color {
     theme::accent()
 }
@@ -54,17 +63,17 @@ pub fn accent_soft() -> Color {
     theme::over(accent(), 0.16, panel())
 }
 
-/// 1px separators and outlines (`#3F3F46` / `#4A668C` / `#AAB4C0`).
+/// 1px separators and outlines (`#282F3B` / `#4A668C` / `#AAB4C0`).
 pub fn rule() -> Color {
     theme::border()
 }
 
-/// Primary text (`#D4D4D4` / `#D4D4D4` / `#20252B`).
+/// Primary text (`#F0F4F8` / `#D4D4D4` / `#20252B`).
 pub fn text() -> Color {
     theme::text_alt()
 }
 
-/// Secondary text (`#9A9A9A` / `#9A9A9A` / `#586474`).
+/// Secondary text (`#8B98A5` / `#9A9A9A` / `#586474`).
 pub fn muted() -> Color {
     theme::muted_alt()
 }
@@ -74,7 +83,7 @@ pub fn disabled() -> Color {
     theme::over(text(), 0.42, panel())
 }
 
-/// Drawing surface background (`#111111` / `#0B1728` / `#FFFFFF`).
+/// Drawing surface background (`#0F141A` / `#0B1728` / `#FFFFFF`).
 pub fn canvas() -> Color {
     theme::bg_canvas()
 }
@@ -102,6 +111,41 @@ pub fn flag() -> Color {
     match theme::interface_theme() {
         InterfaceTheme::Light => hex(0xc53030),
         InterfaceTheme::Dark | InterfaceTheme::Blue => hex(0xfc8181),
+    }
+}
+
+/// Icon tints, by meaning. These are the classic ribbon and tool-rail
+/// colours (`ICON_BLUE`, `ICON_ORANGE`, `ICON_RED`, `ICON_SLATE` and the
+/// green of the old View and Reference Image tabs), restored at the owner's
+/// request on 2026-11-17. Light gets deeper shades of the same hues so the
+/// icons keep their contrast on the pale panels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IconTint {
+    /// Select, view, navigate, information.
+    Blue,
+    /// Draw, edit, measure, annotate.
+    Orange,
+    /// Remove, hide, and the Area tool.
+    Red,
+    /// Files, add, export, print.
+    Green,
+    /// Devices, locks and history.
+    Slate,
+}
+
+pub fn icon_tint(tint: IconTint) -> Color {
+    let light = matches!(theme::interface_theme(), InterfaceTheme::Light);
+    match (tint, light) {
+        (IconTint::Blue, false) => hex(0x63b3ed),
+        (IconTint::Blue, true) => hex(0x1d6fb8),
+        (IconTint::Orange, false) => hex(0xf6ad55),
+        (IconTint::Orange, true) => hex(0xc05621),
+        (IconTint::Red, false) => hex(0xfc8181),
+        (IconTint::Red, true) => hex(0xc53030),
+        (IconTint::Green, false) => hex(0x5dae84),
+        (IconTint::Green, true) => hex(0x2f7d4f),
+        (IconTint::Slate, false) => hex(0xa0aec0),
+        (IconTint::Slate, true) => hex(0x4a5568),
     }
 }
 
@@ -267,6 +311,29 @@ mod tests {
             assert_eq!(tape_ink(), hex(0x1e1e1e));
             assert_eq!(on_accent(), Color::WHITE);
         }
+        theme::set_interface_theme(InterfaceTheme::Dark);
+    }
+
+    /// The Dark theme uses the field precision CAD palette (2026-11-17).
+    #[test]
+    fn dark_theme_uses_the_cad_palette() {
+        theme::set_interface_theme(InterfaceTheme::Dark);
+        assert_eq!(accent(), hex(0x0091ff));
+        assert_eq!(canvas(), hex(0x0f141a));
+        assert_eq!(chrome(), hex(0x0a0e15));
+        assert_eq!(panel(), hex(0x181c23));
+        assert_eq!(bar(), hex(0x181c23));
+        assert_eq!(field(), hex(0x20252e));
+        assert_eq!(hover(), hex(0x353941));
+        assert_eq!(rule(), hex(0x282f3b));
+        assert_eq!(text(), hex(0xf0f4f8));
+        assert_eq!(muted(), hex(0x8b98a5));
+        assert_eq!(flag(), hex(0xfc8181));
+        assert_eq!(tape(), hex(0xf6ad55));
+        // Blue keeps its own surfaces; only Dark changed.
+        theme::set_interface_theme(InterfaceTheme::Blue);
+        assert_eq!(chrome(), bar());
+        assert_eq!(accent(), hex(0x2b8ad6));
         theme::set_interface_theme(InterfaceTheme::Dark);
     }
 }

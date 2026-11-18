@@ -371,7 +371,10 @@ pub fn visible_symbols<'a>(app: &'a App, ix: &'a SymIndex) -> Vec<&'a Symbol> {
                 }
             }
             for s in ix.library.symbols.values() {
-                if s.category == cat_key && !hidden.contains(&s.id) && seen.insert(s.id.clone()) {
+                if s.category == cat_key
+                    && !hidden.contains(&s.id)
+                    && seen.insert(s.id.clone())
+                {
                     out.push(s);
                 }
             }
@@ -770,8 +773,8 @@ fn categories_pane<'a>(
     let total_visible = ix
         .library
         .symbols
-        .keys()
-        .filter(|id| !hidden.contains(*id))
+        .values()
+        .filter(|s| !hidden.contains(&s.id))
         .count();
     let fav_count = app
         .favorite_types()
@@ -931,7 +934,7 @@ fn categories_pane<'a>(
     }
 
     column![
-        scrollable(container(list).padding(SPACE_2).width(Length::Fill))
+        scrollable(container(list).padding(SPACE_2).width(Length::Fill)).id("symbol-categories-list")
             .width(Length::Fill)
             .height(Length::Fill),
         kit::divider(),
@@ -1273,7 +1276,7 @@ fn grid_pane<'a>(
     };
 
     col_items = col_items.push(
-        scrollable(container(grid_el).padding(SPACE_3).width(Length::Fill))
+        scrollable(container(grid_el).padding(SPACE_3).width(Length::Fill)).id("symbol-grid-list")
             .width(Length::Fill)
             .height(Length::Fill),
     );

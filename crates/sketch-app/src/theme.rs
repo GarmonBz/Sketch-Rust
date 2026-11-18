@@ -56,17 +56,24 @@ struct Palette {
     muted: Color,
 }
 
-/// Dark theme palette.
+/// Dark theme palette: the "field precision CAD" palette adopted on
+/// 2026-11-17. Surface container high for fields and active tabs, surface
+/// container low for panels and floating pop-ups, surface bright for hover.
+/// The top bar uses the deepest surface (`DARK_CHROME`).
 const DARK: Palette = Palette {
-    bg_app: hex(0x1e1e1e),
-    bg_panel: hex(0x252526),
-    bg_bar: hex(0x2d2d30),
-    bg_hover: hex(0x3e3e42),
-    accent: hex(0x007acc),
-    border: hex(0x3f3f46),
-    text: hex(0xcccccc),
-    muted: hex(0x858585),
+    bg_app: hex(0x20252e),
+    bg_panel: hex(0x181c23),
+    bg_bar: hex(0x181c23),
+    bg_hover: hex(0x353941),
+    accent: hex(0x0091ff),
+    border: hex(0x282f3b),
+    text: hex(0xf0f4f8),
+    muted: hex(0x8b98a5),
 };
+
+/// The dark theme's deepest surface (surface container lowest), used for the
+/// top bar.
+pub const DARK_CHROME: Color = hex(0x0a0e15);
 
 /// Blue theme palette (text colours stay the dark theme's).
 const BLUE: Palette = Palette {
@@ -142,7 +149,7 @@ pub fn border() -> Color {
 /// `--bg-canvas`
 pub fn bg_canvas() -> Color {
     match interface_theme() {
-        InterfaceTheme::Dark => hex(0x111111),
+        InterfaceTheme::Dark => hex(0x0f141a),
         InterfaceTheme::Blue => hex(0x0b1728),
         InterfaceTheme::Light => hex(0xffffff),
     }
@@ -155,19 +162,21 @@ pub fn text_main() -> Color {
 pub fn muted() -> Color {
     palette().muted
 }
-/// The measured native-dialog greys that differ slightly from the palette
-/// in the dark theme (`#9A9A9A` muted, `#3C3C3C` border, `#D4D4D4` text);
-/// the other themes use the palette's own.
+/// Muted and primary text for the new chrome. Dark uses its palette
+/// (`#8B98A5`, `#F0F4F8`); Blue keeps the measured native-dialog greys
+/// (`#9A9A9A`, `#D4D4D4`); Light uses its palette.
 pub fn muted_alt() -> Color {
     match interface_theme() {
         InterfaceTheme::Light => LIGHT.muted,
-        _ => hex(0x9a9a9a),
+        InterfaceTheme::Dark => DARK.muted,
+        InterfaceTheme::Blue => hex(0x9a9a9a),
     }
 }
 pub fn text_alt() -> Color {
     match interface_theme() {
         InterfaceTheme::Light => LIGHT.text,
-        _ => hex(0xd4d4d4),
+        InterfaceTheme::Dark => DARK.text,
+        InterfaceTheme::Blue => hex(0xd4d4d4),
     }
 }
 /// Icon accents used inline in the original markup.

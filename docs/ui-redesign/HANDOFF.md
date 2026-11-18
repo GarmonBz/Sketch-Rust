@@ -1,7 +1,7 @@
 # UI redesign handoff note
 
 - **Branch:** `ui-redesign`
-- **Workspace version:** `0.2.0`
+- **Workspace version:** `0.2.3`
 - **State:** P0 to P16 are done and committed. The owner approved the 11 RETIRED rows on 2026-11-15.
 
 ## Verified on 2026-11-15
@@ -44,6 +44,25 @@ Run one `cargo` command at a time; the target directory is shared.
   and `kit::slider_style`.
 - The mini map's dark box was a headless-test artefact: with no window to
   capture, `minimap::blank` is shown. The running app captures the canvas.
+
+## Third round (2026-11-17, owner requests)
+
+- **Icons in colour.** The classic tints are back, by meaning (blue view, orange edit,
+  red remove, green file, slate device): `tokens::IconTint`, `icons::tint_of`,
+  `icons::tinted`. Every Menu command has an icon (`commands::icon_for`). Spec §1 updated.
+- **Menu, Option A.** One column, search field on top, 19 rows, fly-outs for Recent,
+  Import, Export, Print, Trace image, Select, Transform sketch, Help (`ui/menu.rs`,
+  `ENTRIES`). The search lists all 160 commands. Theme, drawing background and density
+  moved to Options > Display > Appearance. The feature-map rule "appear in the Menu under
+  its group" is replaced by "found by search, plus one on-screen home"; `coverage.csv`
+  homes rewritten to match. Ctrl K still opens the separate command palette.
+- **Dialogs fit 1920 x 1080.** Wide dialogs are capped at 1280 x 960 (was 1080 x 740).
+  `e2e_next::dialogs_fit_1920x1080_without_scrolling` lays out every dialog and tab and
+  fails if any form scroll area overflows (`e2e_support::scroll_areas`). Lists of the
+  user's own data may scroll; their scroll areas have ids ending in `-list`.
+- **First area fits the view**, centring and zooming out only (`fit_after_first_area`).
+- **Area tool hover** no longer prints a size over an area that has its own label.
+- **Selection tint** lowered to 7% so the area type's colour shows.
 
 ## Still open
 

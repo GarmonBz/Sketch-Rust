@@ -582,8 +582,8 @@ mod tests {
     fn library_loads_from_the_external_file_with_the_originals_index() {
         let lib = library();
         let ix = lib.as_ref().as_ref().expect("assets/symbols.json loads");
-        assert_eq!(ix.library.symbols.len(), 639);
-        assert_eq!(ix.categories.len(), 28);
+        assert_eq!(ix.library.symbols.len(), 572);
+        assert_eq!(ix.categories.len(), 22);
         assert_eq!(ix.categories[0].key, "caddillo-doors-windows");
         assert_eq!(ix.categories[0].items.len(), 20);
         assert!(ix
@@ -592,6 +592,28 @@ mod tests {
             .any(|c| c.key == "fire" && c.items.len() == 119));
         assert_eq!(ix.favorites.len(), 18);
         assert_eq!(ix.favorites[0].label, "Door Swing 36");
+        // Plain category names (no brand), merged CADdillo categories, and
+        // retired duplicates replaced through aliases
+        // (tools/symbol-curation.json, 2026-11-17).
+        assert!(ix.categories.iter().all(|c| !c.name.contains("CADdillo")));
+        assert_eq!(ix.categories[0].name, "Doors & windows");
+        let kitchen = ix.categories.iter().find(|c| c.key == "kitchen").unwrap();
+        assert_eq!(kitchen.name, "Kitchen");
+        assert!(kitchen.items.iter().any(|i| i.id == "caddillo/fridge-36"));
+        assert!(kitchen.items.iter().all(|i| i.id != "kitchen/refrigerator-36in"));
+        // Retired duplicates are gone; their ids alias the replacements.
+        assert!(ix.library.symbol("kitchen/refrigerator-36in").is_none());
+        assert!(ix.by_id("kitchen/refrigerator-36in").is_none());
+        assert_eq!(ix.library.aliases.len(), 67, "retired duplicates");
+        assert_eq!(
+            ix.library.aliases["kitchen/refrigerator-36in"],
+            "caddillo/fridge-36"
+        );
+        assert!(ix
+            .library
+            .aliases
+            .values()
+            .all(|to| ix.library.symbols.contains_key(to)));
         assert_eq!(ix.favorites[0].icon, "door-open");
         assert_eq!(ix.options()[0], ("favorites".into(), "Favorites".into()));
     }

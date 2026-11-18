@@ -275,7 +275,11 @@ impl SymbolLibrary {
     pub fn duplicate_groups(&self) -> Vec<Vec<String>> {
         use std::hash::{Hash, Hasher};
         let mut by_shape: std::collections::HashMap<u64, Vec<&Symbol>> = Default::default();
-        for symbol in self.symbols.values().filter(|s| !s.geometry.is_empty()) {
+        for symbol in self
+            .symbols
+            .values()
+            .filter(|s| !s.geometry.is_empty())
+        {
             let mut hasher = std::collections::hash_map::DefaultHasher::new();
             serde_json::to_string(&(
                 &symbol.geometry,
@@ -328,12 +332,12 @@ mod tests {
             return;
         };
         let library = SymbolLibrary::load(&path).expect("library loads");
-        assert_eq!(library.symbols.len(), 639);
-        assert_eq!(library.symbol_count, 639);
-        assert_eq!(library.categories.len(), 29);
+        assert_eq!(library.symbols.len(), 572);
+        assert_eq!(library.symbol_count, 572);
+        assert_eq!(library.categories.len(), 23);
         assert_eq!(library.default_favorites.len(), 18);
         assert_eq!(library.version, 1);
-        assert_eq!(library.symbol_count(), 639);
+        assert_eq!(library.symbol_count(), 572);
     }
 
     #[test]
@@ -365,7 +369,7 @@ mod tests {
         if let Some(path) = real_library_path() {
             assert_eq!(resolve(Some(&path)), path);
             let library = SymbolLibrary::load_resolved(Some(&path)).expect("load_resolved");
-            assert_eq!(library.symbols.len(), 639);
+            assert_eq!(library.symbols.len(), 572);
         }
         // With no file anywhere, resolution still returns a usable candidate path.
         let fallback = resolve(None);

@@ -132,7 +132,7 @@ impl App {
             c.symbol_ids = ordered;
         }
         lib.default_favorites
-            .retain(|id| !self.symbol_changes.hidden.contains(id) && lib.symbols.contains_key(id));
+            .retain(|id| !self.symbol_changes.hidden.contains(id));
         lib.categories.retain(|c| {
             !self.symbol_changes.deleted_categories.contains(&c.key) || !c.symbol_ids.is_empty()
         });
@@ -682,8 +682,9 @@ impl App {
         }
         self.persist_library();
     }
-    /// A placed symbol whose id was retired by a merge takes the id that
-    /// replaced it (`aliases` in `symbols.json`), for sketches saved before.
+    /// A placed symbol whose id was retired (by Merge duplicates, or as a
+    /// duplicate of a newer symbol, 2026-11-17) takes the id that replaced
+    /// it (`aliases` in `symbols.json`), for sketches saved before.
     pub(crate) fn resolve_symbol_aliases(
         &self,
         symbols: &mut [crate::placed_symbol::PlacedSymbol],

@@ -132,3 +132,78 @@ pub(crate) fn harness_next_at(
 pub(crate) fn state<P: Program<State = App> + 'static>(h: Harness<P>) -> App {
     h.emulator.into_state().0
 }
+
+/// One scroll area on screen: its id (if it has one), its own bounds and
+/// the bounds of its content.
+#[derive(Debug, Clone)]
+pub(crate) struct ScrollArea {
+    pub id: Option<String>,
+    pub bounds: iced::Rectangle,
+    pub content: iced::Rectangle,
+}
+
+impl ScrollArea {
+    /// The content is taller or wider than the area, so it would scroll.
+    pub(crate) fn overflows(&self) -> bool {
+        self.content.height > self.bounds.height + 1.0 || self.content.width > self.bounds.width + 1.0
+    }
+}
+
+/// Lays out `app`'s whole view at `size` and lists every scroll area in it,
+/// with the size of its content. A dialog "fits" when none of the scroll
+/// areas around its form overflow.
+pub(crate) fn scroll_areas(app: &App, size: iced::Size) -> Vec<ScrollArea> {
+    use iced_test::selector::{Candidate, Selector};
+    use std::sync::{Arc, Mutex};
+
+    struct Collect(Arc<Mutex<Vec<ScrollArea>>>);
+    impl Selector for Collect {
+        type Output = ();
+        fn select(&mut self, candidate: Candidate<'_>) -> Option<()> {
+            if let Candidate::Scrollable {
+                id,
+                bounds,
+                content_bounds,
+                ..
+            } = candidate
+            {
+                self.0.lock().expect("collector").push(ScrollArea {
+                    id: id.map(|id| format!("{id:?}")),
+                    bounds,
+                    content: content_bounds,
+                });
+            }
+            None
+        }
+        fn description(&self) -> String {
+            "every scroll area".to_owned()
+        }
+    }
+
+    crate::ui::fonts::preload_sync();
+    let found = Arc::new(Mutex::new(Vec::new()));
+    // A CPU (tiny-skia) renderer, asked for by name. `Simulator` would pick
+    // the GPU backend first and create a new device on every call; after a
+    // few dozen calls that hung the test run.
+    let mut renderer = iced_test::futures::futures::executor::block_on(
+        <iced::Renderer as iced_test::core::renderer::Headless>::new(
+            crate::theme::SEGOE,
+            iced::Pixels(16.0),
+            Some("tiny-skia"),
+        ),
+    )
+    .expect("tiny-skia headless renderer");
+    let mut ui = iced_test::runtime::UserInterface::build(
+        app.view(),
+        size,
+        iced_test::runtime::user_interface::Cache::default(),
+        &mut renderer,
+    );
+    let mut operation = Collect(found.clone()).find();
+    ui.operate(
+        &renderer,
+        &mut iced_test::core::widget::operation::black_box(&mut operation),
+    );
+    let out = found.lock().expect("collector").clone();
+    out
+}

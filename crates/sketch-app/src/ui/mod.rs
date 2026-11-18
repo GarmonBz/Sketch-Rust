@@ -25,12 +25,7 @@ use iced::widget::Stack;
 use iced::{Element, Length, Point};
 use sketch_core::model::WallType;
 
-use crate::canvas_theme::CanvasTheme;
 use crate::drawing::WallShape;
-use crate::select_menu::SelectKind;
-use crate::theme::InterfaceTheme;
-use crate::transform::Axis;
-use crate::ui::commands::Group;
 use crate::ui::layout::SizeClass;
 use crate::ui::ledger::LedgerView;
 use crate::ui::menu::MenuSub;
@@ -70,22 +65,15 @@ pub enum Msg {
     ToggleMenu,
     CloseMenu,
     OpenSelectByType,
-    MenuGroup(Group),
     MenuSub(Option<MenuSub>),
+    MenuQuery(String),
     MenuMove(i32),
+    /// Left (-1) closes an open fly-out; Right (+1) opens the focused row's.
     MenuSwitchGroup(i32),
     MenuEnter,
     MenuRunId(&'static str),
     MenuRunRecent(usize),
     MenuClearRecent,
-    MenuSelectKind(SelectKind),
-    MenuFlip(Axis),
-    MenuPitch(usize),
-    MenuFilter(usize),
-    MenuCanvasTheme(CanvasTheme),
-    MenuInterfaceTheme(InterfaceTheme),
-    MenuUnitsMetric(bool),
-    MenuOpenSearch,
     PromptRenameDocument,
     PromptRenamePage(usize),
     TogglePageMenu(Option<usize>),
@@ -160,8 +148,9 @@ pub struct UiState {
     pub inspector_area_id: Option<i64>,
     pub touch_seen: bool,
     pub menu_open: bool,
-    pub menu_group: Group,
     pub menu_sub: Option<MenuSub>,
+    /// The Menu's search text; non-empty lists matching commands instead.
+    pub menu_query: String,
     pub menu_row: usize,
     pub page_menu: Option<usize>,
     pub export_menu: bool,
@@ -207,8 +196,8 @@ impl Default for UiState {
             inspector_area_id: None,
             touch_seen: false,
             menu_open: false,
-            menu_group: Group::File,
             menu_sub: None,
+            menu_query: String::new(),
             menu_row: 0,
             page_menu: None,
             export_menu: false,

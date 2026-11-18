@@ -3,6 +3,8 @@
 A native Windows floor-plan sketching program for appraisers: draw walls to scale,
 define areas, and get living-area and building-area calculations.
 
+![Sketch Rust with a sample house: living area, garage and porch, with the Areas ledger and its totals on the left](docs/images/sketch-rust.png)
+
 ## Install
 
 Download the latest release and use one of:

@@ -10,15 +10,15 @@ Keep the three palettes that exist in `crates/sketch-app/src/theme.rs` (`DARK`, 
 
 | Token | Accessor | Dark | Blue | Light | Used for |
 |---|---|---|---|---|---|
-| bar | `bg_ribbon()` | `#2D2D30` | `#263F66` | `#DDE3EA` | Top bar, pop-ups, sheets, tray |
-| panel | `bg_panel()` | `#252526` | `#1E3150` | `#F7F8FA` | Ledger, inspector, dialogs |
-| field | `bg_app()` | `#1E1E1E` | `#17243A` | `#E9EDF2` (use `#FFFFFF` for inputs in Light) | Inputs, active tab, selected tile |
-| hover | `bg_hover()` | `#3E3E42` | `#34547F` | `#CFD8E3` | Hovered and pressed rows and buttons |
-| accent | `accent()` | `#007ACC` | `#2B8AD6` | `#1677BD` | Active tool, selection, primary button |
-| rule | `border()` | `#3F3F46` | `#4A668C` | `#AAB4C0` | 1px separators and outlines |
-| text | `text_alt()` | `#D4D4D4` | `#D4D4D4` | `#20252B` | Primary text |
-| muted | `muted_alt()` | `#9A9A9A` | `#9A9A9A` | `#586474` | Secondary text |
-| canvas | `bg_canvas()` | `#111111` | `#0B1728` | `#FFFFFF` | Drawing surface (independent setting, see `canvas_theme.rs`) |
+| bar | `bg_ribbon()` | `#181C23` (top bar `#0A0E15`, `tokens::chrome()`) | `#263F66` | `#DDE3EA` | Top bar, pop-ups, sheets, tray |
+| panel | `bg_panel()` | `#181C23` | `#1E3150` | `#F7F8FA` | Ledger, inspector, dialogs |
+| field | `bg_app()` | `#20252E` | `#17243A` | `#E9EDF2` (use `#FFFFFF` for inputs in Light) | Inputs, active tab, selected tile |
+| hover | `bg_hover()` | `#353941` | `#34547F` | `#CFD8E3` | Hovered and pressed rows and buttons |
+| accent | `accent()` | `#0091FF` | `#2B8AD6` | `#1677BD` | Active tool, selection, primary button |
+| rule | `border()` | `#282F3B` | `#4A668C` | `#AAB4C0` | 1px separators and outlines |
+| text | `text_alt()` | `#F0F4F8` | `#D4D4D4` | `#20252B` | Primary text |
+| muted | `muted_alt()` | `#8B98A5` | `#9A9A9A` | `#586474` | Secondary text |
+| canvas | `bg_canvas()` | `#0F141A` | `#0B1728` | `#FFFFFF` | Drawing surface (independent setting, see `canvas_theme.rs`) |
 | **link** (new) | `link()` | `#63B3ED` | `#63B3ED` | `#1677BD` | Text buttons on panels |
 | **tape** (new) | `tape()` | `#F6AD55` | `#F6AD55` | `#F6AD55` | Length strip and placement previews only |
 | **tape_ink** (new) | `tape_ink()` | `#1E1E1E` | `#1E1E1E` | `#1E1E1E` | Text on the tape colour |
@@ -27,9 +27,15 @@ Keep the three palettes that exist in `crates/sketch-app/src/theme.rs` (`DARK`, 
 
 Rules:
 
-- Icons are one colour: `text` normally, `on_accent` on the active tool, `muted` when
-  disabled. Do not carry over the per-icon tints (`ICON_BLUE`, `ICON_ORANGE`, `ICON_RED`,
-  `ICON_SLATE`) into new chrome.
+- Icons carry a tint by meaning when at rest (owner decision, 2026-11-17, reversing the
+  earlier one-colour rule): blue for select, view and information; orange for draw,
+  edit and measure; red for remove, hide and the Area tool; green for files, add,
+  export and print; slate for devices, locks and history. These are the classic
+  `ICON_BLUE`, `ICON_ORANGE`, `ICON_RED`, `ICON_SLATE` and the old green, with deeper
+  shades in Light (`tokens::IconTint`, `icons::tint_of`). Structural glyphs (carets,
+  dots, menu lines, close, plain arrows, check marks, plus, minus) stay `text`. The
+  active tool's icon is `on_accent`; disabled icons are `muted`. Every Menu command
+  has an icon (`commands::icon_for`).
 - Amber (`tape`) appears only on the length strip, the Pad readout and the live preview
   of something being placed. It is never a button colour.
 - Area colours are data and come from each area type.
@@ -93,7 +99,7 @@ Chosen from the window's logical width on every resize.
 | Insert drawer | Floats above the tray, 520 wide | Same | Full-screen page |
 | Tool tray | Floating, bottom centre of the drawing | Same, full row | Fixed bar on the bottom edge, scrolls sideways |
 | Pad | Hidden unless Touch density; then floats bottom right | Floats bottom right | Docked along the bottom, above the tool bar's place |
-| Dialogs | Centred, max 1080 x 740 | Centred, margins 24 | Full-screen page with a back arrow |
+| Dialogs | Centred, max 1280 x 960. No form scrolls at 1920 x 1080 and up; only lists of the user's own data scroll, inside their box | Centred, margins 24 | Full-screen page with a back arrow |
 
 Slide-overs and sheets close on: their close control, tapping the drawing, Escape, or
 starting to draw. They never cover the tool tray.
@@ -248,9 +254,24 @@ with an empty search.
 
 ### 5.9 Menu
 
-Opened from the top bar. A column of groups; in Wide it is a drop-down with sub-menus, in
-Compact a full-height sheet. The exact entries are in `04-feature-map.md`. Groups:
-File, Edit, View, Areas, Insert, Image, Tools, Help.
+Opened from the top bar (owner chose Option A, 2026-11-17). One column: a search field
+(focused on open), then 19 rows in four sections separated by rules, each row with its
+tinted icon:
+
+1. About the file: New sketch, Open, Recent ›, Save, Save as, Import ›, Export ›, Print ›
+2. About this sketch: Property details, Area types, Area breakdown, Trace image ›, Symbol library
+3. Editing: Undo history, Select ›, Transform sketch ›
+4. About the app: Options, Help ›, Close window
+
+Rows marked › open a fly-out beside the row (hover, click, or Right arrow; Left closes it).
+Typing in the search field replaces the rows with every matching command in the registry.
+In Wide and Medium it is a drop-down 300 wide; in Compact a full-height sheet where a
+fly-out replaces the list with a Back row. The rows are `ENTRIES` in `ui/menu.rs`.
+
+Interface theme, drawing background and control density are in Options > Display >
+Appearance; units, wall solids and "define area before drawing" were already in Options.
+Snap, grid, filters, dimensions, north, zoom and the Pad are drawing controls; page
+commands are on the page tabs.
 
 ### 5.10 Start screen
 

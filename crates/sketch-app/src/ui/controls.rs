@@ -738,7 +738,11 @@ fn chip_toggle<'a>(
     };
     let mut r = row![].spacing(SPACE_1).align_y(Alignment::Center);
     if let Some(icon) = icon_name {
-        r = r.push(icons::mono(icon, 13.0, fg));
+        r = r.push(if active {
+            icons::mono(icon, 13.0, fg)
+        } else {
+            icons::tinted(icon, false, 13.0, fg)
+        });
     }
     r = r.push(
         text(label.into())
@@ -798,7 +802,11 @@ fn compact_icon_btn<'a>(
         26.0
     };
     button(
-        container(icons::mono(icon_name, 16.0, fg))
+        container(if active {
+            icons::mono(icon_name, 16.0, fg)
+        } else {
+            icons::tinted(icon_name, false, 16.0, fg)
+        })
             .width(Length::Fixed(size))
             .height(Length::Fixed(size))
             .align_x(Alignment::Center)

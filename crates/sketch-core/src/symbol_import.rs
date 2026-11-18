@@ -192,9 +192,31 @@ mod tests {
         let current: serde_json::Value =
             serde_json::from_str(&fs::read_to_string(root().join("assets/symbols.json")).unwrap())
                 .unwrap();
+        // Every original definition keeps its shape in the library, or (if a
+        // newer symbol replaced it, 2026-11-17) its id is an alias for that
+        // replacement, so old sketches open with the new symbol in its place.
+        // Only the category and category name of a kept one may differ.
+        let shape = |s: &serde_json::Value| {
+            let mut s = s.clone();
+            let o = s.as_object_mut().unwrap();
+            for k in ["category", "categoryName"] {
+                o.remove(k);
+            }
+            s
+        };
+        let aliases = current["aliases"].as_object().unwrap();
         for (id, symbol) in previous["symbols"].as_object().unwrap() {
-            assert_eq!(&current["symbols"][id], symbol, "{id}");
+            match (current["symbols"].get(id), aliases.get(id)) {
+                (Some(now), None) => assert_eq!(shape(now), shape(symbol), "{id}"),
+                (None, Some(to)) => {
+                    let to = to.as_str().unwrap();
+                    assert!(current["symbols"].get(to).is_some(), "{id} -> {to}");
+                }
+                (Some(_), Some(_)) => panic!("{id} is both live and aliased"),
+                (None, None) => panic!("{id} is gone"),
+            }
         }
+        assert!(!root().join("assets/symbols.retired.json").exists());
         let lib: crate::symbols::SymbolLibrary = serde_json::from_value(current).unwrap();
         assert_eq!(
             lib.symbols

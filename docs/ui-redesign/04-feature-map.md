@@ -43,8 +43,13 @@ Rail tool mapping (17 to 10):
 
 ## 2. Command registry contents
 
-Every command below must exist in `ui/commands.rs`, appear in the Menu under its group,
-and be found by command search. Ids that exist in `command_palette::CATALOG` are reused.
+Every command below must exist in `ui/commands.rs`, be found by command search (Ctrl K and
+the Menu's search field), and have one on-screen home: the Menu, the tool tray, the drawing
+controls, the inspector or right-click menu, the page tabs, the ledger, Options, or the top
+bar. (Owner decision, 2026-11-17: this replaces "appear in the Menu under its group", which
+had turned the Menu into a list of all 160 commands.) The Menu's own rows are `ENTRIES` in
+`ui/menu.rs`. The group headings below are the registry's groups, not Menu sections.
+Ids that exist in `command_palette::CATALOG` are reused.
 "Message" names the existing message to emit.
 
 ### File

@@ -1,232 +1,301 @@
-//! Grouped application Menu (`docs/ui-redesign/01-design-spec.md` §5.9).
+//! The Menu (`docs/ui-redesign/01-design-spec.md` §5.9, Option A of the
+//! 2026-11-17 menu redesign).
 //!
-//! Renders the 8 command groups (`File`, `Edit`, `View`, `Areas`, `Insert`,
-//! `Image`, `Tools`, `Help`) from `ui::commands` along with nested panels for
-//! Recent sketches, Select by type, Flip, Snap pitch, Show in sketch filters,
-//! Drawing background, Interface theme, and Units.
+//! One column: a search field, then 19 rows in four sections (the file, this
+//! sketch, editing, the app). Rows that hold a choice of several values open a
+//! fly-out to the side: Recent, Import, Export, Print, Trace image, Select,
+//! Transform sketch and Help. Ctrl K, the top bar's search field and its
+//! magnifier open the Menu with the search field focused. Typing in the search field lists every command
+//! in the registry (`commands::matching`), so a command that has its home
+//! elsewhere (the tray, drawing controls, inspector, page tabs, Options) is
+//! still one search away.
 //!
 //! Layout adapts by size class:
-//! - `Wide` / `Medium`: floating dropdown anchored below the top bar's Menu
-//!   button with left group column + scrollable command list (+ optional
-//!   submenu pane).
-//! - `Compact`: full sheet with group switcher and clean back-navigable
-//!   submenus.
+//! - `Wide` / `Medium`: a drop-down under the top bar's Menu button, with the
+//!   fly-out beside the row that opened it.
+//! - `Compact`: a full-height sheet; a fly-out replaces the list with a Back row.
 
 use iced::widget::{
-    button, column, container, mouse_area, opaque, row, scrollable, text, Space,
+    button, column, container, mouse_area, opaque, row, scrollable, text, text_input, Space,
 };
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
 
-use crate::canvas_theme::{self, CanvasTheme};
 use crate::icons;
-use crate::select_menu::SelectKind;
-use crate::theme::{self, InterfaceTheme};
-use crate::transform::Axis;
-use crate::ui::commands::{self, Command, Group};
-use crate::ui::fonts::{BARLOW, BARLOW_MEDIUM, BARLOW_SEMIBOLD, BSC_MEDIUM, BSC_SEMIBOLD};
+use crate::ui::commands::{self, Command};
+use crate::ui::fonts::{BARLOW, BARLOW_MEDIUM, BARLOW_SEMIBOLD, BSC_MEDIUM};
 use crate::ui::kit;
 use crate::ui::layout::SizeClass;
 use crate::ui::tokens::{
     self, Density, RADIUS_CONTROL, RADIUS_DIALOG, SPACE_1, SPACE_2, SPACE_3, TEXT_11, TEXT_12,
-    TEXT_13, TEXT_14,
+    TEXT_13, TEXT_16,
 };
 use crate::ui::Msg as UiMsg;
-use crate::view_state::{FILTERS, PITCHES};
 use crate::{App, Message};
 
-/// Open submenu inside the Menu.
+/// Widget id of the Menu's search field (focused when the Menu opens).
+pub const SEARCH_ID: &str = "menu-search";
+
+/// A fly-out of the Menu.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MenuSub {
     Recent,
-    SelectByType,
-    Flip,
-    Pitch,
-    Filters,
-    CanvasBg,
-    Theme,
-    Units,
+    Import,
+    Export,
+    Print,
+    TraceImage,
+    Select,
+    Transform,
+    Help,
 }
 
 impl MenuSub {
     pub fn title(self) -> &'static str {
         match self {
-            MenuSub::Recent => "Recent sketches",
-            MenuSub::SelectByType => "Select by type",
-            MenuSub::Flip => "Flip sketch",
-            MenuSub::Pitch => "Snap pitch",
-            MenuSub::Filters => "Show in sketch",
-            MenuSub::CanvasBg => "Drawing background",
-            MenuSub::Theme => "Interface theme",
-            MenuSub::Units => "Units",
+            MenuSub::Recent => "Recent",
+            MenuSub::Import => "Import",
+            MenuSub::Export => "Export",
+            MenuSub::Print => "Print",
+            MenuSub::TraceImage => "Trace image",
+            MenuSub::Select => "Select",
+            MenuSub::Transform => "Transform sketch",
+            MenuSub::Help => "Help",
+        }
+    }
+
+    /// The row's icon, in the same family as its commands.
+    pub fn icon(self) -> (&'static str, bool) {
+        match self {
+            MenuSub::Recent => ("clock-counter-clockwise", true),
+            MenuSub::Import => ("arrow-square-in", true),
+            MenuSub::Export => ("arrow-square-out", true),
+            MenuSub::Print => ("printer", true),
+            MenuSub::TraceImage => ("image", false),
+            MenuSub::Select => ("selection-all", false),
+            MenuSub::Transform => ("arrows-left-right", false),
+            MenuSub::Help => ("info", false),
+        }
+    }
+
+    /// The fly-out's commands as `(command id, label shown here)`.
+    fn commands(self) -> &'static [(&'static str, &'static str)] {
+        match self {
+            MenuSub::Recent => &[
+                ("start-screen", "Show start screen"),
+                ("recover-autosave", "Recover autosave…"),
+            ],
+            MenuSub::Import => &[
+                ("import", "Sketch file…"),
+                ("import-cad", "CAD drawing (DXF)…"),
+                ("import-layer", "Layer from another sketch…"),
+            ],
+            MenuSub::Export => &[
+                ("export-pdf", "PDF"),
+                ("export-png", "PNG image"),
+                ("export-svg", "SVG drawing"),
+                ("export-dxf", "DXF for CAD"),
+            ],
+            MenuSub::Print => &[
+                ("print", "Print…"),
+                ("print-preview", "Print preview"),
+                ("page-layout", "Page layout…"),
+            ],
+            MenuSub::TraceImage => &[
+                ("photo-load", "Load trace image…"),
+                ("photo-show", "Show trace image"),
+                ("photo-hide", "Hide trace image"),
+                ("photo-edit-mode", "Edit image"),
+                ("photo-remove", "Remove trace image"),
+                ("geo-load-map", "Load map area"),
+                ("geo-address", "Search address…"),
+                ("geo-coordinate", "Jump to coordinates…"),
+            ],
+            MenuSub::Select => &[
+                ("select-all", "Everything"),
+                ("select-areas", "Areas"),
+                ("select-walls", "Freeform lines"),
+                ("select-text", "Text labels"),
+                ("select-dimensions", "Dimensions"),
+                ("select-symbols", "Symbols"),
+            ],
+            MenuSub::Transform => &[
+                ("flip-horizontal", "Flip horizontally"),
+                ("flip-vertical", "Flip vertically"),
+                ("rotate-sketch", "Rotate +90°"),
+                ("rotate-sketch-ccw", "Rotate −90°"),
+            ],
+            MenuSub::Help => &[
+                ("user-guide", "User guide"),
+                ("shortcuts", "Keyboard shortcuts"),
+                ("appraise-it-reports", "Appraise-It guide"),
+                ("email", "Email support"),
+                ("about", "About Sketch Rust"),
+            ],
         }
     }
 }
 
-/// Interactive row entry inside the active group pane.
-pub enum GroupItem {
-    Cmd(&'static Command),
+/// One line of the Menu's main list.
+#[derive(Debug, Clone, Copy)]
+pub enum Entry {
+    /// A command by id, with the label the Menu shows for it.
+    Cmd(&'static str, &'static str),
     Sub(MenuSub),
+    Sep,
 }
 
-/// Actionable submenu entry used for both rendering and Enter-key execution.
+/// The main list: about the file, about this sketch, editing, about the app.
+pub const ENTRIES: &[Entry] = &[
+    Entry::Cmd("new", "New sketch"),
+    Entry::Cmd("open", "Open…"),
+    Entry::Sub(MenuSub::Recent),
+    Entry::Cmd("save", "Save"),
+    Entry::Cmd("save-as", "Save as…"),
+    Entry::Sub(MenuSub::Import),
+    Entry::Sub(MenuSub::Export),
+    Entry::Sub(MenuSub::Print),
+    Entry::Sep,
+    Entry::Cmd("subject-info", "Property details"),
+    Entry::Cmd("area-code-settings", "Area types…"),
+    Entry::Cmd("area-breakdown", "Area breakdown"),
+    Entry::Sub(MenuSub::TraceImage),
+    Entry::Cmd("symbol-library", "Symbol library"),
+    Entry::Sep,
+    Entry::Cmd("undo-history", "Undo history"),
+    Entry::Sub(MenuSub::Select),
+    Entry::Sub(MenuSub::Transform),
+    Entry::Sep,
+    Entry::Cmd("options", "Options…"),
+    Entry::Sub(MenuSub::Help),
+    Entry::Cmd("close-window", "Close window"),
+];
+
+/// The main list without separators: what Up and Down move through.
+pub fn rows() -> impl Iterator<Item = Entry> {
+    ENTRIES.iter().copied().filter(|e| !matches!(e, Entry::Sep))
+}
+
+/// A row of a fly-out or of the search results.
 pub struct SubAction {
     pub label: String,
+    pub detail: &'static str,
+    pub icon: Option<(&'static str, bool)>,
+    pub shortcut: &'static str,
     pub checked: bool,
     pub enabled: bool,
     pub on_press: Option<Message>,
 }
 
-/// Ordered items displayed in the middle pane for `group`.
-pub fn group_items(group: Group) -> Vec<GroupItem> {
-    let mut items = Vec::new();
-    match group {
-        Group::File => {
-            items.push(GroupItem::Sub(MenuSub::Recent));
-        }
-        Group::Edit => {
-            items.push(GroupItem::Sub(MenuSub::SelectByType));
-            items.push(GroupItem::Sub(MenuSub::Flip));
-        }
-        Group::View => {
-            items.push(GroupItem::Sub(MenuSub::Pitch));
-            items.push(GroupItem::Sub(MenuSub::Filters));
-            items.push(GroupItem::Sub(MenuSub::CanvasBg));
-            items.push(GroupItem::Sub(MenuSub::Theme));
-            items.push(GroupItem::Sub(MenuSub::Units));
-        }
-        Group::Areas | Group::Insert | Group::Image | Group::Tools | Group::Help => {}
+fn cmd_action(app: &App, cmd: &'static Command, label: &str, detail: &'static str) -> SubAction {
+    let enabled = (cmd.enabled)(app);
+    SubAction {
+        label: label.to_owned(),
+        detail,
+        icon: commands::icon_for(cmd.id),
+        shortcut: cmd.shortcut,
+        checked: cmd.checked.is_some_and(|f| f(app)),
+        enabled,
+        on_press: enabled.then_some(Message::Ui(UiMsg::MenuRunId(cmd.id))),
     }
-    for cmd in commands::in_group(group) {
-        items.push(GroupItem::Cmd(cmd));
-    }
-    items
 }
 
-/// Submenu entries for `sub` against current `app` state.
+/// Fly-out rows for `sub` against the current `app` state.
 pub fn sub_actions(app: &App, sub: MenuSub) -> Vec<SubAction> {
-    match sub {
-        MenuSub::Recent => {
-            if app.recent.is_empty() {
-                vec![SubAction {
-                    label: "No recent sketches".to_owned(),
-                    checked: false,
-                    enabled: false,
-                    on_press: None,
-                }]
-            } else {
-                let mut out: Vec<SubAction> = app
-                    .recent
-                    .iter()
-                    .enumerate()
-                    .map(|(i, rec)| SubAction {
-                        label: rec.name.clone(),
-                        checked: false,
-                        enabled: true,
-                        on_press: Some(Message::Ui(UiMsg::MenuRunRecent(i))),
-                    })
-                    .collect();
-                out.push(SubAction {
-                    label: "Clear recent sketches".to_owned(),
-                    checked: false,
-                    enabled: true,
-                    on_press: Some(Message::Ui(UiMsg::MenuClearRecent)),
-                });
-                out
-            }
+    let mut out = Vec::new();
+    if sub == MenuSub::Recent {
+        for (i, rec) in app.recent.iter().enumerate() {
+            out.push(SubAction {
+                label: rec.name.clone(),
+                detail: "",
+                icon: Some(("file", false)),
+                shortcut: "",
+                checked: false,
+                enabled: true,
+                on_press: Some(Message::Ui(UiMsg::MenuRunRecent(i))),
+            });
         }
-        MenuSub::SelectByType => SelectKind::ALL
-            .iter()
-            .copied()
-            .map(|kind| SubAction {
-                label: kind.label().to_owned(),
+        if app.recent.is_empty() {
+            out.push(SubAction {
+                label: "No recent sketches".to_owned(),
+                detail: "",
+                icon: None,
+                shortcut: "",
                 checked: false,
-                enabled: true,
-                on_press: Some(Message::Ui(UiMsg::MenuSelectKind(kind))),
-            })
-            .collect(),
-        MenuSub::Flip => vec![
-            SubAction {
-                label: "Flip horizontally".to_owned(),
-                checked: false,
-                enabled: !app.drawing.lines.is_empty() || !app.drawing.polygons.is_empty(),
-                on_press: Some(Message::Ui(UiMsg::MenuFlip(Axis::Horizontal))),
-            },
-            SubAction {
-                label: "Flip vertically".to_owned(),
-                checked: false,
-                enabled: !app.drawing.lines.is_empty() || !app.drawing.polygons.is_empty(),
-                on_press: Some(Message::Ui(UiMsg::MenuFlip(Axis::Vertical))),
-            },
-        ],
-        MenuSub::Pitch => PITCHES
-            .iter()
-            .enumerate()
-            .map(|(idx, (label, val))| SubAction {
-                label: (*label).to_owned(),
-                checked: (app.view.area_snap_size - val).abs() < 1e-4,
-                enabled: true,
-                on_press: Some(Message::Ui(UiMsg::MenuPitch(idx))),
-            })
-            .collect(),
-        MenuSub::Filters => FILTERS
-            .iter()
-            .enumerate()
-            .map(|(idx, (_key, label))| SubAction {
-                label: (*label).to_owned(),
-                checked: app.view.filters.get(idx).copied().unwrap_or(true),
-                enabled: true,
-                on_press: Some(Message::Ui(UiMsg::MenuFilter(idx))),
-            })
-            .collect(),
-        MenuSub::CanvasBg => [CanvasTheme::Light, CanvasTheme::Dark, CanvasTheme::Blue]
-            .into_iter()
-            .map(|t| SubAction {
-                label: t.label().to_owned(),
-                checked: canvas_theme::current() == t,
-                enabled: true,
-                on_press: Some(Message::Ui(UiMsg::MenuCanvasTheme(t))),
-            })
-            .collect(),
-        MenuSub::Theme => [
-            (InterfaceTheme::Dark, "Dark"),
-            (InterfaceTheme::Blue, "Blue"),
-            (InterfaceTheme::Light, "Light"),
-        ]
-        .into_iter()
-        .map(|(t, label)| SubAction {
-            label: label.to_owned(),
-            checked: theme::interface_theme() == t,
-            enabled: true,
-            on_press: Some(Message::Ui(UiMsg::MenuInterfaceTheme(t))),
-        })
-        .collect(),
-        MenuSub::Units => vec![
-            SubAction {
-                label: "Imperial (ft / sf)".to_owned(),
-                checked: !app.drawing.options.units.metric,
-                enabled: true,
-                on_press: Some(Message::Ui(UiMsg::MenuUnitsMetric(false))),
-            },
-            SubAction {
-                label: "Metric (m / m²)".to_owned(),
-                checked: app.drawing.options.units.metric,
-                enabled: true,
-                on_press: Some(Message::Ui(UiMsg::MenuUnitsMetric(true))),
-            },
-        ],
+                enabled: false,
+                on_press: None,
+            });
+        }
     }
+    for &(id, label) in sub.commands() {
+        if let Some(cmd) = commands::find(id) {
+            out.push(cmd_action(app, cmd, label, ""));
+        }
+    }
+    if sub == MenuSub::Recent && !app.recent.is_empty() {
+        out.push(SubAction {
+            label: "Clear recent sketches".to_owned(),
+            detail: "",
+            icon: Some(("trash", false)),
+            shortcut: "",
+            checked: false,
+            enabled: true,
+            on_press: Some(Message::Ui(UiMsg::MenuClearRecent)),
+        });
+    }
+    out
 }
 
-/// Number of rows currently navigable with Up/Down arrows.
+/// Every registered command matching the search text, labelled as the
+/// registry labels it, with its group as a hint.
+pub fn search_actions(app: &App) -> Vec<SubAction> {
+    commands::matching(&app.ui.menu_query)
+        .into_iter()
+        .map(|cmd| cmd_action(app, cmd, cmd.label, cmd.group.label()))
+        .collect()
+}
+
+fn searching(app: &App) -> bool {
+    !app.ui.menu_query.trim().is_empty()
+}
+
+/// Moves the keyboard row by `d`, wrapping around `count` rows.
+pub fn step(active: usize, count: usize, d: i32) -> usize {
+    if count == 0 {
+        return active;
+    }
+    ((active as i64 + d as i64).rem_euclid(count as i64)) as usize
+}
+
+/// Number of rows Up and Down move through right now.
 pub fn active_row_count(app: &App) -> usize {
-    if let Some(sub) = app.ui.menu_sub {
+    if searching(app) {
+        search_actions(app).len()
+    } else if let Some(sub) = app.ui.menu_sub {
         sub_actions(app, sub).len()
     } else {
-        group_items(app.ui.menu_group).len()
+        rows().count()
     }
 }
 
-/// Renders the Next Menu overlay when `app.ui.menu_open` is true.
+/// The message Enter sends for the focused row, if any.
+pub fn enter_message(app: &App) -> Option<Message> {
+    let row = app.ui.menu_row;
+    if searching(app) {
+        return search_actions(app).into_iter().nth(row).and_then(|a| a.on_press);
+    }
+    if let Some(sub) = app.ui.menu_sub {
+        return sub_actions(app, sub).into_iter().nth(row).and_then(|a| a.on_press);
+    }
+    match rows().nth(row)? {
+        Entry::Sub(sub) => Some(Message::Ui(UiMsg::MenuSub(Some(sub)))),
+        Entry::Cmd(id, _) => {
+            let cmd = commands::find(id)?;
+            (cmd.enabled)(app).then_some(Message::Ui(UiMsg::MenuRunId(id)))
+        }
+        Entry::Sep => None,
+    }
+}
+
+/// Renders the Menu overlay when `app.ui.menu_open` is true.
 pub fn layer<'a>(app: &'a App) -> Option<Element<'a, Message>> {
     if !app.ui.menu_open {
         return None;
@@ -268,138 +337,263 @@ pub fn layer<'a>(app: &'a App) -> Option<Element<'a, Message>> {
     Some(opaque(backdrop))
 }
 
+/// Row height in the Menu: a little tighter than list rows with a mouse so
+/// the whole Menu fits a 760 px tall window; full touch height otherwise.
+fn row_h(d: Density) -> f32 {
+    match d {
+        Density::Touch => d.row_h(),
+        Density::Comfortable => d.row_h().min(32.0),
+    }
+}
+
+const SEP_H: f32 = 9.0;
+const MAIN_W: f32 = 300.0;
+const SUB_W: f32 = 270.0;
+const SEARCH_W: f32 = 420.0;
+
+fn search_field<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
+    let input = text_input("Search all commands", &app.ui.menu_query)
+        .id(SEARCH_ID)
+        .font(BARLOW)
+        .size(TEXT_13)
+        .padding([((d.field_h() - 18.0).max(4.0)) * 0.5, SPACE_1])
+        .width(Length::Fill)
+        .on_input(|q| Message::Ui(UiMsg::MenuQuery(q)))
+        .style(|_, _| iced::widget::text_input::Style {
+            background: Background::Color(Color::TRANSPARENT),
+            border: Border::default(),
+            icon: tokens::muted(),
+            placeholder: tokens::muted(),
+            value: tokens::text(),
+            selection: tokens::accent_soft(),
+        });
+    container(
+        row![
+            icons::mono("magnifying-glass", 15.0, tokens::muted()),
+            input,
+        ]
+        .spacing(SPACE_1)
+        .align_y(Alignment::Center),
+    )
+    .padding([0.0, SPACE_2])
+    .height(Length::Fixed(d.field_h()))
+    .align_y(Alignment::Center)
+    .style(|_| container::Style {
+        background: Some(Background::Color(tokens::input_bg())),
+        border: Border {
+            color: tokens::accent(),
+            width: 1.0,
+            radius: RADIUS_CONTROL.into(),
+        },
+        ..container::Style::default()
+    })
+    .into()
+}
+
+fn panel_style(_: &iced::Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(tokens::bar())),
+        border: Border {
+            color: tokens::rule(),
+            width: 1.0,
+            radius: RADIUS_DIALOG.into(),
+        },
+        shadow: tokens::floating_shadow(),
+        ..container::Style::default()
+    }
+}
+
+/// The main list as rows, with hover opening fly-outs on a mouse.
+fn main_list<'a>(app: &'a App, d: Density, hover_opens: bool) -> Element<'a, Message> {
+    let mut col = column![].width(Length::Fill);
+    let mut idx = 0usize;
+    let keyboard_on_main = app.ui.menu_sub.is_none();
+    for entry in ENTRIES {
+        match *entry {
+            Entry::Sep => {
+                col = col.push(
+                    container(kit::divider())
+                        .height(Length::Fixed(SEP_H))
+                        .align_y(Alignment::Center),
+                );
+            }
+            Entry::Cmd(id, label) => {
+                let focused = keyboard_on_main && app.ui.menu_row == idx;
+                if let Some(cmd) = commands::find(id) {
+                    let action = cmd_action(app, cmd, label, "");
+                    let btn = action_row(action, d, false, focused, false);
+                    col = col.push(if hover_opens {
+                        mouse_area(btn)
+                            .on_enter(Message::Ui(UiMsg::MenuSub(None)))
+                            .into()
+                    } else {
+                        btn
+                    });
+                }
+                idx += 1;
+            }
+            Entry::Sub(sub) => {
+                let open = app.ui.menu_sub == Some(sub);
+                let focused = keyboard_on_main && app.ui.menu_row == idx;
+                let action = SubAction {
+                    label: sub.title().to_owned(),
+                    detail: "",
+                    icon: Some(sub.icon()),
+                    shortcut: "",
+                    checked: false,
+                    enabled: true,
+                    on_press: Some(Message::Ui(UiMsg::MenuSub(Some(sub)))),
+                };
+                let btn = action_row(action, d, open, focused, true);
+                col = col.push(if hover_opens {
+                    mouse_area(btn)
+                        .on_enter(Message::Ui(UiMsg::MenuSub(Some(sub))))
+                        .into()
+                } else {
+                    btn
+                });
+                idx += 1;
+            }
+        }
+    }
+    col.into()
+}
+
+/// Pixel offset of `sub`'s row from the top of the main list, so its
+/// fly-out lines up with it. Computed from the same row and separator
+/// heights the list is laid out with.
+fn sub_offset(sub: MenuSub, d: Density) -> f32 {
+    let mut y = 0.0;
+    for entry in ENTRIES {
+        match *entry {
+            Entry::Sub(s) if s == sub => return y,
+            Entry::Sep => y += SEP_H,
+            _ => y += row_h(d) + 2.0,
+        }
+    }
+    y
+}
+
+fn actions_list<'a>(actions: Vec<SubAction>, d: Density, row: usize) -> Element<'a, Message> {
+    let mut col = column![].spacing(2).width(Length::Fill);
+    for (i, a) in actions.into_iter().enumerate() {
+        col = col.push(action_row(a, d, false, row == i, false));
+    }
+    col.into()
+}
+
 fn desktop_dropdown<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
-    let has_sub = app.ui.menu_sub.is_some();
-    let max_h = (app.window_size.height - d.bar_h() - SPACE_3 * 2.0).clamp(260.0, 560.0);
-    let target_w: f32 = if has_sub { 760.0 } else { 520.0 };
-    let w = target_w.min((app.window_size.width - SPACE_3 * 2.0).max(320.0));
+    let avail_h = app.window_size.height - d.bar_h() - SPACE_3 * 2.0;
 
-    let group_col = group_list_column(app, d);
-    let item_pane = scrollable(items_column(app, d, app.ui.menu_sub.is_none()))
-        .height(Length::Fill)
-        .width(Length::Fill);
-
-    let mut columns = row![
-        container(group_col).width(Length::Fixed(156.0)).height(Length::Fill),
-        container(Space::new())
-            .width(Length::Fixed(1.0))
-            .height(Length::Fill)
-            .style(|_| container::Style {
-                background: Some(Background::Color(tokens::rule())),
-                ..container::Style::default()
-            }),
-        container(item_pane)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .padding([SPACE_2, SPACE_2]),
-    ]
-    .height(Length::Fill);
-
-    if let Some(sub) = app.ui.menu_sub {
-        columns = columns
-            .push(
-                container(Space::new())
-                    .width(Length::Fixed(1.0))
-                    .height(Length::Fill)
-                    .style(|_| container::Style {
-                        background: Some(Background::Color(tokens::rule())),
-                        ..container::Style::default()
-                    }),
-            )
-            .push(
-                container(sub_pane(app, sub, d, false))
-                    .width(Length::Fixed(236.0))
-                    .height(Length::Fill)
-                    .padding([SPACE_2, SPACE_2]),
-            );
+    if searching(app) {
+        let results = search_actions(app);
+        let count = results.len();
+        let list = actions_list(results, d, app.ui.menu_row);
+        let header = text(match count {
+            0 => "No matching command.".to_owned(),
+            1 => "1 command".to_owned(),
+            _ => format!("{count} commands"),
+        })
+        .font(BARLOW_MEDIUM)
+        .size(TEXT_12)
+        .color(tokens::muted());
+        let panel = container(
+            column![
+                search_field(app, d),
+                container(header).padding([SPACE_1, SPACE_1]),
+                scrollable(list).height(Length::Shrink),
+            ]
+            .spacing(SPACE_1),
+        )
+        .padding(SPACE_2)
+        .width(Length::Fixed(SEARCH_W.min(app.window_size.width - SPACE_3 * 2.0)))
+        .max_height(avail_h)
+        .style(panel_style);
+        return mouse_area(panel).on_press(Message::Ui(UiMsg::Noop)).into();
     }
 
-    let header = row![
-        text("MENU")
-            .font(BSC_SEMIBOLD)
-            .size(TEXT_12)
-            .color(tokens::muted()),
-        Space::new().width(Length::Fill),
-        kit::text_button_with(
-            "Search commands (Ctrl+K)",
-            Some(Message::Ui(UiMsg::MenuOpenSearch)),
-            d,
-            false,
-            false,
-        ),
-    ]
-    .align_y(Alignment::Center)
-    .padding([SPACE_2, SPACE_3]);
+    let main = container(
+        column![
+            search_field(app, d),
+            container(main_list(app, d, true)).padding(Padding {
+                top: SPACE_1,
+                ..Padding::ZERO
+            }),
+        ]
+        .spacing(SPACE_1),
+    )
+    .padding(SPACE_2)
+    .width(Length::Fixed(MAIN_W))
+    .style(panel_style);
 
-    let panel = container(column![header, kit::divider(), columns])
-        .width(Length::Fixed(w))
-        .height(Length::Fixed(max_h))
-        .clip(true)
-        .style(|_| container::Style {
-            background: Some(Background::Color(tokens::bar())),
-            border: Border {
-                color: tokens::rule(),
-                width: 1.0,
-                radius: RADIUS_DIALOG.into(),
-            },
-            shadow: tokens::floating_shadow(),
-            ..container::Style::default()
-        });
+    // The whole Menu fits a 760 px tall window; below that it scrolls rather
+    // than being cut off.
+    let main: Element<'a, Message> = scrollable(main).height(Length::Shrink).into();
 
-    mouse_area(panel).on_press(Message::Ui(UiMsg::Noop)).into()
+    let mut layout = row![main].spacing(SPACE_1);
+    if let Some(sub) = app.ui.menu_sub {
+        let actions = sub_actions(app, sub);
+        let fly = container(actions_list(actions, d, app.ui.menu_row))
+            .padding(SPACE_2)
+            .width(Length::Fixed(SUB_W))
+            .style(panel_style);
+        // Search field + its gap + panel padding, then the row's own offset.
+        let top = SPACE_2 + d.field_h() + SPACE_1 * 2.0 + sub_offset(sub, d) - SPACE_2;
+        layout = layout.push(column![Space::new().height(Length::Fixed(top.max(0.0))), fly]);
+    }
+
+    mouse_area(layout).on_press(Message::Ui(UiMsg::Noop)).into()
 }
 
 fn compact_sheet<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
     let header = row![
-        text("MENU")
-            .font(BSC_SEMIBOLD)
-            .size(TEXT_12)
-            .color(tokens::muted()),
+        text("Menu")
+            .font(BARLOW_SEMIBOLD)
+            .size(TEXT_16)
+            .color(tokens::text()),
         Space::new().width(Length::Fill),
-        kit::text_button("Search", Some(Message::Ui(UiMsg::MenuOpenSearch)), d),
-        kit::text_button("Close", Some(Message::Ui(UiMsg::CloseMenu)), d),
+        kit::icon_button("x", false, Some(Message::Ui(UiMsg::CloseMenu)), d),
     ]
-    .spacing(SPACE_2)
     .align_y(Alignment::Center)
-    .padding([SPACE_2, SPACE_3]);
+    .padding([SPACE_1, SPACE_3]);
 
-    let mut row1 = row![].spacing(SPACE_1);
-    let mut row2 = row![].spacing(SPACE_1);
-    for (idx, &group) in Group::ALL.iter().enumerate() {
-        let pill = kit::chip(
-            group.label(),
-            app.ui.menu_group == group,
-            Some(Message::Ui(UiMsg::MenuGroup(group))),
-            d,
-        );
-        if idx < 4 {
-            row1 = row1.push(pill);
-        } else {
-            row2 = row2.push(pill);
-        }
-    }
-    let group_strip = container(column![row1, row2].spacing(SPACE_1))
-        .padding([SPACE_1, SPACE_3])
-        .width(Length::Fill);
-
-    let body: Element<'a, Message> = if let Some(sub) = app.ui.menu_sub {
-        sub_pane(app, sub, d, true)
-    } else {
-        scrollable(items_column(app, d, true))
-            .height(Length::Fill)
-            .width(Length::Fill)
+    let body: Element<'a, Message> = if searching(app) && search_actions(app).is_empty() {
+        text("No matching command.")
+            .font(BARLOW_MEDIUM)
+            .size(TEXT_13)
+            .color(tokens::muted())
             .into()
+    } else if searching(app) {
+        actions_list(search_actions(app), d, app.ui.menu_row)
+    } else if let Some(sub) = app.ui.menu_sub {
+        let back = action_row(
+            SubAction {
+                label: sub.title().to_owned(),
+                detail: "",
+                icon: Some(("caret-left", true)),
+                shortcut: "",
+                checked: false,
+                enabled: true,
+                on_press: Some(Message::Ui(UiMsg::MenuSub(None))),
+            },
+            d,
+            true,
+            false,
+            false,
+        );
+        column![back, kit::divider(), actions_list(sub_actions(app, sub), d, app.ui.menu_row)]
+            .spacing(SPACE_1)
+            .into()
+    } else {
+        main_list(app, d, false)
     };
 
     let sheet = container(column![
         header,
-        kit::divider(),
-        group_strip,
-        kit::divider(),
-        container(body)
-            .width(Length::Fill)
+        container(search_field(app, d)).padding([SPACE_1, SPACE_3]),
+        scrollable(container(body).padding([SPACE_1, SPACE_3]).width(Length::Fill))
             .height(Length::Fill)
-            .padding([SPACE_2, SPACE_3]),
+            .width(Length::Fill),
     ])
     .width(Length::Fill)
     .height(Length::Fill)
@@ -416,216 +610,51 @@ fn compact_sheet<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
     mouse_area(sheet).on_press(Message::Ui(UiMsg::Noop)).into()
 }
 
-fn group_list_column<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
-    let mut col = column![].spacing(SPACE_1).padding(SPACE_2);
-    for &group in &Group::ALL {
-        let selected = app.ui.menu_group == group;
-        let fg = if selected {
-            tokens::accent()
-        } else {
-            tokens::text()
-        };
-        let bg = if selected {
-            tokens::accent_soft()
-        } else {
-            Color::TRANSPARENT
-        };
-        let border_c = if selected {
-            Some(tokens::accent())
-        } else {
-            None
-        };
-        let btn = button(
-            container(
-                row![
-                    icons::mono(group.icon(), 15.0, fg),
-                    text(group.label())
-                        .font(if selected { BARLOW_SEMIBOLD } else { BARLOW_MEDIUM })
-                        .size(TEXT_13)
-                        .color(fg)
-                        .width(Length::Fill),
-                ]
-                .spacing(SPACE_2)
-                .align_y(Alignment::Center),
-            )
-            .height(Length::Fixed(d.row_h().min(36.0)))
-            .padding([0, 8])
-            .align_y(Alignment::Center)
+/// One Menu row: tinted icon, label, optional hint, shortcut or fly-out caret.
+fn action_row<'a>(
+    a: SubAction,
+    d: Density,
+    open: bool,
+    focused: bool,
+    has_fly: bool,
+) -> Element<'a, Message> {
+    let fg = if a.enabled {
+        tokens::text()
+    } else {
+        tokens::disabled()
+    };
+    let mut r = row![].spacing(SPACE_2).align_y(Alignment::Center);
+    r = r.push(match (a.checked, a.icon) {
+        (true, _) => icons::mono("check", 15.0, tokens::accent()),
+        (false, Some((name, fill))) if a.enabled => icons::tinted(name, fill, 15.0, fg),
+        (false, Some((name, fill))) => icons::mono_icon(name, fill, 15.0, fg),
+        (false, None) => Space::new().width(Length::Fixed(15.0)).into(),
+    });
+    r = r.push(
+        text(a.label)
+            .font(if open { BARLOW_SEMIBOLD } else { BARLOW_MEDIUM })
+            .size(TEXT_13)
+            .color(fg)
             .width(Length::Fill),
-        )
-        .padding(0)
-        .width(Length::Fill)
-        .style(move |_, status| {
-            let hover_bg = match status {
-                button::Status::Hovered => tokens::hover(),
-                button::Status::Pressed => tokens::pressed(),
-                _ => bg,
-            };
-            button::Style {
-                background: Some(Background::Color(hover_bg)),
-                text_color: fg,
-                border: Border {
-                    color: border_c.unwrap_or(Color::TRANSPARENT),
-                    width: if border_c.is_some() { 1.0 } else { 0.0 },
-                    radius: RADIUS_CONTROL.into(),
-                },
-                ..button::Style::default()
-            }
-        })
-        .on_press(Message::Ui(UiMsg::MenuGroup(group)));
-        col = col.push(btn);
+    );
+    if !a.detail.is_empty() {
+        r = r.push(text(a.detail).font(BARLOW).size(TEXT_11).color(tokens::muted()));
     }
-    col.into()
-}
-
-fn items_column<'a>(app: &'a App, d: Density, keyboard_active: bool) -> Element<'a, Message> {
-    let items = group_items(app.ui.menu_group);
-    let mut col = column![].spacing(2).width(Length::Fill);
-
-    for (idx, item) in items.into_iter().enumerate() {
-        let focused = keyboard_active && app.ui.menu_row == idx;
-        match item {
-            GroupItem::Sub(sub) => {
-                let open = app.ui.menu_sub == Some(sub);
-                let fg = if open { tokens::accent() } else { tokens::text() };
-                let r = row![
-                    Space::new().width(Length::Fixed(14.0)),
-                    text(sub.title())
-                        .font(if open { BARLOW_SEMIBOLD } else { BARLOW_MEDIUM })
-                        .size(TEXT_13)
-                        .color(fg)
-                        .width(Length::Fill),
-                    icons::mono("caret-right", 12.0, tokens::muted()),
-                ]
-                .spacing(SPACE_2)
-                .align_y(Alignment::Center);
-                col = col.push(menu_row_button(
-                    r,
-                    d,
-                    open,
-                    focused,
-                    Some(Message::Ui(UiMsg::MenuSub(Some(sub)))),
-                ));
-            }
-            GroupItem::Cmd(cmd) => {
-                let enabled = (cmd.enabled)(app);
-                let checked = cmd.checked.is_some_and(|f| f(app));
-                let fg = if enabled {
-                    tokens::text()
+    if has_fly {
+        r = r.push(icons::mono("caret-right", 12.0, tokens::muted()));
+    } else if !a.shortcut.is_empty() {
+        r = r.push(
+            text(a.shortcut)
+                .font(BSC_MEDIUM)
+                .size(TEXT_12)
+                .color(if a.enabled {
+                    tokens::muted()
                 } else {
                     tokens::disabled()
-                };
-                let mut r = row![].spacing(SPACE_2).align_y(Alignment::Center);
-                if checked {
-                    r = r.push(icons::mono("check", 14.0, tokens::accent()));
-                } else {
-                    r = r.push(Space::new().width(Length::Fixed(14.0)));
-                }
-                r = r.push(
-                    text(cmd.label)
-                        .font(BARLOW_MEDIUM)
-                        .size(TEXT_13)
-                        .color(fg)
-                        .width(Length::Fill),
-                );
-                if !cmd.shortcut.is_empty() {
-                    r = r.push(
-                        text(cmd.shortcut)
-                            .font(BSC_MEDIUM)
-                            .size(TEXT_12)
-                            .color(if enabled {
-                                tokens::muted()
-                            } else {
-                                tokens::disabled()
-                            }),
-                    );
-                }
-                let on_press = enabled.then(|| Message::Ui(UiMsg::MenuRunId(cmd.id)));
-                col = col.push(menu_row_button(r, d, false, focused, on_press));
-            }
-        }
-    }
-
-    container(col)
-        .padding(Padding {
-            top: 0.0,
-            right: 14.0,
-            bottom: 0.0,
-            left: 0.0,
-        })
-        .width(Length::Fill)
-        .into()
-}
-
-fn sub_pane<'a>(app: &'a App, sub: MenuSub, d: Density, compact: bool) -> Element<'a, Message> {
-    let mut header = row![].spacing(SPACE_2).align_y(Alignment::Center);
-    if compact {
-        header = header.push(kit::text_button(
-            "Back",
-            Some(Message::Ui(UiMsg::MenuSub(None))),
-            d,
-        ));
-    }
-    header = header.push(
-        text(sub.title())
-            .font(BARLOW_SEMIBOLD)
-            .size(TEXT_14)
-            .color(tokens::text()),
-    );
-
-    let actions = sub_actions(app, sub);
-    let mut list = column![].spacing(2).width(Length::Fill);
-    for (idx, act) in actions.into_iter().enumerate() {
-        let focused = app.ui.menu_row == idx;
-        let fg = if act.enabled {
-            tokens::text()
-        } else {
-            tokens::disabled()
-        };
-        let mut r = row![].spacing(SPACE_2).align_y(Alignment::Center);
-        if act.checked {
-            r = r.push(icons::mono("check", 14.0, tokens::accent()));
-        } else {
-            r = r.push(Space::new().width(Length::Fixed(14.0)));
-        }
-        r = r.push(
-            text(act.label)
-                .font(BARLOW)
-                .size(TEXT_13)
-                .color(fg)
-                .width(Length::Fill),
+                }),
         );
-        if act.checked {
-            r = r.push(
-                text("Active")
-                    .font(BSC_MEDIUM)
-                    .size(TEXT_11)
-                    .color(tokens::accent()),
-            );
-        }
-        list = list.push(menu_row_button(r, d, act.checked, focused, act.on_press));
     }
-
-    column![
-        container(header).padding([SPACE_1, SPACE_1]),
-        kit::divider(),
-        scrollable(
-            container(list)
-                .padding(Padding {
-                    top: 0.0,
-                    right: 14.0,
-                    bottom: 0.0,
-                    left: 0.0,
-                })
-                .width(Length::Fill),
-        )
-        .height(Length::Fill)
-        .width(Length::Fill),
-    ]
-    .spacing(SPACE_2)
-    .width(Length::Fill)
-    .height(Length::Fill)
-    .into()
+    menu_row_button(r, d, open, focused, a.on_press)
 }
 
 fn menu_row_button<'a>(
@@ -643,7 +672,7 @@ fn menu_row_button<'a>(
     };
     let mut btn = button(
         container(content)
-            .height(Length::Fixed(density.row_h().min(36.0)))
+            .height(Length::Fixed(row_h(density)))
             .padding([0, 8])
             .align_y(Alignment::Center)
             .width(Length::Fill),
@@ -679,4 +708,35 @@ fn menu_row_button<'a>(
         btn = btn.on_press(msg);
     }
     btn.into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn main_list_has_nineteen_rows_and_every_command_exists() {
+        assert_eq!(rows().count(), 19);
+        for entry in ENTRIES {
+            if let Entry::Cmd(id, _) = entry {
+                assert!(commands::find(id).is_some(), "unknown command {id}");
+            }
+        }
+        for sub in [
+            MenuSub::Recent,
+            MenuSub::Import,
+            MenuSub::Export,
+            MenuSub::Print,
+            MenuSub::TraceImage,
+            MenuSub::Select,
+            MenuSub::Transform,
+            MenuSub::Help,
+        ] {
+            for (id, _) in sub.commands() {
+                assert!(commands::find(id).is_some(), "{sub:?} cites unknown command {id}");
+            }
+            let (name, fill) = sub.icon();
+            let _ = icons::mono_icon(name, fill, 14.0, Color::WHITE);
+        }
+    }
 }

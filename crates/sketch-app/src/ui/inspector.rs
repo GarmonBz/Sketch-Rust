@@ -1611,7 +1611,11 @@ fn action_btn<'a>(
     let mut btn = button(
         container(
             row![
-                icons::mono(icon_name, 13.0, fg),
+                if active || disabled {
+                    icons::mono(icon_name, 13.0, fg)
+                } else {
+                    icons::tinted(icon_name, false, 13.0, fg)
+                },
                 text(label).font(BARLOW_MEDIUM).size(TEXT_12).color(fg),
             ]
             .spacing(SPACE_1)

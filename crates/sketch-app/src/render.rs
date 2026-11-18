@@ -33,7 +33,9 @@ const WALL_INT: Color = hex(0x63B3ED);
 /// `colors.wallActive` — the live chain.
 const WALL_ACTIVE: Color = hex(0xD946EF);
 /// `colors.selectLine` — the purple highlight on selected walls.
-const SELECT_LINE: Color = hex(0xC05AFA);
+/// Selected area outline (`#A855F7`, adopted with the dark palette on
+/// 2026-11-17; used in every theme).
+const SELECT_LINE: Color = hex(0xA855F7);
 /// `colors.polyOutline` / `colors.fillGLA` — a selected area's outline and
 /// fill (`rgba(43,108,176,.08)`).
 const POLY_OUTLINE: Color = hex(0x2B6CB0);
@@ -464,7 +466,7 @@ fn draw_dimension(
             );
             f.fill(
                 &rect,
-                Color::from_rgba(192.0 / 255.0, 90.0 / 255.0, 250.0 / 255.0, 0.15),
+                Color::from_rgba(168.0 / 255.0, 85.0 / 255.0, 247.0 / 255.0, 0.15),
             );
             f.stroke(
                 &rect,
@@ -1606,10 +1608,13 @@ fn draw_areas(frame: &mut Frame, scene: &Scene) {
             }
         }
         if selected {
-            // `colors.selectPoly` / `selectPolyOutline`.
+            // `colors.selectPoly` / `selectPolyOutline`. The tint is kept
+            // faint (the original used .15): the 2px outline marks the
+            // selection, and a heavier wash hid the area type's own colour
+            // exactly while the user was choosing or editing that type.
             frame.fill(
                 &path,
-                Color::from_rgba(192.0 / 255.0, 90.0 / 255.0, 250.0 / 255.0, 0.15),
+                Color::from_rgba(168.0 / 255.0, 85.0 / 255.0, 247.0 / 255.0, 0.07),
             );
         }
         // `lineWidth = isSelected ? max(2, lineThickness || 1) : lineThickness || 1`

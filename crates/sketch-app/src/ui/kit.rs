@@ -1,8 +1,9 @@
 //! Core widget kit for the Next shell (`docs/ui-redesign/01-design-spec.md`, `02-architecture.md`).
 //!
 //! Every widget reads colour, spacing, radii, typography, and density metrics
-//! from `ui::tokens` and `ui::fonts`, uses monochrome single-pass icons from
-//! `crate::icons::mono`, and avoids `theme::at` fixed coordinates.
+//! from `ui::tokens` and `ui::fonts`, draws icons in their meaning tint at
+//! rest (`crate::icons::tinted`) and in one state colour when active or
+//! disabled, and avoids `theme::at` fixed coordinates.
 
 use std::time::{Duration, Instant};
 
@@ -294,7 +295,11 @@ pub fn icon_button_with<'a>(
         radius: RADIUS_CONTROL,
     };
     let mut btn = button(
-        container(icons::mono(icon_name, icon_px, fg))
+        container(if active || disabled {
+            icons::mono(icon_name, icon_px, fg)
+        } else {
+            icons::tinted(icon_name, false, icon_px, fg)
+        })
             .width(Length::Fixed(size))
             .height(Length::Fixed(size))
             .align_x(Alignment::Center)
@@ -923,7 +928,11 @@ pub fn tile<'a>(
     };
 
     let body = column![
-        icons::mono(icon_name, density.icon_size(), fg),
+        if active || disabled {
+            icons::mono(icon_name, density.icon_size(), fg)
+        } else {
+            icons::tinted(icon_name, false, density.icon_size(), fg)
+        },
         text(label.into())
             .font(BSC_MEDIUM)
             .size(TEXT_11)
@@ -991,7 +1000,11 @@ pub fn menu<'a>(entries: Vec<MenuEntry<'a>>, width: f32, density: Density) -> El
                 if checked {
                     r = r.push(icons::mono("check", 14.0, tokens::accent()));
                 } else if let Some(name) = icon {
-                    r = r.push(icons::mono(name, 14.0, fg));
+                    r = r.push(if disabled {
+                        icons::mono(name, 14.0, fg)
+                    } else {
+                        icons::tinted(name, false, 14.0, fg)
+                    });
                 } else {
                     r = r.push(Space::new().width(Length::Fixed(14.0)));
                 }

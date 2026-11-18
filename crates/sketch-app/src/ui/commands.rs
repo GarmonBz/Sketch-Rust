@@ -37,17 +37,7 @@ pub enum Group {
 }
 
 impl Group {
-    pub const ALL: [Group; 8] = [
-        Group::File,
-        Group::Edit,
-        Group::View,
-        Group::Areas,
-        Group::Insert,
-        Group::Image,
-        Group::Tools,
-        Group::Help,
-    ];
-
+    /// The group's name, shown beside each command in Menu search results.
     pub fn label(self) -> &'static str {
         match self {
             Group::File => "File",
@@ -58,19 +48,6 @@ impl Group {
             Group::Image => "Image",
             Group::Tools => "Tools",
             Group::Help => "Help",
-        }
-    }
-
-    pub fn icon(self) -> &'static str {
-        match self {
-            Group::File => "file",
-            Group::Edit => "pencil-simple",
-            Group::View => "eye",
-            Group::Areas => "polygon",
-            Group::Insert => "shapes",
-            Group::Image => "image",
-            Group::Tools => "sliders",
-            Group::Help => "info",
         }
     }
 }
@@ -1607,9 +1584,130 @@ pub fn all() -> &'static [Command] {
     COMMANDS
 }
 
-/// All commands belonging to `group`, in display order.
-pub fn in_group(group: Group) -> Vec<&'static Command> {
-    all().iter().filter(|c| c.group == group).collect()
+/// The icon a command shows in the Menu and in search: `(Phosphor name,
+/// fill weight)`. The names follow the classic ribbon where it had one (Cut
+/// scissors, Delete x, Subject Info house, Area tool bounding box), and every
+/// name must be embedded in `icons.rs` (checked by
+/// `every_command_has_an_embedded_icon`).
+pub fn icon_for(id: &str) -> Option<(&'static str, bool)> {
+    Some(match id {
+        // File
+        "start-screen" | "page-layout" => ("layout", false),
+        "recent" | "undo-history" => ("clock-counter-clockwise", true),
+        "new" | "page-add" => ("file-plus", false),
+        "open" => ("folder-open", true),
+        "save" | "save-as" => ("floppy-disk", true),
+        "import" => ("arrow-square-in", true),
+        "import-layer" => ("arrow-square-in", false),
+        "import-cad" | "export-dxf" => ("blueprint", true),
+        "export-png" => ("file-image", false),
+        "export-svg" => ("arrow-square-out", true),
+        "export-pdf" => ("file-pdf", true),
+        "print" => ("printer", true),
+        "print-preview" => ("printer", false),
+        "recover-autosave" => ("clock-counter-clockwise", false),
+        "close-window" => ("power", true),
+        // Edit
+        "nudge-up" => ("arrow-up", false),
+        "nudge-down" => ("arrow-down", false),
+        "nudge-left" => ("arrow-left", false),
+        "nudge-right" => ("arrow-right", false),
+        "undo" => ("arrow-u-up-left", false),
+        "redo" => ("arrow-u-up-right", false),
+        "cut" => ("scissors", false),
+        "copy" => ("copy", false),
+        "paste" | "appraise-it-reports" => ("clipboard-text", false),
+        "delete-selected" => ("trash", false),
+        "select-all" => ("selection-all", false),
+        "select-by-type" | "area-detect" => ("intersect", true),
+        "select-areas" | "define-area" => ("bounding-box", false),
+        "select-walls" | "tool-insert-vertex" => ("line-segments", false),
+        "select-text" | "tool-text" => ("text-t", false),
+        "select-dimensions" | "cycle-dimensions" | "tool-dimension-chain" => {
+            ("arrows-horizontal", false)
+        }
+        "select-symbols" | "tool-symbols" | "symbol-library" => ("couch", false),
+        "rotate-selected-cw" | "photo-rotate-right" => ("arrow-clockwise", false),
+        "rotate-selected-ccw" | "photo-rotate-left" => ("arrow-counter-clockwise", false),
+        "orient-h" | "flip-sketch" | "flip-horizontal" | "photo-flip-h" => {
+            ("arrows-left-right", false)
+        }
+        "orient-v" | "flip-vertical" | "photo-flip-v" => ("arrows-down-up", false),
+        "scale-up" | "photo-larger" => ("arrows-out", false),
+        "scale-down" | "photo-smaller" => ("arrows-in", false),
+        "rotate-sketch" => ("arrow-clockwise", true),
+        "rotate-sketch-ccw" => ("arrow-counter-clockwise", true),
+        "layer-bring-front" => ("arrow-line-up", false),
+        "layer-send-back" => ("arrow-line-down", false),
+        "curve-mode" | "tool-curve" => ("bezier-curve", false),
+        "auto-close-loop" | "tool-draw-exterior" | "shape-polygon" => ("polygon", false),
+        "bay-mirror" => ("vector-two", true),
+        "jump-endpoint" | "center-sketch" => ("crosshair", false),
+        // View
+        "underlay-previous" => ("files", false),
+        "underlay-clear" | "photo-remove" => ("file-x", false),
+        "zoom-in" | "zoom-out" => ("magnifying-glass", false),
+        "center-fit" => ("corners-out", false),
+        "zoom-fence" => ("selection-background", false),
+        "toggle-grid" => ("grid-four", false),
+        "toggle-snap" | "toggle-area-snap" => ("magnet", false),
+        "pitch-1ft" | "pitch-half" | "pitch-quarter" | "pitch-1in" | "units-imperial" | "units-metric"
+        | "tool-measure" | "photo-scale" => ("ruler", false),
+        "filter" | "filter-areas" | "filter-exterior" | "filter-interior"
+        | "filter-dimensions" | "filter-labels" | "filter-symbols" => ("funnel", false),
+        "toggle-north" | "photo-orient" => ("compass", false),
+        "mini-map" | "geo-load-map" => ("map-trifold", false),
+        "toggle-calcs" | "area-breakdown" => ("calculator", true),
+        "page-prev" => ("caret-line-left", true),
+        "page-next" => ("caret-line-right", true),
+        "page-first" => ("caret-left", true),
+        "page-last" => ("caret-right", true),
+        "page-delete" => ("file-minus", false),
+        "toggle-canvas-background" | "canvas-bg-light" | "canvas-bg-dark" | "canvas-bg-blue"
+        | "theme-blue" => ("drop", false),
+        "interface-theme" => ("circle-half-tilt", false),
+        "theme-dark" => ("moon", false),
+        "theme-light" => ("sun", false),
+        "density-comfortable" | "tool-select" => ("cursor", false),
+        "density-touch" | "touch-panel" => ("hand-pointing", false),
+        // Areas
+        "label-defaults" => ("text-aa", false),
+        "area-find-undefined" => ("warning", false),
+        "area-redefine" | "photo-edit-mode" => ("pencil-simple", false),
+        "area-clone" => ("copy-simple", false),
+        "area-reopen" | "edit-text-library" => ("list-bullets", false),
+        "area-properties" | "photo-adjust" => ("sliders", false),
+        "area-attributes" => ("list-dashes", false),
+        "area-make-negative" => ("minus-circle", false),
+        "area-auto-subtract" => ("intersect", false),
+        "area-code-settings" => ("list-numbers", false),
+        "area-new-code" => ("plus-circle", false),
+        "area-edit-definitions" | "draw-color" => ("pencil-simple", true),
+        "wall-solids" | "shape-rectangle" => ("rectangle", false),
+        "define-first" | "appraise-it-check" => ("check-circle", false),
+        // Insert
+        "tool-pan" => ("arrows-out-cardinal", false),
+        "tool-draw-interior" => ("square-split-vertical", false),
+        "tool-room-shapes" => ("shapes", false),
+        "shape-circle" => ("circle", false),
+        // Image
+        "photo-load" => ("image", false),
+        "photo-show" => ("eye", true),
+        "photo-hide" => ("eye-slash", true),
+        "geo-coordinate" => ("map-pin", true),
+        "geo-address" => ("globe-hemisphere-west", false),
+        // Tools and Help
+        "disto-connect" => ("bluetooth", true),
+        "subject-info" => ("house-line", false),
+        "options" => ("gear", true),
+        "make-symbol-from-selection" => ("star", false),
+        "shortcuts" => ("keyboard", false),
+        "user-guide" | "about" => ("info", false),
+        "appraise-it-preview" => ("eye", false),
+        "appraise-it-send" => ("export", false),
+        "email" => ("envelope-simple", true),
+        _ => return None,
+    })
 }
 
 /// Finds a registered command by its stable string id.
@@ -1814,5 +1912,30 @@ mod tests {
             count += 1;
         }
         assert_eq!(count, 634, "expected 634 inventory rows");
+    }
+
+    /// Every command shows an icon in the Menu, and each one is embedded:
+    /// building the icon element panics in a debug build when it is not.
+    #[test]
+    fn every_command_has_an_embedded_icon() {
+        for cmd in all() {
+            let (name, fill) = icon_for(cmd.id)
+                .unwrap_or_else(|| panic!("command {} has no icon", cmd.id));
+            let _ = crate::icons::mono_icon(name, fill, 14.0, iced::Color::WHITE);
+        }
+    }
+
+    /// Icons that name an action carry a tint; structural glyphs do not.
+    #[test]
+    fn action_icons_are_tinted_and_structural_glyphs_are_not() {
+        use crate::ui::tokens::IconTint;
+        assert_eq!(crate::icons::tint_of("trash"), Some(IconTint::Red));
+        assert_eq!(crate::icons::tint_of("scissors"), Some(IconTint::Blue));
+        assert_eq!(crate::icons::tint_of("ruler"), Some(IconTint::Orange));
+        assert_eq!(crate::icons::tint_of("floppy-disk"), Some(IconTint::Green));
+        assert_eq!(crate::icons::tint_of("bluetooth"), Some(IconTint::Slate));
+        for glyph in ["caret-down", "dots-three", "list", "x", "check", "plus", "minus"] {
+            assert_eq!(crate::icons::tint_of(glyph), None, "{glyph} should stay neutral");
+        }
     }
 }

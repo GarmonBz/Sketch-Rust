@@ -626,18 +626,20 @@ fn drawn_area_block<'a>(
 
     let sub = area.subtracted.unwrap_or(0.0);
     let sub_text = if sub > 0.0 {
-        format!("-{sub:.2} sf")
+        format!("-{sub:.1} sf")
     } else {
-        "0.00 sf".to_owned()
+        "0.0 sf".to_owned()
     };
+    // One decimal for areas and lengths everywhere (rows, inspector, plan
+    // labels, totals); only the factor, a multiplier, keeps two.
     let details = container(
         column![
-            detail_line("Base area", format!("{:.2} sf", area.base_area), false),
+            detail_line("Base area", format!("{:.1} sf", area.base_area), false),
             detail_line("Factor", format!("{:.2}", area.factor), false),
-            detail_line("Total", format!("{:.2} sf", area.total), false),
+            detail_line("Total", format!("{:.1} sf", area.total), false),
             detail_line("Subtracted", sub_text, sub > 0.0),
-            detail_line("Net area", format!("{:.2} sf", area.net_area), false),
-            detail_line("Perimeter", format!("{:.2}'", area.perimeter), false),
+            detail_line("Net area", format!("{:.1} sf", area.net_area), false),
+            detail_line("Perimeter", format!("{:.1}'", area.perimeter), false),
         ]
         .spacing(2),
     )

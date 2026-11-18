@@ -934,9 +934,24 @@ pub fn draw_overlay(
         }
     }
     if mode == Mode::DefineArea && state.chooser.is_none() {
+        // The hover size is a preview for an outline that has no label yet.
+        // An area that already posts its own label shows that instead; a
+        // second number drawn over it made both unreadable.
+        let unlabelled = |region: &Region| match region {
+            Region::Face(_) => true,
+            Region::Area(id) => scene
+                .drawing
+                .polygons
+                .iter()
+                .find(|p| p.id == *id)
+                .is_none_or(|p| p.kind == "UND" || p.kind.is_empty()),
+        };
         if let Some(region) = &state.hover {
             let ring = define_area::region_ring(scene.drawing, region);
             crate::render::draw_drop_hint(frame, scene, &ring, hex(0x6366F1));
+            if !unlabelled(region) {
+                return;
+            }
             let area = match region {
                 Region::Face(f) => f.area,
                 Region::Area(id) => scene
@@ -1080,7 +1095,7 @@ fn focus_cycle(reverse: bool) -> Task<Message> {
             }
         })
     };
-    iced_runtime::task::widget(operation::scope("area-chooser-scope".into(), op))
+    iced_runtime::task::widget(operation::scope("area-chooser-scope-list".into(), op))
 }
 
 pub fn post_controls<'a>(post: &AutoPost, defaults: bool) -> Element<'a, Message> {

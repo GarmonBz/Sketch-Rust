@@ -308,7 +308,11 @@ fn compact_pill<'a>(app: &'a App, tool: TrayTool, d: Density) -> Element<'a, Mes
     };
 
     let mut content = row![
-        icons::mono(tool.icon(), 15.0, fg),
+        if highlighted {
+            icons::mono(tool.icon(), 15.0, fg)
+        } else {
+            icons::tinted(tool.icon(), false, 15.0, fg)
+        },
         text(tool.label())
             .font(if highlighted {
                 BARLOW_SEMIBOLD

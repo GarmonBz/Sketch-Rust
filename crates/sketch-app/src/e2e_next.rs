@@ -7,7 +7,6 @@ use crate::pages_nav::NavMsg;
 use crate::popup_menu::PopupMsg;
 use crate::statusbar::StatusMsg;
 use crate::theme::InterfaceTheme;
-use crate::ui::commands::Group;
 use crate::ui::layout::SizeClass;
 use crate::ui::menu::MenuSub;
 use crate::ui::tokens::Density;
@@ -189,79 +188,90 @@ fn p3_menu_opens_navigates_and_runs_commands_across_sizes() {
         } else {
             harness.send(Message::Ui(UiMsg::ToggleMenu));
         }
-        assert!(harness.shows("MENU"), "MENU header missing at {label}");
-        assert!(harness.shows("View"), "View group missing at {label}");
+        assert!(harness.shows("Property details"), "Menu rows missing at {label}");
+        assert!(harness.shows("Transform sketch"), "Transform row missing at {label}");
+        // Drawing controls have their own home; the Menu no longer repeats them.
+        assert!(!harness.shows("Show grid"), "Menu still lists Show grid at {label}");
 
-        harness.send(Message::Ui(UiMsg::MenuGroup(Group::View)));
-        assert!(harness.shows("Units"), "Units submenu missing at {label}");
-        assert!(
-            harness.shows("Show grid"),
-            "Show grid command missing at {label}"
-        );
+        harness.send(Message::Ui(UiMsg::MenuSub(Some(MenuSub::Transform))));
+        assert!(harness.shows("Flip horizontally"), "Transform fly-out missing at {label}");
 
-        harness.send(Message::Ui(UiMsg::MenuSub(Some(MenuSub::Units))));
+        // Search reaches every command, including ones that left the Menu.
+        harness.send(Message::Ui(UiMsg::MenuQuery("Metric".into())));
         assert!(
-            harness.shows("Metric (m / m²)"),
-            "Metric option missing at {label}"
+            harness.shows("Units: Metric (m / m²)"),
+            "search result missing at {label}"
         );
-        harness.script(&["click \"Metric (m / m²)\""]);
-        assert!(!harness.shows("MENU"), "Menu should close after running");
+        harness.script(&["click \"Units: Metric (m / m²)\""]);
+        assert!(!harness.shows("Property details"), "Menu should close after running at {label}");
         let app = state(harness);
         assert!(app.drawing.options.units.metric);
     }
 
-    // Escape closes the Menu; Left/Right switches groups cleanly.
+    // Keyboard: Down twice reaches Recent, Right opens it, Left closes it,
+    // Enter on a fly-out row runs it, Escape closes the Menu.
     let mut kbd = harness_next_at(VIEWPORT);
     kbd.send(Message::Ui(UiMsg::ToggleMenu));
+    kbd.send(Message::Ui(UiMsg::MenuMove(1)));
+    kbd.send(Message::Ui(UiMsg::MenuMove(1)));
     kbd.send(Message::Ui(UiMsg::MenuSwitchGroup(1)));
-    assert!(kbd.shows("Select by type"));
+    assert!(kbd.shows("Show start screen"), "Right should open Recent");
+    kbd.send(Message::Ui(UiMsg::MenuSwitchGroup(-1)));
+    assert!(!kbd.shows("Show start screen"), "Left should close Recent");
     kbd.script(&["type escape"]);
-    assert!(!kbd.shows("MENU"));
+    assert!(!kbd.shows("Property details"));
 
-    // Visual captures for Wide and Compact Menu.
+    // Visual captures: Wide with Export open, Wide searching, Compact.
     let mut wide_shot = harness_next_at(iced::Size::new(1400.0, 860.0));
     wide_shot.script(&["click \"Menu\""]);
-    wide_shot.send(Message::Ui(UiMsg::MenuGroup(Group::View)));
-    wide_shot.send(Message::Ui(UiMsg::MenuSub(Some(MenuSub::Theme))));
+    wide_shot.send(Message::Ui(UiMsg::MenuSub(Some(MenuSub::Export))));
+    assert!(wide_shot.shows("DXF for CAD"));
     let p_wide = wide_shot.screenshot_in("e2e-next", "p3-menu-wide");
     assert!(p_wide.exists());
 
+    let mut search_shot = harness_next_at(iced::Size::new(1400.0, 860.0));
+    search_shot.send(Message::Ui(UiMsg::ToggleMenu));
+    search_shot.send(Message::Ui(UiMsg::MenuQuery("flip".into())));
+    let p_search = search_shot.screenshot_in("e2e-next", "p3-menu-search-wide");
+    assert!(p_search.exists());
+
     let mut cmp_shot = harness_next_at(iced::Size::new(372.0, 800.0));
     cmp_shot.send(Message::Ui(UiMsg::ToggleMenu));
-    cmp_shot.send(Message::Ui(UiMsg::MenuGroup(Group::View)));
     let p_cmp = cmp_shot.screenshot_in("e2e-next", "p3-menu-compact");
     assert!(p_cmp.exists());
 }
 
+/// Ctrl K opens the Menu with its search field; Enter runs the highlighted
+/// match, and a second Ctrl K closes it. (The separate command palette was
+/// retired on 2026-11-17.)
 #[test]
-fn p3_command_palette_searches_full_next_registry_and_runs_commands() {
+fn p3_ctrl_k_opens_menu_search_and_runs_commands() {
     let mut harness = harness_next_at(VIEWPORT);
-    harness.send(Message::CommandPaletteOpen);
-    harness.send(Message::CommandPaletteQuery("Metric".into()));
+    harness.send(Message::Key(KeyCmd::CommandPalette));
+    assert!(harness.shows("Search all commands"), "Ctrl K should open the Menu");
+    harness.send(Message::Ui(UiMsg::MenuQuery("Metric".into())));
     assert!(harness.shows("Units: Metric (m / m²)"));
-    harness.send(Message::CommandPaletteRun);
+    harness.send(Message::Ui(UiMsg::MenuEnter));
     assert!(!harness.shows("Units: Metric (m / m²)"));
 
-    harness.send(Message::CommandPaletteOpen);
-    harness.send(Message::CommandPaletteQuery("Show grid".into()));
+    harness.send(Message::Key(KeyCmd::CommandPalette));
+    harness.send(Message::Ui(UiMsg::MenuQuery("Show grid".into())));
     assert!(harness.shows("Show grid"));
-    harness.send(Message::CommandPaletteRun);
+    harness.send(Message::Ui(UiMsg::MenuEnter));
 
-    harness.send(Message::CommandPaletteOpen);
-    harness.send(Message::CommandPaletteQuery("totals".into()));
-    harness.send(Message::CommandPaletteRun);
+    harness.send(Message::Key(KeyCmd::CommandPalette));
+    harness.send(Message::Ui(UiMsg::MenuQuery("totals".into())));
+    harness.send(Message::Ui(UiMsg::MenuEnter));
+
+    // A second Ctrl K closes it again.
+    harness.send(Message::Key(KeyCmd::CommandPalette));
+    harness.send(Message::Key(KeyCmd::CommandPalette));
+    assert!(!harness.shows("Search all commands"));
 
     let app = state(harness);
     assert!(app.drawing.options.units.metric);
     assert!(!app.view.grid);
     assert!(app.ui.ledger_open);
-
-    // Visual capture of Next command palette.
-    let mut shot_h = harness_next_at(VIEWPORT);
-    shot_h.send(Message::CommandPaletteOpen);
-    shot_h.send(Message::CommandPaletteQuery("area".into()));
-    let path = shot_h.screenshot_in("e2e-next", "p3-palette-wide");
-    assert!(path.exists());
 }
 
 #[test]
@@ -331,17 +341,17 @@ fn p4_pages_rename_search_undo_redo_and_export_work_at_all_sizes() {
         harness.send(Message::Undo);
         harness.send(Message::Redo);
 
-        // 7. Open command search from top bar.
+        // 7. The top bar's search opens the Menu with its search field.
         if matches!(class, SizeClass::Wide) {
             harness.script(&["click \"Search commands\""]);
         } else {
-            harness.send(Message::CommandPaletteOpen);
+            harness.send(Message::Key(KeyCmd::CommandPalette));
         }
         assert!(
-            harness.shows("Type a command..."),
-            "command search missing at {label}"
+            harness.shows("Search all commands"),
+            "Menu search missing at {label}"
         );
-        harness.send(Message::CommandPaletteClose);
+        harness.send(Message::Ui(UiMsg::CloseMenu));
 
         // 8. Export menu / Send to report flow.
         harness.send(Message::Ui(UiMsg::ToggleExportMenu));
@@ -588,6 +598,32 @@ fn drawn_square_center_on_screen(w: f32, h: f32) -> (f32, f32) {
         .to_screen(crate::view_state::World { x: cx, y: cy });
     let r = app.canvas_rect();
     (r.x + sx as f32, r.y + sy as f32)
+}
+
+/// Closing the first area on a page fits the sketch into the drawing, so the
+/// outline sits in the middle of the view instead of a corner of it.
+#[test]
+fn first_closed_area_is_centred_in_the_view_across_sizes() {
+    for &(label, w, h, _) in SIZES {
+        let mut h_app = harness_next_at(iced::Size::new(w, h));
+        draw_closed_square(&mut h_app);
+        let app = state(h_app);
+        let poly = &app.drawing.polygons[0];
+        let n = poly.points.len() as f64;
+        let cx = poly.points.iter().map(|p| p.x).sum::<f64>() / n;
+        let cy = poly.points.iter().map(|p| p.y).sum::<f64>() / n;
+        let (sx, sy) = app
+            .view
+            .to_screen(crate::view_state::World { x: cx, y: cy });
+        let r = app.canvas_rect();
+        let (mx, my) = (f64::from(r.width) / 2.0, f64::from(r.height) / 2.0);
+        assert!(
+            (sx - mx).abs() < f64::from(r.width) * 0.1 && (sy - my).abs() < f64::from(r.height) * 0.1,
+            "the first closed area is centred at {label}: centre ({sx:.0}, {sy:.0}) in {:.0} x {:.0}",
+            r.width,
+            r.height
+        );
+    }
 }
 
 #[test]
@@ -2037,8 +2073,8 @@ fn p12_symbol_library_and_shape_editing_across_sizes() {
             let cmd = crate::ui::commands::find("symbol-library").unwrap();
             let _ = app.update((cmd.run)(&app));
             assert!(app.ui.symbol_library.open);
-            assert_eq!(app.symbols_lib().library.symbols.len(), 639);
-            assert_eq!(app.symbols_lib().categories.len(), 28);
+            assert_eq!(app.symbols_lib().library.symbols.len(), 572);
+            assert_eq!(app.symbols_lib().categories.len(), 22);
 
             let first_sym_id = app.ui.symbol_library.focused.clone().unwrap();
 
@@ -2203,7 +2239,7 @@ fn p12_symbol_library_and_shape_editing_across_sizes() {
             assert!(report.conflicts.contains(&desk_id));
             let _ = std::fs::remove_dir_all(&tmp_dir);
 
-            // Delete a category (writes symbols.json.bak) then Restore original library -> 639 symbols.
+            // Delete a category (writes symbols.json.bak) then Restore original library -> 572 symbols.
             let del_cat = app.symbols_lib().categories[0].key.clone();
             let _ = app.update(Message::Ui(UiMsg::SymbolLibrary(SymMsg::Open(None))));
             let _ = app.update(Message::Ui(UiMsg::SymbolLibrary(
@@ -2221,8 +2257,8 @@ fn p12_symbol_library_and_shape_editing_across_sizes() {
                 SymMsg::RequestRestoreOriginal,
             )));
             let _ = app.update(Message::Ui(UiMsg::SymbolLibrary(SymMsg::Confirm)));
-            assert_eq!(app.symbols_lib().library.symbols.len(), 639);
-            assert_eq!(app.symbols_lib().categories.len(), 28);
+            assert_eq!(app.symbols_lib().library.symbols.len(), 572);
+            assert_eq!(app.symbols_lib().categories.len(), 22);
             assert_eq!(app.ui.symbol_library.category, ALL_KEY);
         });
     });
@@ -2511,9 +2547,7 @@ fn p13_start_screen_dialogs_and_guide_across_sizes() {
 fn p14_coverage_audit_themes_and_menu_workflows_across_sizes() {
     use crate::canvas_theme::CanvasTheme;
     use crate::disto::DistoMsg;
-    use crate::select_menu::SelectKind;
     use crate::theme::InterfaceTheme;
-    use crate::transform::Axis;
     use crate::ui::menu::MenuSub;
 
     // 1. Live Menu submenus + Theme switching (Light / Blue / Dark) & screenshots at 1400x860.
@@ -2561,8 +2595,8 @@ fn p14_coverage_audit_themes_and_menu_workflows_across_sizes() {
         h.send(Message::Dialog(crate::dialog::DialogMsg::Cancel));
 
         // Menu > View > Interface theme -> Light + Canvas Light.
-        h.send(Message::Ui(UiMsg::MenuInterfaceTheme(InterfaceTheme::Light)));
-        h.send(Message::Ui(UiMsg::MenuCanvasTheme(CanvasTheme::Light)));
+        h.send(Message::PopupMenu(PopupMsg::Interface(InterfaceTheme::Light)));
+        h.send(Message::PopupMenu(PopupMsg::Canvas(CanvasTheme::Light)));
         assert_eq!(crate::theme::interface_theme(), InterfaceTheme::Light);
         let shot_light = h.screenshot_in("e2e-next", "p14-theme-light-wide");
         assert!(shot_light.exists());
@@ -2581,15 +2615,15 @@ fn p14_coverage_audit_themes_and_menu_workflows_across_sizes() {
             }));
             h.send(Message::Key(KeyCmd::Enter));
         }
-        h.send(Message::Ui(UiMsg::MenuInterfaceTheme(InterfaceTheme::Blue)));
-        h.send(Message::Ui(UiMsg::MenuCanvasTheme(CanvasTheme::Blue)));
+        h.send(Message::PopupMenu(PopupMsg::Interface(InterfaceTheme::Blue)));
+        h.send(Message::PopupMenu(PopupMsg::Canvas(CanvasTheme::Blue)));
         assert_eq!(crate::theme::interface_theme(), InterfaceTheme::Blue);
         let shot_blue = h.screenshot_in("e2e-next", "p14-theme-blue-wide");
         assert!(shot_blue.exists());
 
         // Restore default Dark UI + Light canvas before finishing.
-        h.send(Message::Ui(UiMsg::MenuInterfaceTheme(InterfaceTheme::Dark)));
-        h.send(Message::Ui(UiMsg::MenuCanvasTheme(CanvasTheme::Light)));
+        h.send(Message::PopupMenu(PopupMsg::Interface(InterfaceTheme::Dark)));
+        h.send(Message::PopupMenu(PopupMsg::Canvas(CanvasTheme::Light)));
     }
 
     // 2. Menu submenus, filters, page underlay, sketch transforms across all 4 viewport sizes.
@@ -2613,27 +2647,27 @@ fn p14_coverage_audit_themes_and_menu_workflows_across_sizes() {
             h.send(Message::Key(KeyCmd::Enter));
         }
 
-        // Verify Select by type, Flip, Filters, Pitch, Units, Underlay work at every size.
+        // Verify the Select fly-out, filters, pitch, units, flip and underlay at every size.
         h.send(Message::Ui(UiMsg::ToggleMenu));
-        h.send(Message::Ui(UiMsg::MenuSub(Some(MenuSub::SelectByType))));
-        assert!(h.shows("Select by type"), "submenu missing at {label}");
-        h.send(Message::Ui(UiMsg::MenuSelectKind(SelectKind::All)));
+        h.send(Message::Ui(UiMsg::MenuSub(Some(MenuSub::Select))));
+        assert!(h.shows("Everything"), "Select fly-out missing at {label}");
+        h.send(Message::Ui(UiMsg::MenuRunId("select-all")));
         {
             let app = state(h);
             assert!(
                 !app.selection.lines.is_empty(),
-                "MenuSelectKind should select walls at {label}"
+                "Select > Everything should select walls at {label}"
             );
             h = harness_next_at(size);
         }
 
-        h.send(Message::Ui(UiMsg::MenuFilter(0)));
-        h.send(Message::Ui(UiMsg::MenuPitch(1)));
-        h.send(Message::Ui(UiMsg::MenuUnitsMetric(true)));
-        h.send(Message::Ui(UiMsg::MenuUnitsMetric(false)));
+        h.send(Message::Status(crate::statusbar::StatusMsg::Filter(0)));
+        h.send(Message::Ui(UiMsg::MenuRunId("pitch-half")));
+        h.send(Message::Ui(UiMsg::MenuRunId("units-metric")));
+        h.send(Message::Ui(UiMsg::MenuRunId("units-imperial")));
         h.send(Message::RotateSketchBy(90.0));
         h.send(Message::RotateSketchBy(-90.0));
-        h.send(Message::Ui(UiMsg::MenuFlip(Axis::Horizontal)));
+        h.send(Message::Ui(UiMsg::MenuRunId("flip-horizontal")));
         h.send(Message::Status(crate::statusbar::StatusMsg::PageAdd));
         h.send(Message::Status(crate::statusbar::StatusMsg::Underlay(Some(0))));
 
@@ -2881,5 +2915,289 @@ fn inspector_pages_render_without_scrolling() {
                 assert!(shot.exists());
             }
         }
+    }
+}
+
+/// Every dialog, and each of its tabs, fits a 1920 x 1080 window without its
+/// form scrolling (owner requirement, 2026-11-17). Lists of the user's own
+/// data may scroll inside their own box; those scroll areas carry an id that
+/// ends in "-list" and are skipped. Scroll areas that exist with no dialog
+/// open (the ledger and so on) are the baseline and are skipped too.
+/// Opens every dialog and tab at `size` and returns the scroll areas that
+/// overflow (lists of the user's own data, ids ending in "-list", excepted).
+fn dialogs_that_scroll_at(size: iced::Size, tag: &str) -> Vec<String> {
+    use crate::color_dialog::{ColorMsg, Tab as ColorTab};
+    use crate::disto::DistoMsg;
+    use crate::e2e_support::{scroll_areas, ScrollArea};
+    use crate::guide::{GuideMsg, TOPICS};
+    use crate::options_dialog::{OptMsg, Tab as OptTab};
+    use crate::page_layout::LayoutMsg;
+    use crate::shortcuts::ShortcutsMsg;
+    use crate::subject_info::{SubjectMsg, Tab as SubjectTab};
+    use crate::text_manager::TextManagerMsg;
+    use crate::ui::start::Msg as StartMsg;
+
+    let full_hd = size;
+
+    let prepared = || {
+        let mut h = harness_next_at(full_hd);
+        draw_closed_square(&mut h);
+        h.send(Message::Key(KeyCmd::SelectAll));
+        h.send(Message::AreaWorkflow(crate::area_workflow::Msg::AssignSelected(
+            "GLA1".into(),
+        )));
+        h.send(Message::Key(KeyCmd::SelectAll));
+        h
+    };
+    let same = |a: &ScrollArea, b: &ScrollArea| {
+        (a.bounds.x - b.bounds.x).abs() < 0.5
+            && (a.bounds.y - b.bounds.y).abs() < 0.5
+            && (a.bounds.width - b.bounds.width).abs() < 0.5
+            && (a.bounds.height - b.bounds.height).abs() < 0.5
+    };
+    let baseline = scroll_areas(&state(prepared()), full_hd);
+
+    let mut cases: Vec<(String, Vec<Message>)> = Vec::new();
+    for tab in OptTab::ALL {
+        cases.push((
+            format!("options-{}", tab.label()),
+            vec![Message::Options(OptMsg::Open), Message::Options(OptMsg::Tab(*tab))],
+        ));
+    }
+    for tab in [SubjectTab::Parcel, SubjectTab::Comments, SubjectTab::Tables] {
+        cases.push((
+            format!("property-details-{tab:?}"),
+            vec![Message::OpenSubjectInfo, Message::SubjectInfo(SubjectMsg::Tab(tab))],
+        ));
+    }
+    for tab in [ColorTab::Standard, ColorTab::Custom] {
+        cases.push((
+            format!("colour-{tab:?}"),
+            vec![
+                Message::Color(ColorMsg::Open("#3182ce".into())),
+                Message::Color(ColorMsg::Tab(tab)),
+            ],
+        ));
+    }
+    for (i, _) in TOPICS.iter().enumerate() {
+        cases.push((format!("guide-{i}"), vec![Message::Guide(GuideMsg::Open(i))]));
+    }
+    for (name, steps) in [
+        ("page-layout", vec![Message::PageLayout(LayoutMsg::Open)]),
+        ("print-preview", vec![Message::PrintPreviewOpen]),
+        ("breakdown", vec![Message::OpenBreakdown]),
+        ("area-attributes", vec![Message::OpenAreaAttributes(true)]),
+        ("area-properties", vec![Message::AreaProps]),
+        ("room-shapes", vec![Message::RoomShapeOpen]),
+        ("laser", vec![Message::Disto(DistoMsg::Connect)]),
+        ("room-labels", vec![Message::TextLibraryManager(TextManagerMsg::Open)]),
+        ("undo-history", vec![Message::UndoHistory]),
+        ("shortcuts", vec![Message::Shortcuts(ShortcutsMsg::Open)]),
+        ("map", vec![Message::GeoLoadMap]),
+        ("area-types", vec![Message::OpenCodesEditor]),
+        (
+            "symbol-library",
+            vec![Message::Ui(UiMsg::SymbolLibrary(
+                crate::ui::symbol_library::Msg::Open(None),
+            ))],
+        ),
+        ("start", vec![Message::Ui(UiMsg::Start(StartMsg::Open))]),
+        ("about", vec![Message::About]),
+    ] {
+        cases.push((name.to_owned(), steps));
+    }
+
+    let mut failures = Vec::new();
+    for (name, steps) in cases {
+        eprintln!("fit-{tag}: {name}");
+        let mut h = prepared();
+        for m in steps {
+            h.send(m);
+        }
+        let _ = h.screenshot_in(&format!("e2e-next/fit-{tag}"), &name);
+        let app = state(h);
+        for area in scroll_areas(&app, full_hd) {
+            let is_list = area.id.as_deref().is_some_and(|id| id.contains("-list"));
+            let in_baseline = baseline.iter().any(|b| same(b, &area));
+            if area.overflows() && !is_list && !in_baseline {
+                failures.push(format!(
+                    "{tag} {name}: {:.0} x {:.0} area holds {:.0} x {:.0} content (id {:?})",
+                    area.bounds.width,
+                    area.bounds.height,
+                    area.content.width,
+                    area.content.height,
+                    area.id
+                ));
+            }
+        }
+    }
+    // The area chooser opens by clicking an untyped outline with the Area tool.
+    {
+        let (cx, cy) = drawn_square_center_on_screen(full_hd.width, full_hd.height);
+        let mut h = harness_next_at(full_hd);
+        draw_closed_square(&mut h);
+        h.send(Message::Rail(crate::view_state::RailTool::DefineArea));
+        h.script(&[&format!("click ({cx:.1}, {cy:.1})")]);
+        assert!(h.shows("What is this area?"), "chooser did not open");
+        let _ = h.screenshot_in(&format!("e2e-next/fit-{tag}"), "area-chooser");
+        let app = state(h);
+        for area in scroll_areas(&app, full_hd) {
+            let is_list = area.id.as_deref().is_some_and(|id| id.contains("-list"));
+            let in_baseline = baseline.iter().any(|b| same(b, &area));
+            if area.overflows() && !is_list && !in_baseline {
+                failures.push(format!(
+                    "{tag} area-chooser: {:.0} x {:.0} area holds {:.0} x {:.0} content",
+                    area.bounds.width, area.bounds.height, area.content.width, area.content.height
+                ));
+            }
+        }
+    }
+
+    failures
+}
+
+/// Every dialog, and each of its tabs, fits without its form scrolling
+/// (owner requirement, 2026-11-17): at 1920 x 1080, and at 1382 x 816 (the
+/// owner's 3456 x 2160 screen at 250% scaling, maximized above the taskbar).
+#[test]
+fn dialogs_fit_1920x1080_without_scrolling() {
+    let mut failures = dialogs_that_scroll_at(iced::Size::new(1920.0, 1080.0), "1920");
+    failures.extend(dialogs_that_scroll_at(iced::Size::new(1382.0, 816.0), "1382"));
+    assert!(
+        failures.is_empty(),
+        "dialogs that scroll:
+{}",
+        failures.join("
+")
+    );
+}
+
+/// The Dark interface on the Dark drawing background (the field precision
+/// CAD palette, 2026-11-17): a typed area, selected and not.
+#[test]
+fn readme_floor_plan_screenshot() {
+    use crate::area_workflow::Msg as AreaMsg;
+    use sketch_core::geometry::Pt;
+
+    fn walls(app: &mut crate::App, mode: Mode, pts: &[(f64, f64)]) {
+        let _ = app.set_mode(mode);
+        let ctx = crate::drawing::DrawCtx {
+            snap: false,
+            ..app.draw_ctx()
+        };
+        // Plan coordinates run down the page; the drawing's y runs up.
+        app.drawing.pen_down_at(Pt::new(pts[0].0, -pts[0].1), ctx);
+        for &(x, y) in &pts[1..] {
+            let before = app.drawing.lines.last().map(|l| l.id);
+            app.drawing.click(Pt::new(x, -y), ctx);
+            app.finish_wall_commit(before);
+        }
+        let _ = app.update(Message::Key(KeyCmd::Escape));
+    }
+
+    // A small ranch house in feet: an L-shaped living area, an attached
+    // garage and a front porch, with rooms and furniture.
+    let (mut app, _) = crate::App::boot(1.0);
+    let areas: [(&str, &[(f64, f64)]); 3] = [
+        (
+            "GLA1",
+            &[(0., 0.), (44., 0.), (44., 28.), (24., 28.), (24., 38.), (0., 38.), (0., 0.)],
+        ),
+        ("GAR", &[(44., 0.), (68., 0.), (68., 24.), (44., 24.), (44., 0.)]),
+        ("OFP", &[(24., 28.), (44., 28.), (44., 36.), (24., 36.), (24., 28.)]),
+    ];
+    for (code, pts) in areas {
+        let known: std::collections::BTreeSet<i64> =
+            app.drawing.polygons.iter().map(|p| p.id).collect();
+        walls(&mut app, Mode::DrawExterior, pts);
+        let new = app
+            .drawing
+            .polygons
+            .iter()
+            .map(|p| p.id)
+            .find(|id| !known.contains(id))
+            .unwrap_or_else(|| panic!("{code} closes"));
+        app.selection.clear();
+        app.selection.polys.insert(new);
+        let _ = app.update(Message::AreaWorkflow(AreaMsg::AssignSelected(code.into())));
+    }
+    for room in [
+        &[(14., 0.), (14., 16.), (0., 16.)][..],
+        &[(14., 10.), (24., 10.), (24., 0.)][..],
+        &[(14., 16.), (14., 38.)][..],
+    ] {
+        walls(&mut app, Mode::DrawInterior, room);
+    }
+    for (id, x, y) in [
+        ("caddillo/bed", 7.0, 6.5),
+        ("caddillo/tub", 19.0, 1.4),
+        ("caddillo/toilet", 22.5, 8.5),
+        ("caddillo/sink-bath-rect", 16.2, 8.8),
+        ("caddillo/fridge-36", 42.2, 1.5),
+        ("caddillo/range-30", 37.0, 1.3),
+        ("caddillo/sink-kitchen-dbl", 31.0, 1.2),
+        ("caddillo/dining-table-96x42", 32.0, 12.0),
+        ("caddillo/sectional-l-96", 7.0, 26.0),
+        ("caddillo/car-plan-6x16", 49.5, 11.0),
+        ("caddillo/washer-27", 66.5, 2.0),
+        ("caddillo/dryer-27", 66.5, 4.6),
+        ("caddillo/door-swing-36", 34.0, 28.0),
+        ("caddillo/door-garage-108", 50.0, 24.0),
+    ] {
+        assert!(app.symbols_lib().symbol(id).is_some(), "{id}");
+        app.place_symbol_at(Pt::new(x, -y), id.into());
+    }
+    app.selection.clear();
+    let model = app.build_save_model();
+    let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/e2e-next");
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("Sample House.json");
+    std::fs::write(&file, serde_json::to_vec(&model).unwrap()).unwrap();
+
+    let mut h = harness_next_at(iced::Size::new(1600.0, 900.0));
+    h.send(Message::FileDropped(file));
+    h.send(Message::Key(KeyCmd::CenterFit));
+    h.send(Message::Status(StatusMsg::ZoomOut)); // clear of the tool tray
+    h.send(Message::Key(KeyCmd::Escape));
+    h.wait(5000); // let the "opened" toast go
+    assert!(h.screenshot_in("e2e-next", "readme-floor-plan").exists());
+    let opened = state(h);
+    let mut codes: Vec<&str> = opened.drawing.polygons.iter().map(|p| p.kind.as_str()).collect();
+    codes.sort();
+    assert_eq!(codes, ["GAR", "GLA1", "OFP"]);
+    assert_eq!(opened.drawing.symbols.len(), 14);
+}
+
+#[test]
+fn dark_palette_on_dark_drawing_background_screenshots() {
+    use crate::canvas_theme::{self, CanvasTheme};
+
+    // One screenshot per test window (an `iced_test` limit), so the
+    // selected and plain views each get their own.
+    for selected in [true, false] {
+        let mut h = harness_next_at(VIEWPORT);
+        h.send(Message::PopupMenu(PopupMsg::Interface(InterfaceTheme::Dark)));
+        h.send(Message::PopupMenu(PopupMsg::Canvas(CanvasTheme::Dark)));
+        draw_closed_square(&mut h);
+        h.send(Message::Key(KeyCmd::SelectAll));
+        h.send(Message::AreaWorkflow(crate::area_workflow::Msg::AssignSelected(
+            "GLA1".into(),
+        )));
+        h.send(Message::Key(KeyCmd::SelectAll));
+        if !selected {
+            h.send(Message::Key(KeyCmd::Escape));
+        }
+        assert_eq!(canvas_theme::current(), CanvasTheme::Dark);
+        assert_eq!(
+            CanvasTheme::Dark.bg(),
+            iced::Color::from_rgb8(0x0f, 0x14, 0x1a),
+            "the dark drawing background is #0F141A"
+        );
+        let name = if selected {
+            "p14-dark-canvas-selected-wide"
+        } else {
+            "p14-dark-canvas-wide"
+        };
+        assert!(h.screenshot_in("e2e-next", name).exists());
     }
 }

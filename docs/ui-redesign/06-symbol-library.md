@@ -4,7 +4,7 @@
 
 - Library file: `assets/symbols.json`, external to the executable, found at run time by
   `sketch_core::symbols::resolve` and `sketch-app/src/symlib.rs` (`library_path`,
-  `library`, `edit_library`). 639 symbols in 29 categories. CADdillo symbols are CC0
+  `library`, `edit_library`). 572 symbols in 23 categories (67 retired duplicates deleted; `aliases` maps each to its replacement, which old sketches get when they open) with plain names (see `tools/symbol-curation.json`). CADdillo symbols are CC0
   (`docs/SYMBOL_LIBRARY.md`).
 - Types (`crates/sketch-core/src/symbols.rs`):
   - `SymbolLibrary { version, generated_from, symbol_count, categories, default_favorites, symbols: BTreeMap<String, Symbol>, aliases }`

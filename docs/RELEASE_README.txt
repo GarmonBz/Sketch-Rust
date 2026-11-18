@@ -1,4 +1,36 @@
-Sketch Rust 0.1.35 - Windows x64 preview
+Sketch Rust 0.2.3 - Windows x64 preview
+
+0.2.3 tidies the symbol library. Categories have plain names (Doors &
+windows, Kitchen, Bath & plumbing, Utilities and so on), and the CADdillo
+symbols are merged into the matching categories. 67 older symbols that
+a newer one replaces are removed, such as the old 36-inch refrigerator
+(now Fridge 36), leaving 572 symbols. When you open a sketch that uses a
+removed symbol, the newer one takes its place at the same position,
+rotation and size. It can differ a little in shape. The right-click menu
+is redesigned with icons, groups and shortcuts, and Options and Keyboard
+Shortcuts fit a 250% scaled screen without scrolling.
+
+0.2.2 gives the Dark theme a new palette made for CAD work: deep
+blue-black surfaces, a brighter blue for the active tool and selection,
+crisper text, and a darker drawing background with subtle grid lines.
+The top bar sits on the darkest surface. Choose Options > Display >
+Drawing background > Dark to draw on the new dark background. A selected
+area is tinted violet in every theme. Area type colours are unchanged.
+
+0.2.1 refines the new interface. Icons are back in colour: blue for
+selecting and viewing, orange for drawing and editing, red for removing
+and the Area tool, green for files and printing. The Menu is now one
+short column with a search field on top; Ctrl K opens it, and typing
+finds any command. Interface theme, drawing background and control size
+moved to Options > Display. Options, Property Details, Page Layout,
+Print Preview and Keyboard Shortcuts fit a 1920 x 1080 screen without
+scrolling. The first area you close is centred in view, area numbers
+use one decimal everywhere, and a selected area keeps its type's colour.
+
+0.2.0 replaces the ribbon, tool rail, dock and status bar with a top bar,
+a floating tool tray, the Areas ledger, an inspector for the selection,
+an Insert drawer, drawing controls and a start screen. The layout adapts
+to tablets and phones, with a number Pad for touch drawing.
 
 0.1.35 adds native open and save for Sketchie 0.2 JSON workfiles and
 SQLite revision stores. Existing Sketchy files save in their original

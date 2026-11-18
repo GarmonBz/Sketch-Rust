@@ -105,6 +105,48 @@ pub fn mono_icon<'a>(name: &str, fill: bool, size: f32, color: Color) -> Element
         .into()
 }
 
+/// The colour an icon carries by meaning (see `ui::tokens::IconTint`).
+/// Structural glyphs (carets, dots, the menu lines, close, plain arrows,
+/// check marks, plus and minus) return `None` and stay in the text colour, so
+/// the colour lands on the icons that name an action.
+pub fn tint_of(name: &str) -> Option<crate::ui::tokens::IconTint> {
+    use crate::ui::tokens::IconTint::{Blue, Green, Orange, Red, Slate};
+    Some(match name {
+        "cursor" | "selection-background" | "selection-all" | "lasso" | "intersect"
+        | "arrows-out-cardinal" | "magnifying-glass" | "arrows-in" | "arrows-out"
+        | "corners-out" | "grid-four" | "compass" | "globe-hemisphere-west" | "map-trifold"
+        | "info" | "keyboard" | "list-numbers" | "clipboard-text" | "gear"
+        | "circle-half-tilt" | "house-line" | "polygon" | "scissors" | "arrow-clockwise"
+        | "arrow-counter-clockwise" | "arrow-u-up-left" | "arrow-u-up-right"
+        | "arrows-left-right" | "arrows-down-up" | "eye" | "layout" | "browser" | "moon"
+        | "sun" | "caret-line-left" | "caret-line-right" => Blue,
+        "pencil-simple" | "ruler" | "arrows-horizontal" | "bezier-curve" | "line-segments"
+        | "line-segment" | "copy" | "copy-simple" | "calculator" | "funnel" | "crop"
+        | "map-pin" | "square-split-vertical" | "text-t" | "text-aa" | "couch" | "sliders"
+        | "magnet" | "drop" | "square" | "rectangle" | "circle" | "shapes" | "vector-two"
+        | "blueprint" | "list-bullets" | "list-dashes" | "arrow-line-up" | "arrow-line-down"
+        | "star" | "stairs" | "door-open" | "bathtub" | "oven" | "washing-machine"
+        | "swimming-pool" | "fire" => Orange,
+        "x-bold" | "trash" | "file-x" | "file-minus" | "eye-slash" | "bounding-box"
+        | "hand-pointing" | "minus-circle" | "warning" | "power" | "fire-extinguisher" => Red,
+        "plus-circle" | "file-plus" | "file" | "files" | "folder-open" | "folder-simple"
+        | "floppy-disk" | "check-circle" | "export" | "arrow-square-in" | "arrow-square-out"
+        | "printer" | "file-pdf" | "file-image" | "image" | "monitor" | "envelope-simple"
+        | "arrow-up-right" => Green,
+        "bluetooth" | "bluetooth-connected" | "lock-simple" | "lock-simple-open"
+        | "clock-counter-clockwise" | "crosshair" | "camera" => Slate,
+        _ => return None,
+    })
+}
+
+/// An icon in its tint, or in `fallback` when it has none. Use for icons in
+/// their resting state; active (on accent) and disabled states keep their
+/// own single colour so the state reads first.
+pub fn tinted<'a>(name: &str, fill: bool, size: f32, fallback: Color) -> Element<'a, Message> {
+    let color = tint_of(name).map_or(fallback, crate::ui::tokens::icon_tint);
+    mono_icon(name, fill, size, color)
+}
+
 /// The 20x20 application logo at the left of the title bar.
 pub fn qat_logo<'a>() -> Element<'a, Message> {
     svg(svg::Handle::from_memory(QAT_LOGO.as_bytes()))

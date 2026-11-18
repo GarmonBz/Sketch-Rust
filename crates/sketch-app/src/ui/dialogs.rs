@@ -53,8 +53,8 @@ use crate::subject_info::{
 use crate::text_manager::{visible_labels, TextManager, TextManagerMsg, RANGES as ALPHA_RANGES};
 use crate::{App, Message};
 
-const MAX_WIDE_W: f32 = 1080.0;
-const MAX_WIDE_H: f32 = 740.0;
+const MAX_WIDE_W: f32 = 1280.0;
+const MAX_WIDE_H: f32 = 960.0;
 
 #[derive(Debug, Clone, PartialEq)]
 struct LabelValue(&'static str, &'static str);
@@ -887,6 +887,114 @@ fn three_up<'a>(
     }
 }
 
+/// An Options tab's sections: one column on a phone, two side by side
+/// otherwise (the first `split` sections on the left), so every tab fits a
+/// 1382 x 816 window (a 3456 x 2160 screen at 250% scaling) without
+/// scrolling.
+fn opt_columns<'a>(
+    compact: bool,
+    split: usize,
+    sections: Vec<Element<'a, Message>>,
+) -> Element<'a, Message> {
+    if compact {
+        return iced::widget::Column::with_children(sections)
+            .spacing(SPACE_3)
+            .into();
+    }
+    let mut left = column![].spacing(SPACE_3).width(Length::FillPortion(1));
+    let mut right = column![].spacing(SPACE_3).width(Length::FillPortion(1));
+    for (i, sec) in sections.into_iter().enumerate() {
+        if i < split {
+            left = left.push(sec);
+        } else {
+            right = right.push(sec);
+        }
+    }
+    row![left, right].spacing(SPACE_3).align_y(Alignment::Start).into()
+}
+
+/// Interface theme, drawing background and density. These used to be
+/// submenus of the Menu's View group; they are preferences, so they live
+/// here now. Unlike the rest of Options they apply as soon as they are
+/// picked (Cancel does not undo them), which the hint line says.
+fn appearance_section<'a>(d: Density) -> Element<'a, Message> {
+    use crate::canvas_theme::{self, CanvasTheme};
+    use crate::popup_menu::PopupMsg;
+    use crate::theme::{self, InterfaceTheme};
+    let ui = theme::interface_theme();
+    let theme_seg = kit::segmented(
+        [
+            (InterfaceTheme::Dark, "Dark"),
+            (InterfaceTheme::Blue, "Blue"),
+            (InterfaceTheme::Light, "Light"),
+        ]
+        .into_iter()
+        .map(|(t, label)| kit::Segment {
+            label,
+            selected: ui == t,
+            focused: false,
+            on_press: Some(Message::PopupMenu(PopupMsg::Interface(t))),
+        })
+        .collect(),
+        d,
+    );
+    let canvas = canvas_theme::current();
+    let canvas_seg = kit::segmented(
+        [
+            (CanvasTheme::Light, "White"),
+            (CanvasTheme::Dark, "Dark"),
+            (CanvasTheme::Blue, "Blue"),
+        ]
+        .into_iter()
+        .map(|(t, label)| kit::Segment {
+            label,
+            selected: canvas == t,
+            focused: false,
+            on_press: Some(Message::PopupMenu(PopupMsg::Canvas(t))),
+        })
+        .collect(),
+        d,
+    );
+    let density_seg = kit::segmented(
+        [(Density::Comfortable, "Mouse"), (Density::Touch, "Touch")]
+            .into_iter()
+            .map(|(den, label)| kit::Segment {
+                label,
+                selected: d == den,
+                focused: false,
+                on_press: Some(Message::Ui(UiMsg::SetDensity(den))),
+            })
+            .collect(),
+        d,
+    );
+    let line = |label: &'static str, control: Element<'a, Message>| -> Element<'a, Message> {
+        row![
+            text(label)
+                .font(BARLOW_MEDIUM)
+                .size(TEXT_13)
+                .color(tokens::text())
+                .width(Length::Fixed(150.0)),
+            control,
+        ]
+        .spacing(SPACE_2)
+        .align_y(Alignment::Center)
+        .into()
+    };
+    section_box(
+        column![
+            label_text("Appearance"),
+            line("Interface theme", theme_seg),
+            line("Drawing background", canvas_seg),
+            line("Controls sized for", density_seg),
+            text("These apply as soon as you pick them.")
+                .font(BARLOW)
+                .size(TEXT_12)
+                .color(tokens::muted()),
+        ]
+        .spacing(SPACE_2),
+    )
+}
+
 fn options_dialog_layer<'a>(
     dlg: &'a OptionsDialog,
     win: Size,
@@ -900,7 +1008,10 @@ fn options_dialog_layer<'a>(
     let draft = &dlg.draft;
 
     let tab_body: Element<'a, Message> = match dlg.tab {
-        OptTab::General => column![
+        OptTab::General => opt_columns(
+            compact,
+            1,
+            vec![
             section_box(
                 column![
                     label_text("Input"),
@@ -964,11 +1075,13 @@ fn options_dialog_layer<'a>(
                 ]
                 .spacing(SPACE_2),
             ),
-        ]
-        .spacing(SPACE_3)
-        .into(),
+        ]),
 
-        OptTab::Display => column![
+        OptTab::Display => opt_columns(
+            compact,
+            2,
+            vec![
+            appearance_section(d),
             section_box(
                 column![
                     label_text("Guides & Indicators"),
@@ -1007,9 +1120,7 @@ fn options_dialog_layer<'a>(
                 ]
                 .spacing(SPACE_2),
             ),
-        ]
-        .spacing(SPACE_3)
-        .into(),
+        ]),
 
         OptTab::Hardware => column![section_box(
             column![
@@ -1039,7 +1150,10 @@ fn options_dialog_layer<'a>(
         .spacing(SPACE_3)
         .into(),
 
-        OptTab::System => column![
+        OptTab::System => opt_columns(
+            compact,
+            1,
+            vec![
             section_box(
                 column![
                     label_text("Autosave & Recovery"),
@@ -1109,11 +1223,12 @@ fn options_dialog_layer<'a>(
                 ]
                 .spacing(SPACE_2),
             ),
-        ]
-        .spacing(SPACE_3)
-        .into(),
+        ]),
 
-        OptTab::Fonts => column![
+        OptTab::Fonts => opt_columns(
+            compact,
+            2,
+            vec![
             section_box(
                 column![
                     label_text("Dimension Labels"),
@@ -1175,11 +1290,12 @@ fn options_dialog_layer<'a>(
                 ]
                 .spacing(SPACE_2),
             ),
-        ]
-        .spacing(SPACE_3)
-        .into(),
+        ]),
 
-        OptTab::Drawing => column![
+        OptTab::Drawing => opt_columns(
+            compact,
+            2,
+            vec![
             section_box(
                 column![
                     label_text("Walls"),
@@ -1243,9 +1359,7 @@ fn options_dialog_layer<'a>(
                 ]
                 .spacing(SPACE_2),
             ),
-        ]
-        .spacing(SPACE_3)
-        .into(),
+        ]),
     };
 
     let nav_items: Element<'a, Message> = if compact {
@@ -1336,8 +1450,8 @@ fn options_dialog_layer<'a>(
         DialogFrame {
             title: "Preferences".into(),
             subtitle: Some("General, display, laser hardware, system, fonts, and wall drawing defaults".into()),
-            preferred_w: 840.0,
-            preferred_h: Some(640.0),
+            preferred_w: 1120.0,
+            preferred_h: Some(720.0),
             body,
             footer: Some(footer_pair(footer_left.into(), footer_right.into(), compact)),
             on_close: Some(opt_msg(OptMsg::Cancel)),
@@ -1398,7 +1512,43 @@ fn subject_info_layer<'a>(
     let tab_content: Element<'a, Message> = match dlg.tab {
         SubjectTab::Parcel => {
             let mut rows_col = column![].spacing(SPACE_2).width(Length::Fill);
-            for indices in GRID_ROWS {
+            let placeholder_for = |idx: usize| {
+                if idx == IDX_INSPECTION {
+                    "YYYY-MM-DD"
+                } else if idx == IDX_GPS {
+                    GPS_PLACEHOLDER
+                } else {
+                    ""
+                }
+            };
+            // Wider screens: three columns in five rows, so the whole form
+            // fits without scrolling. Each entry is (field, column span).
+            const WIDE_ROWS: [&[(usize, u16)]; 5] = [
+                &[(0, 1), (1, 1), (IDX_INSPECTION, 1)],
+                &[(2, 2), (7, 1)],
+                &[(3, 1), (4, 1), (5, 1)],
+                &[(6, 1), (8, 1), (10, 1)],
+                &[(9, 2), (IDX_GPS, 1)],
+            ];
+            if !compact {
+                for cells in WIDE_ROWS {
+                    let mut r = row![].spacing(SPACE_3).width(Length::Fill);
+                    for &(idx, span) in cells {
+                        r = r.push(
+                            container(owned_field(
+                                SUBJECT_FIELDS[idx],
+                                &dlg.fields[idx],
+                                placeholder_for(idx),
+                                move |s| subj_msg(SubjectMsg::Field(idx, s)),
+                                d,
+                            ))
+                            .width(Length::FillPortion(span)),
+                        );
+                    }
+                    rows_col = rows_col.push(r);
+                }
+            }
+            for indices in GRID_ROWS.iter().filter(|_| compact) {
                 if compact || indices.len() == 1 {
                     for &idx in indices.iter() {
                         let placeholder = if idx == IDX_INSPECTION {
@@ -1559,8 +1709,8 @@ fn subject_info_layer<'a>(
         DialogFrame {
             title: "Property Details".into(),
             subtitle: Some("Parcel metadata, comments, and Appraise-It Pro fields".into()),
-            preferred_w: 780.0,
-            preferred_h: Some(640.0),
+            preferred_w: 900.0,
+            preferred_h: Some(760.0),
             body: body.into(),
             footer: Some(footer.into()),
             on_close: Some(subj_msg(SubjectMsg::Close)),
@@ -1645,15 +1795,27 @@ fn page_layout_layer<'a>(
         ));
     }
 
-    let body = scrollable(
+    // Two columns on wider screens (paper and options, then captions) so
+    // the dialog fits without scrolling; one column on a phone.
+    let content: Element<'a, Message> = if compact {
         column![
             two_up(paper_pick.into(), form_pick.into(), compact),
             section_box(opts_col),
             section_box(caps_col),
         ]
-        .spacing(SPACE_3),
-    )
-    .height(Length::Fill);
+        .spacing(SPACE_3)
+        .into()
+    } else {
+        row![
+            column![paper_pick, form_pick, section_box(opts_col)]
+                .spacing(SPACE_3)
+                .width(Length::FillPortion(1)),
+            container(section_box(caps_col)).width(Length::FillPortion(1)),
+        ]
+        .spacing(SPACE_4)
+        .into()
+    };
+    let body = scrollable(content).height(Length::Fill);
 
     let footer_left = kit::text_button("Restore Defaults", Some(lay(LayoutMsg::RestoreDefaults)), d);
     let footer_right = row![
@@ -1666,8 +1828,8 @@ fn page_layout_layer<'a>(
         DialogFrame {
             title: "Page Layout".into(),
             subtitle: Some("Paper size, print addendum form, and headings".into()),
-            preferred_w: 580.0,
-            preferred_h: Some(540.0),
+            preferred_w: 900.0,
+            preferred_h: Some(640.0),
             body: body.into(),
             footer: Some(footer_pair(footer_left, footer_right.into(), compact)),
             on_close: Some(lay(LayoutMsg::Cancel)),
@@ -1692,6 +1854,10 @@ fn print_preview_layer<'a>(
         return None;
     }
     let compact = size_class == SizeClass::Compact;
+    // Each page is drawn to the visible height of the dialog body, so one
+    // whole page is always in view; more pages stack below as a list.
+    let dialog_h = MAX_WIDE_H.min(win.height - 64.0);
+    let page_h = (dialog_h - 210.0).max(240.0);
 
     let mut pages = column![].spacing(SPACE_3).align_x(Alignment::Center);
     if preview.rasters.is_empty() {
@@ -1708,13 +1874,12 @@ fn print_preview_layer<'a>(
                     column![
                         label_text(format!("Page {}", i + 1)),
                         image(handle.clone())
-                            .width(Length::Fill)
+                            .height(Length::Fixed(page_h))
                             .content_fit(iced::ContentFit::Contain),
                     ]
                     .spacing(SPACE_1),
                 )
                 .padding(SPACE_2)
-                .max_width(720.0)
                 .style(|_| container::Style {
                     background: Some(Background::Color(Color::WHITE)),
                     border: Border {
@@ -1734,6 +1899,8 @@ fn print_preview_layer<'a>(
             .center_x(Length::Fill)
             .padding(SPACE_2),
     )
+    // No "-list" suffix: the fit test checks that one page fits.
+    .id("print-pages")
     .height(Length::Fill)
     .width(Length::Fill);
 
@@ -1759,7 +1926,7 @@ fn print_preview_layer<'a>(
                 .paper
                 .map(|p| format!("Paper: {}", paper_label(p))),
             preferred_w: 840.0,
-            preferred_h: Some(680.0),
+            preferred_h: Some(dialog_h),
             body: body.into(),
             footer: Some(footer_pair(footer_left, footer_right.into(), compact)),
             on_close: Some(Message::PrintPreview(PreviewMsg::Close)),
@@ -1792,7 +1959,7 @@ fn breakdown_layer<'a>(
         .size(TEXT_12)
         .color(tokens::text());
 
-    let report_box = container(scrollable(report_text).height(Length::Fill).width(Length::Fill))
+    let report_box = container(scrollable(report_text).id("breakdown-list").height(Length::Fill).width(Length::Fill))
         .padding(SPACE_3)
         .width(Length::Fill)
         .height(Length::Fill)
@@ -2410,7 +2577,7 @@ fn disto_layer<'a>(
         ));
     }
 
-    let list_box = container(scrollable(list_col).height(Length::Fill))
+    let list_box = container(scrollable(list_col).id("laser-list").height(Length::Fill))
         .height(Length::Fixed(220.0))
         .width(Length::Fill)
         .padding(SPACE_2)
@@ -2504,7 +2671,7 @@ fn text_manager_layer<'a>(
         }
     }
 
-    let list_box = container(scrollable(list_col).height(Length::Fill))
+    let list_box = container(scrollable(list_col).id("room-labels-list").height(Length::Fill))
         .height(Length::Fixed(240.0))
         .width(Length::Fill)
         .padding(SPACE_2)
@@ -2615,7 +2782,7 @@ fn undo_history_layer<'a>(
         }
     }
 
-    let body = container(scrollable(list_col).height(Length::Fill))
+    let body = container(scrollable(list_col).id("undo-list").height(Length::Fill))
         .max_height(340.0)
         .width(Length::Fill);
 
@@ -2708,16 +2875,27 @@ fn shortcuts_layer<'a>(
         }
         col.into()
     } else {
-        let mut col = column![].spacing(SPACE_3);
-        let mut iter = groups.into_iter();
-        while let Some(a) = iter.next() {
-            if let Some(b) = iter.next() {
-                col = col.push(two_up(a, b, false));
-            } else {
-                col = col.push(a);
-            }
+        // Three columns (four once the dialog is 1100 wide, so a short
+        // 1382x816 screen still fits), each group going to the shortest
+        // column so far (weighted by its row count plus its heading), which
+        // keeps the whole sheet on screen.
+        let n = if win.width - 64.0 >= 1100.0 { 4 } else { 3 };
+        let mut cols: Vec<Vec<Element<'a, Message>>> = (0..n).map(|_| Vec::new()).collect();
+        let mut heights = vec![0usize; n];
+        for (g, &(_, entries)) in groups.into_iter().zip(SHORTCUT_GROUPS.iter()) {
+            let k = (0..n).min_by_key(|&k| heights[k]).unwrap_or(0);
+            heights[k] += entries.len() + 2;
+            cols[k].push(g);
         }
-        col.into()
+        let mut r = row![].spacing(SPACE_3).align_y(Alignment::Start);
+        for c in cols {
+            let mut col = column![].spacing(SPACE_3).width(Length::FillPortion(1));
+            for g in c {
+                col = col.push(g);
+            }
+            r = r.push(col);
+        }
+        r.into()
     };
 
     let footer = row![
@@ -2729,8 +2907,8 @@ fn shortcuts_layer<'a>(
         DialogFrame {
             title: "Keyboard Shortcuts".into(),
             subtitle: Some("Quick keys for tools, navigation, and editing".into()),
-            preferred_w: 840.0,
-            preferred_h: Some(640.0),
+            preferred_w: 1200.0,
+            preferred_h: Some(860.0),
             body: scrollable(grid).height(Length::Fill).into(),
             footer: Some(footer.into()),
             on_close: Some(sc_close),
@@ -2968,7 +3146,7 @@ fn guide_layer<'a>(
     let article_scroll = scrollable(container(article).padding(Padding {
         right: SPACE_2,
         ..Padding::ZERO
-    }))
+    })).id("guide-article-list")
     .height(Length::Fill)
     .width(Length::Fill);
 

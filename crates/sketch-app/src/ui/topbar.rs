@@ -173,7 +173,7 @@ pub fn top_bar<'a>(
         .width(Length::Fill)
         .height(Length::Fixed(d.bar_h()))
         .style(|_| container::Style {
-            background: Some(Background::Color(tokens::bar())),
+            background: Some(Background::Color(tokens::chrome())),
             border: Border {
                 color: tokens::rule(),
                 width: 1.0,
@@ -630,7 +630,7 @@ fn search_trigger<'a>(class: SizeClass, d: Density) -> Element<'a, Message> {
             kit::icon_button(
                 "magnifying-glass",
                 false,
-                Some(Message::CommandPaletteOpen),
+                Some(Message::Ui(UiMsg::ToggleMenu)),
                 d,
             ),
             "Search commands (Ctrl+K)",
@@ -679,7 +679,7 @@ fn search_trigger<'a>(class: SizeClass, d: Density) -> Element<'a, Message> {
         .align_y(Alignment::Center),
     )
     .padding(0)
-    .on_press(Message::CommandPaletteOpen)
+    .on_press(Message::Ui(UiMsg::ToggleMenu))
     .style(|_, status| {
         let border_c = match status {
             button::Status::Hovered | button::Status::Pressed => tokens::accent(),

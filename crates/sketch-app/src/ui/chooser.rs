@@ -135,7 +135,9 @@ pub fn layer<'a>(app: &'a App) -> Option<Element<'a, Message>> {
             })
             .width(Length::Fill),
     )
-    .id("area-chooser-scope")
+    // The "-list" suffix marks a list of data that may scroll
+    // (`e2e_next::dialogs_fit_1920x1080_without_scrolling`).
+    .id("area-chooser-scope-list")
     .direction(Direction::Vertical(
         Scrollbar::new().width(5).scroller_width(5),
     ))

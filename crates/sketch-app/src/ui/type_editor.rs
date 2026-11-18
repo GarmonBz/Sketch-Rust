@@ -968,7 +968,7 @@ fn list_pane<'a>(editor: &'a TypeEditor, d: Density) -> Element<'a, Message> {
     column![
         container(search_bar).padding([SPACE_2, SPACE_3]),
         kit::divider(),
-        scrollable(container(list_col).padding([SPACE_1, SPACE_2]).width(Length::Fill))
+        scrollable(container(list_col).padding([SPACE_1, SPACE_2]).width(Length::Fill)).id("area-types-list")
             .width(Length::Fill)
             .height(Length::Fill),
     ]

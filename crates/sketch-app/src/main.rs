@@ -22,7 +22,6 @@ mod canvas_theme;
 mod chains;
 mod clipboard;
 mod color_dialog;
-mod command_palette;
 mod context_menu;
 mod define_area;
 #[allow(unused_imports)]
@@ -173,14 +172,6 @@ pub enum Message {
     OpenFile,
     SaveFile,
     SaveFileAs,
-    /// Command palette (Ctrl+K).
-    CommandPaletteOpen,
-    CommandPaletteClose,
-    CommandPaletteQuery(String),
-    CommandPaletteMove(i32),
-    CommandPaletteRun,
-    /// A palette row clicked (its position among the matches).
-    CommandPaletteRunAt(usize),
     /// `executeCommand('rotate-sketch')` / R: `rotateSketch(90)`.
     RotateSketch,
     /// L / R: `rotateSketch(degrees)`.
@@ -780,9 +771,6 @@ pub struct App {
     /// The open modal dialog.
     dialog: Option<dialog::Dialog>,
     /// Command palette (Ctrl+K).
-    command_palette_open: bool,
-    command_palette_query: String,
-    command_palette_selected: usize,
     touch_panel_open: bool,
     touch_distance: f64,
     last_disto_meters: Option<f64>,
@@ -1076,9 +1064,6 @@ impl App {
                     pages: pages::Pages::default(),
                     areas_disabled: false,
                     dialog: None,
-                    command_palette_open: false,
-                    command_palette_query: String::new(),
-                    command_palette_selected: 0,
                     touch_panel_open: false,
                     touch_distance: 1.0,
                     last_disto_meters: None,
@@ -1416,6 +1401,25 @@ impl App {
             view_state::World { x: min.x, y: min.y },
             view_state::World { x: max.x, y: max.y },
         ))
+    }
+
+    /// The first area closed on a page brings the whole sketch into view, so
+    /// the new outline is not left in a corner of the drawing. It centres the
+    /// sketch and zooms out if the sketch does not fit, but never zooms in: a
+    /// small first room would otherwise fill the canvas edge to edge and push
+    /// its dimensions under the floating controls. Later areas leave the view
+    /// where the user put it.
+    fn fit_after_first_area(&mut self, had_areas: bool) {
+        if had_areas {
+            return;
+        }
+        let bounds = self.sketch_view_bounds();
+        let zoom = self.view.zoom;
+        self.view.center_and_fit(bounds);
+        if self.view.zoom > zoom {
+            self.view.zoom = zoom;
+            self.view.center_sketch(bounds);
+        }
     }
 
     /// Status bar controls (refs/ui-manager.js bindEvents).
@@ -1762,104 +1766,88 @@ impl App {
                     self.ui.menu_open = next;
                     self.ui.menu_sub = None;
                     self.ui.menu_row = 0;
+                    self.ui.menu_query.clear();
                     if next {
-                        self.command_palette_open = false;
                         self.ui.page_menu = None;
                         self.ui.export_menu = false;
                         self.ui.controls_popover = None;
                         self.view.filter_open = false;
                         self.history.close();
+                        return iced::widget::operation::focus(ui::menu::SEARCH_ID);
                     }
                     Task::none()
                 }
                 ui::Msg::CloseMenu => {
                     self.ui.menu_open = false;
                     self.ui.menu_sub = None;
+                    self.ui.menu_query.clear();
                     Task::none()
                 }
                 ui::Msg::OpenSelectByType => {
-                    self.command_palette_open = false;
                     self.ui.page_menu = None;
                     self.ui.export_menu = false;
                     self.ui.controls_popover = None;
                     self.view.filter_open = false;
                     self.history.close();
                     self.ui.menu_open = true;
-                    self.ui.menu_group = ui::commands::Group::Edit;
-                    self.ui.menu_sub = Some(ui::menu::MenuSub::SelectByType);
-                    self.ui.menu_row = 0;
-                    Task::none()
-                }
-                ui::Msg::MenuGroup(group) => {
-                    self.ui.menu_group = group;
-                    self.ui.menu_sub = None;
+                    self.ui.menu_query.clear();
+                    self.ui.menu_sub = Some(ui::menu::MenuSub::Select);
                     self.ui.menu_row = 0;
                     Task::none()
                 }
                 ui::Msg::MenuSub(sub) => {
-                    self.ui.menu_sub = sub;
+                    // Hovering rows sends this repeatedly; only a change
+                    // moves the keyboard focus.
+                    if self.ui.menu_sub != sub {
+                        let leaving = self.ui.menu_sub;
+                        self.ui.menu_sub = sub;
+                        self.ui.menu_row = match (sub, leaving) {
+                            // Back to the main list: focus the row that was open.
+                            (None, Some(old)) => ui::menu::rows()
+                                .position(|e| matches!(e, ui::menu::Entry::Sub(s) if s == old))
+                                .unwrap_or(0),
+                            _ => 0,
+                        };
+                    }
+                    Task::none()
+                }
+                ui::Msg::MenuQuery(q) => {
+                    self.ui.menu_query = q;
+                    self.ui.menu_sub = None;
                     self.ui.menu_row = 0;
                     Task::none()
                 }
                 ui::Msg::MenuMove(delta) => {
                     let count = ui::menu::active_row_count(self);
-                    self.ui.menu_row = command_palette::step(self.ui.menu_row, count, delta);
+                    self.ui.menu_row = ui::menu::step(self.ui.menu_row, count, delta);
                     Task::none()
                 }
                 ui::Msg::MenuSwitchGroup(delta) => {
-                    use ui::commands::Group;
-                    if self.ui.menu_sub.is_some() && delta < 0 {
-                        self.ui.menu_sub = None;
-                        self.ui.menu_row = 0;
+                    if !self.ui.menu_query.trim().is_empty() {
                         return Task::none();
                     }
-                    let cur = Group::ALL
-                        .iter()
-                        .position(|&g| g == self.ui.menu_group)
-                        .unwrap_or(0);
-                    let next = command_palette::step(cur, Group::ALL.len(), delta);
-                    self.ui.menu_group = Group::ALL[next];
-                    self.ui.menu_sub = None;
-                    self.ui.menu_row = 0;
+                    if delta < 0 {
+                        return self.update(Message::Ui(ui::Msg::MenuSub(None)));
+                    }
+                    if self.ui.menu_sub.is_none() {
+                        if let Some(ui::menu::Entry::Sub(sub)) =
+                            ui::menu::rows().nth(self.ui.menu_row)
+                        {
+                            return self.update(Message::Ui(ui::Msg::MenuSub(Some(sub))));
+                        }
+                    }
                     Task::none()
                 }
-                ui::Msg::MenuEnter => {
-                    if let Some(sub) = self.ui.menu_sub {
-                        let actions = ui::menu::sub_actions(self, sub);
-                        if let Some(act) = actions.get(self.ui.menu_row) {
-                            if act.enabled {
-                                if let Some(msg) = act.on_press.clone() {
-                                    return self.update(msg);
-                                }
-                            }
-                        }
-                        return Task::none();
-                    }
-                    let items = ui::menu::group_items(self.ui.menu_group);
-                    match items.get(self.ui.menu_row) {
-                        Some(ui::menu::GroupItem::Sub(sub)) => {
-                            self.ui.menu_sub = Some(*sub);
-                            self.ui.menu_row = 0;
-                            Task::none()
-                        }
-                        Some(ui::menu::GroupItem::Cmd(cmd)) => {
-                            if (cmd.enabled)(self) {
-                                self.ui.menu_open = false;
-                                self.ui.menu_sub = None;
-                                let m = (cmd.run)(self);
-                                self.update(m)
-                            } else {
-                                Task::none()
-                            }
-                        }
-                        None => Task::none(),
-                    }
-                }
+                ui::Msg::MenuEnter => match ui::menu::enter_message(self) {
+                    Some(msg) => self.update(msg),
+                    None => Task::none(),
+                },
                 ui::Msg::MenuRunId(id) => {
                     if let Some(cmd) = ui::commands::find(id) {
                         if (cmd.enabled)(self) {
                             self.ui.menu_open = false;
                             self.ui.menu_sub = None;
+                            self.ui.menu_query.clear();
                             let m = (cmd.run)(self);
                             return self.update(m);
                         }
@@ -1875,57 +1863,6 @@ impl App {
                     self.ui.menu_open = false;
                     self.ui.menu_sub = None;
                     self.update(Message::RecentClear)
-                }
-                ui::Msg::MenuSelectKind(kind) => {
-                    self.ui.menu_open = false;
-                    self.ui.menu_sub = None;
-                    self.update(Message::SelectByType(kind))
-                }
-                ui::Msg::MenuFlip(axis) => {
-                    self.ui.menu_open = false;
-                    self.ui.menu_sub = None;
-                    self.update(Message::PopupMenu(popup_menu::PopupMsg::Flip(axis)))
-                }
-                ui::Msg::MenuPitch(index) => {
-                    self.ui.menu_open = false;
-                    self.ui.menu_sub = None;
-                    if let Some(&(label, value)) = view_state::PITCHES.get(index) {
-                        self.update(Message::Status(statusbar::StatusMsg::Pitch(
-                            statusbar::PitchOption { label, value },
-                        )))
-                    } else {
-                        Task::none()
-                    }
-                }
-                ui::Msg::MenuFilter(index) => {
-                    self.update(Message::Status(statusbar::StatusMsg::Filter(index)))
-                }
-                ui::Msg::MenuCanvasTheme(t) => {
-                    self.ui.menu_open = false;
-                    self.ui.menu_sub = None;
-                    self.update(Message::PopupMenu(popup_menu::PopupMsg::Canvas(t)))
-                }
-                ui::Msg::MenuInterfaceTheme(t) => {
-                    self.ui.menu_open = false;
-                    self.ui.menu_sub = None;
-                    self.update(Message::PopupMenu(popup_menu::PopupMsg::Interface(t)))
-                }
-                ui::Msg::MenuUnitsMetric(metric) => {
-                    self.ui.menu_open = false;
-                    self.ui.menu_sub = None;
-                    let mut u = self.drawing.options.units.clone();
-                    u.metric = metric;
-                    if metric && u.area_label_suffix == "sf" {
-                        u.area_label_suffix = "m²".to_owned();
-                    } else if !metric && u.area_label_suffix == "m²" {
-                        u.area_label_suffix = "sf".to_owned();
-                    }
-                    self.update(Message::Units(u))
-                }
-                ui::Msg::MenuOpenSearch => {
-                    self.ui.menu_open = false;
-                    self.ui.menu_sub = None;
-                    self.update(Message::CommandPaletteOpen)
                 }
                 ui::Msg::PromptRenameDocument => {
                     self.ui.page_menu = None;
@@ -3394,45 +3331,6 @@ impl App {
                 }
                 Task::none()
             }
-            Message::CommandPaletteOpen => {
-                // `open()` toggles: a second Ctrl+K / magnifier press closes.
-                if self.command_palette_open {
-                    self.command_palette_open = false;
-                    return Task::none();
-                }
-                self.ui.menu_open = false;
-                self.ui.menu_sub = None;
-                self.ui.page_menu = None;
-                self.ui.export_menu = false;
-                self.history.close();
-                self.command_palette_open = true;
-                self.command_palette_query.clear();
-                self.command_palette_selected = 0;
-                iced::widget::operation::focus(command_palette::INPUT_ID)
-            }
-            Message::CommandPaletteClose => {
-                self.command_palette_open = false;
-                Task::none()
-            }
-            Message::CommandPaletteQuery(q) => {
-                // `render(q)` keeps the highlight where it was, clamped to
-                // the new matches.
-                self.command_palette_query = q;
-                let count = ui::commands::matching(&self.command_palette_query).len();
-                self.command_palette_selected =
-                    self.command_palette_selected.min(count.saturating_sub(1));
-                Task::none()
-            }
-            Message::CommandPaletteMove(d) => {
-                let count = ui::commands::matching(&self.command_palette_query).len();
-                self.command_palette_selected =
-                    command_palette::step(self.command_palette_selected, count, d);
-                Task::none()
-            }
-            Message::CommandPaletteRunAt(pos) => {
-                self.command_palette_selected = pos;
-                self.update(Message::CommandPaletteRun)
-            }
             Message::RotateSketch => self.update(Message::RotateSketchBy(90.0)),
             Message::RotateSelected(degrees) => {
                 // `rotateSelected`: with no wall or area selected it turns
@@ -4219,19 +4117,6 @@ impl App {
                 }
                 Task::none()
             }
-            Message::CommandPaletteRun => {
-                // `run()`: close first, then `executeCommand(id)`.
-                let found = ui::commands::matching(&self.command_palette_query);
-                self.command_palette_open = false;
-                let Some(&cmd) = found.get(self.command_palette_selected) else {
-                    return Task::none();
-                };
-                if !(cmd.enabled)(self) {
-                    return self.toasts.show(format!("{} is disabled.", cmd.label));
-                }
-                let msg = (cmd.run)(self);
-                self.update(msg)
-            }
             Message::Color(m) => self.color_msg(m),
             Message::WallSolids(on) => {
                 self.drawing.options.wall_solids = on;
@@ -4984,6 +4869,9 @@ impl App {
                     {
                         self.context.area_target = Some(id);
                     }
+                    self.context.has_selection = !self.selection.is_empty();
+                    self.context.areas_selected =
+                        !self.selection.polys.is_empty() || self.context.area_target.is_some();
                 }
                 Task::none()
             }
@@ -5250,6 +5138,7 @@ impl App {
                     let world = self.world(x, y);
                     // `pushUndo('Draw')` before the click changes the model.
                     self.push_undo("Draw");
+                    let had_areas = !self.drawing.polygons.is_empty();
                     let previous = self.drawing.lines.last().map(|line| line.id);
                     self.drawing.click(world, self.draw_ctx());
                     let closed = self.finish_wall_commit(previous);
@@ -5260,6 +5149,7 @@ impl App {
                         self.drawing.pen_up();
                     }
                     if closed > 0 {
+                        self.fit_after_first_area(had_areas);
                         return self.toasts.show("Area closed and ready to define.".into());
                     }
                 }
@@ -6081,7 +5971,7 @@ impl App {
             K::ShowSymbols => return self.rail(view_state::RailTool::Symbols),
             K::ShowText => return self.rail(view_state::RailTool::Text),
             K::RoomShape => return self.update(Message::RoomShapeOpen),
-            K::CommandPalette => return self.update(Message::CommandPaletteOpen),
+            K::CommandPalette => return self.update(Message::Ui(ui::Msg::ToggleMenu)),
             K::OrientH => self.orient_selected(0.0),
             K::RotateSelected(degrees) => return self.update(Message::RotateSelected(degrees)),
             K::ScaleSelected(factor) => return self.update(Message::ScaleSelected(factor)),
@@ -6154,9 +6044,11 @@ impl App {
                     {
                         self.push_undo("Draw Line");
                     }
+                    let had_areas = !self.drawing.polygons.is_empty();
                     let previous = self.drawing.lines.last().map(|line| line.id);
                     self.drawing.enter_key(self.draw_ctx());
                     if self.finish_wall_commit(previous) > 0 {
+                        self.fit_after_first_area(had_areas);
                         return self.toasts.show("Area closed and ready to define.".into());
                     }
                 }
@@ -9559,7 +9451,6 @@ impl App {
                 || self.shortcuts.open
                 || self.guide.open
                 || self.breakdown.open
-                || self.command_palette_open
                 || self.print_preview.open
                 || self.line_length_edit.is_some()
                 || self.scale_edit.is_some()
@@ -9657,29 +9548,6 @@ impl App {
         };
         // Menu/overlay close rules are routed through the root `EventTap`
         // (see view()), not a subscription.
-        // The palette's input keydown handler: a focused text box swallows
-        // keys before the EventTap, so Escape, the arrows and Ctrl+K ride
-        // the raw event stream.
-        let palette_keys = if self.command_palette_open {
-            event::listen_with(|event, _status, _window| match &event {
-                Event::Keyboard(iced::keyboard::Event::KeyPressed { key, modifiers, .. }) => {
-                    use iced::keyboard::key::Named;
-                    use iced::keyboard::Key;
-                    match key.as_ref() {
-                        Key::Named(Named::Escape) => Some(Message::CommandPaletteClose),
-                        Key::Named(Named::ArrowDown) => Some(Message::CommandPaletteMove(1)),
-                        Key::Named(Named::ArrowUp) => Some(Message::CommandPaletteMove(-1)),
-                        Key::Character(c) if modifiers.command() && c.eq_ignore_ascii_case("k") => {
-                            Some(Message::CommandPaletteClose)
-                        }
-                        _ => None,
-                    }
-                }
-                _ => None,
-            })
-        } else {
-            Subscription::none()
-        };
         let resize = window::resize_events().map(|(_, size)| Message::WindowResized(size));
         let window_events = event::listen_with(|event, _status, _window| match event {
             Event::Window(window::Event::Moved(position)) => Some(Message::WindowMoved(position)),
@@ -9712,7 +9580,6 @@ impl App {
             window::close_requests().map(|_| Message::Close),
             rename_cancel,
             drop_guard,
-            palette_keys,
             sym_lib_mods,
             Subscription::run(disto::event_stream).map(Message::Disto),
         ])
@@ -9881,7 +9748,7 @@ impl App {
             None => iced::widget::Space::new().into(),
         };
         let context_layer: Element<'_, Message> =
-            context_menu::layer(&self.context).unwrap_or_else(|| iced::widget::Space::new().into());
+            context_menu::layer(&self.context, self.window_size, self.ui.density).unwrap_or_else(|| iced::widget::Space::new().into());
         let select_layer: Element<'_, Message> = select_menu::layer(&self.select_menu)
             .unwrap_or_else(|| iced::widget::Space::new().into());
         let popup_layer: Element<'_, Message> = popup_menu::layer(
@@ -9891,8 +9758,6 @@ impl App {
             (self.window_size.width, self.window_size.height),
         )
         .unwrap_or_else(|| iced::widget::Space::new().into());
-        let cp_layer: Element<'_, Message> =
-            command_palette::layer_next(self).unwrap_or_else(|| iced::widget::Space::new().into());
         let manager_layer: Element<'_, Message> = if self.symbol_manager.context {
             self.manager_layer()
         } else {
@@ -9902,7 +9767,6 @@ impl App {
             context_layer,
             select_layer,
             popup_layer,
-            cp_layer,
             manager_layer,
             area_workflow::drag_ghost(self.dock_drag.as_ref(), &self.area_codes, self.window_size)
                 .unwrap_or_else(|| iced::widget::Space::new().into()),
@@ -9934,7 +9798,10 @@ impl App {
                 || self.view.mode == view_state::Mode::DefineArea);
         let management_modal = self.symbol_manager.open || self.autosave_prompt;
         let next_menu_open =
-            self.ui.menu_open && self.dialog.is_none() && !self.command_palette_open;
+            self.ui.menu_open && self.dialog.is_none();
+        // While search text is typed, Left and Right move the text cursor
+        // instead of opening and closing fly-outs.
+        let menu_query_empty = self.ui.menu_query.is_empty();
         let next_color_open = self.color.open;
         let next_type_editor_open = self.ui.type_editor.open && !self.color.open;
         let next_symbol_library_open = self.ui.symbol_library.open;
@@ -9999,10 +9866,10 @@ impl App {
                 Key::Named(Named::ArrowUp) if next_menu_open => {
                     Some(Message::Ui(ui::Msg::MenuMove(-1)))
                 }
-                Key::Named(Named::ArrowLeft) if next_menu_open => {
+                Key::Named(Named::ArrowLeft) if next_menu_open && menu_query_empty => {
                     Some(Message::Ui(ui::Msg::MenuSwitchGroup(-1)))
                 }
-                Key::Named(Named::ArrowRight) if next_menu_open => {
+                Key::Named(Named::ArrowRight) if next_menu_open && menu_query_empty => {
                     Some(Message::Ui(ui::Msg::MenuSwitchGroup(1)))
                 }
                 Key::Named(Named::Enter) if next_menu_open => {
@@ -10669,10 +10536,59 @@ mod tests {
 
     #[test]
     fn opacity_composite_matches_css() {
-        // `.qat-btn:disabled` (opacity .38) #cccccc over #1e1e1e.
-        let c = theme::over(theme::text_main(), 0.38, theme::bg_app());
+        // `.qat-btn:disabled` (opacity .38) #cccccc over #1e1e1e. Explicit
+        // colours: the check is the blend, not any one theme's palette.
+        let c = theme::over(theme::hex(0xcccccc), 0.38, theme::hex(0x1e1e1e));
         let to8 = |v: f32| (v * 255.0).round() as u8;
         assert_eq!((to8(c.r), to8(c.g), to8(c.b)), (96, 96, 96));
+    }
+
+    /// A sketch that uses a symbol retired from the library as a duplicate
+    /// (owner decision 2026-11-17) opens with the newer equivalent in its
+    /// place, through `aliases` in `symbols.json`.
+    #[test]
+    fn a_sketch_using_a_retired_symbol_opens_with_its_replacement() {
+        let retired_id = "kitchen/refrigerator-36in";
+        let replacement = "caddillo/fridge-36";
+        let (mut app, _) = App::boot(1.0);
+        assert!(
+            app.symbols_lib().symbol(retired_id).is_none(),
+            "retired symbols are not in the library"
+        );
+        app.drawing.symbols.push(placed_symbol::PlacedSymbol {
+            id: 8,
+            symbol_type: retired_id.into(),
+            x: 0.0,
+            y: 0.0,
+            rotation: 0.0,
+            scale: 1.0,
+            flip_h: false,
+            wall_id: None,
+            wall_snap: WallSnap::None,
+            wall_gap_width: 0.0,
+            wall_fraction: None,
+            wall_side_flip: false,
+            wall_side_explicit: false,
+            layer_id: 1,
+        });
+        let model = app.build_save_model();
+
+        let (mut reopened, _) = App::boot(1.0);
+        let _ = reopened.apply_model(&model, "Old sketch");
+        let types: Vec<&str> = reopened
+            .pages
+            .pages
+            .iter()
+            .flat_map(|p| p.symbols.iter())
+            .chain(reopened.drawing.symbols.iter())
+            .filter(|s| s.id == 8)
+            .map(|s| s.symbol_type.as_str())
+            .collect();
+        assert!(!types.is_empty(), "the placed symbol survives");
+        assert!(types.iter().all(|t| *t == replacement), "{types:?}");
+        assert!(reopened.symbols_lib().symbol(replacement).is_some());
+        let saved = reopened.build_save_model().to_string();
+        assert!(!saved.contains(retired_id), "the old id is not saved again");
     }
 
     #[test]
