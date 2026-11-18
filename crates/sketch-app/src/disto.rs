@@ -6,12 +6,6 @@
 //! Standard stages keyboard input; Continuous uses the previous heading.
 //! Native radio behavior remains unverified on hardware. Tests use no radio.
 
-use iced::widget::{button, column, container, opaque, row, scrollable, text, Space};
-use iced::{Alignment, Background, Border, Color, Element, Length};
-
-use crate::theme::*;
-use crate::Message;
-
 /// A device the scan found.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Device {
@@ -128,6 +122,7 @@ impl Disto {
     }
 
     /// `#disto-status` text: the device name, else `Disconnected`.
+    #[cfg(test)]
     pub fn chip_label(&self) -> Option<&str> {
         self.connected.as_deref()
     }
@@ -157,7 +152,7 @@ impl Disto {
                     RadioEvent::Measurement(_) => Effect::None,
                     RadioEvent::Disconnected => {
                         self.connected = None;
-                        Effect::Toast("DISTO disconnected.".into())
+                        Effect::Toast("Laser disconnected.".into())
                     }
                 }
             }
@@ -255,7 +250,7 @@ impl Disto {
                         "Bluetooth device access is not available on this computer.".into(),
                     ),
                     Err(Failure::Failed(reason)) => {
-                        Effect::Toast(format!("DISTO connection was not completed: {reason}"))
+                        Effect::Toast(format!("Laser connection was not completed: {reason}"))
                     }
                 }
             }
@@ -294,146 +289,6 @@ mod transport {
 }
 
 pub use transport::{connect_device, disconnect_device, event_stream, scan_devices, set_session};
-
-// ---------------------------------------------------------------------------
-// The chooser card
-// ---------------------------------------------------------------------------
-
-fn chip(label: &'static str, msg: Option<DistoMsg>, primary: bool) -> Element<'static, Message> {
-    let enabled = msg.is_some();
-    let ink = if !enabled {
-        muted()
-    } else if primary {
-        Color::WHITE
-    } else {
-        text_main()
-    };
-    let b = button(container(text(label).font(SEGOE).size(12.0).color(ink)).padding([5, 14]))
-        .padding(0)
-        .style(move |_, status| button::Style {
-            background: Some(Background::Color(if !enabled {
-                bg_ribbon()
-            } else if primary {
-                accent()
-            } else if matches!(status, button::Status::Hovered) {
-                bg_hover()
-            } else {
-                bg_ribbon()
-            })),
-            border: Border {
-                color: border(),
-                width: 1.0,
-                radius: 2.0.into(),
-            },
-            text_color: ink,
-            ..button::Style::default()
-        });
-    match msg {
-        Some(m) => b.on_press(Message::Disto(m)).into(),
-        None => b.into(),
-    }
-}
-
-/// The chooser (the browser's `requestDevice` prompt), or None when closed.
-pub fn layer(d: &Disto) -> Option<Element<'_, Message>> {
-    if !d.open() {
-        return None;
-    }
-    let status = match d.phase {
-        Phase::Scanning => "Scanning for Bluetooth devices\u{2026}".to_string(),
-        Phase::Connecting => "Connecting\u{2026}".to_string(),
-        _ if d.devices.is_empty() => "No Bluetooth devices were found.".to_string(),
-        _ => format!(
-            "{} device{} found",
-            d.devices.len(),
-            if d.devices.len() == 1 { "" } else { "s" }
-        ),
-    };
-    let mut list = column![].spacing(0);
-    for (i, device) in d.devices.iter().enumerate() {
-        let picked = d.selected == Some(i);
-        list = list.push(
-            button(
-                container(
-                    text(device.display())
-                        .font(SEGOE)
-                        .size(12.0)
-                        .color(if picked { Color::WHITE } else { text_main() }),
-                )
-                .padding([6, 8])
-                .width(Length::Fill),
-            )
-            .padding(0)
-            .width(Length::Fill)
-            .on_press(Message::Disto(DistoMsg::Pick(i)))
-            .style(move |_, status| button::Style {
-                background: Some(Background::Color(if picked {
-                    accent()
-                } else if matches!(status, button::Status::Hovered) {
-                    bg_hover()
-                } else {
-                    Color::TRANSPARENT
-                })),
-                ..button::Style::default()
-            }),
-        );
-    }
-    let list = container(scrollable(list).height(Length::Fill))
-        .height(220)
-        .width(Length::Fill)
-        .padding(5)
-        .style(|_| container::Style {
-            background: Some(Background::Color(bg_app())),
-            border: Border {
-                color: border(),
-                width: 1.0,
-                radius: 0.0.into(),
-            },
-            ..container::Style::default()
-        });
-    let busy = matches!(d.phase, Phase::Scanning | Phase::Connecting);
-    let can_choose = d.phase == Phase::Picking && d.selected.is_some();
-    let actions = row![
-        Space::new().width(Length::Fill),
-        chip("Cancel", Some(DistoMsg::Cancel), false),
-        chip("Rescan", (!busy).then_some(DistoMsg::Rescan), false),
-        chip("Connect", can_choose.then_some(DistoMsg::Choose), true),
-    ]
-    .spacing(8);
-    let card = container(
-        column![
-            text("Select a Bluetooth device")
-                .font(SEGOE_SEMIBOLD)
-                .size(13.0)
-                .color(text_main()),
-            text(status).font(SEGOE).size(11.0).color(muted()),
-            list,
-            actions,
-        ]
-        .spacing(10),
-    )
-    .padding(12)
-    .width(420)
-    .style(|_| container::Style {
-        background: Some(Background::Color(bg_panel())),
-        border: Border {
-            color: border(),
-            width: 1.0,
-            radius: 5.0.into(),
-        },
-        ..container::Style::default()
-    });
-    let backdrop = container(opaque(card))
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .align_x(Alignment::Center)
-        .align_y(Alignment::Center)
-        .style(|_| container::Style {
-            background: Some(Color::from_rgba(0.0, 0.0, 0.0, 0.46).into()),
-            ..container::Style::default()
-        });
-    Some(opaque(backdrop))
-}
 
 #[cfg(test)]
 mod tests {
@@ -494,7 +349,7 @@ mod tests {
         let session = d.session;
         assert_eq!(
             d.update(DistoMsg::Radio(session, RadioEvent::Disconnected)),
-            Effect::Toast("DISTO disconnected.".into())
+            Effect::Toast("Laser disconnected.".into())
         );
         assert!(d.chip_label().is_none());
         assert_eq!(
@@ -573,7 +428,7 @@ mod tests {
         d.update(DistoMsg::Choose);
         assert_eq!(
             d.update(DistoMsg::Connected(Err(Failure::Failed("x".into())))),
-            Effect::Toast("DISTO connection was not completed: x".into())
+            Effect::Toast("Laser connection was not completed: x".into())
         );
         assert_eq!(d.chip_label(), None);
     }

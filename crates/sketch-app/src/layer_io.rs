@@ -58,9 +58,7 @@ impl App {
 
     pub(crate) fn import_layer_file(&mut self) -> iced::Task<Message> {
         #[cfg(not(test))]
-        if let Some(path) = rfd::FileDialog::new()
-            .add_filter("Sketch layer", &["json"])
-            .pick_file()
+        if let Some(path) = crate::platform::pick_file("Sketch layer", &["json"])
         {
             let result = std::fs::read_to_string(path)
                 .map_err(|e| e.to_string())

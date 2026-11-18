@@ -17,14 +17,8 @@
 //! Measurements follow theme.css 1213-1248 / 1346-1376; they are transcribed
 //! from the CSS, not pixel-compared against a capture.
 
-use iced::widget::{
-    button, column, container, row, scrollable, text, text_editor, text_input, Space,
-};
-use iced::{Alignment, Background, Border, Color, Element, Length};
+use iced::widget::text_editor;
 use serde::{Deserialize, Deserializer, Serialize};
-
-use crate::theme::*;
-use crate::Message;
 
 /// A free-form `{name, value}` pair (`additionalFields`).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -181,12 +175,12 @@ pub const FIELDS: [&str; 13] = [
     "Inspection Date",
     "GPS Coordinates",
 ];
-const IDX_INSPECTION: usize = 11;
-const IDX_GPS: usize = 12;
+pub(crate) const IDX_INSPECTION: usize = 11;
+pub(crate) const IDX_GPS: usize = 12;
 
 /// The grid rows (`.subject-field-grid` auto-flow: the 3rd, 9th and 10th
 /// labels span both columns, which strands the 8th and 13th on the left).
-const GRID_ROWS: [&[usize]; 9] = [
+pub(crate) const GRID_ROWS: [&[usize]; 9] = [
     &[0, 1],
     &[2],
     &[3, 4],
@@ -198,7 +192,8 @@ const GRID_ROWS: [&[usize]; 9] = [
     &[12],
 ];
 
-const GPS_PLACEHOLDER: &str = "47.7737, -122.6539 or 47\u{b0}46'24.92\"N 122\u{b0}39'14.18\"W";
+pub(crate) const GPS_PLACEHOLDER: &str =
+    "47.7737, -122.6539 or 47\u{b0}46'24.92\"N 122\u{b0}39'14.18\"W";
 const GPS_ERROR: &str = "GPS Coordinates must be decimal degrees (47.7737, -122.6539) or DMS (47\u{b0}46'24.92\"N 122\u{b0}39'14.18\"W).";
 const DATE_ERROR: &str = "Inspection Date must be a date like 2026-10-26.";
 
@@ -283,8 +278,8 @@ impl SubjectDialog {
     pub fn open_from(&mut self, info: &SubjectInfo) {
         *self = SubjectDialog::default();
         self.open = true;
-        for i in 0..FIELDS.len() {
-            self.fields[i] = info.parcel(i).to_string();
+        for (i, field) in self.fields.iter_mut().enumerate().take(FIELDS.len()) {
+            *field = info.parcel(i).to_string();
         }
         // `gpsValue`: the typed text, else the lat/lon pair.
         let gps = info.gps_coordinates.trim();
@@ -297,9 +292,9 @@ impl SubjectDialog {
             self.extra[i] = (f.name.clone(), f.value.clone());
         }
         self.comments = text_editor::Content::with_text(&info.general_comments);
-        for i in 0..3 {
+        for (i, table) in self.tables.iter_mut().enumerate() {
             let rows = info.comment_tables.get(i).cloned().unwrap_or_default();
-            self.tables[i] = text_editor::Content::with_text(&rows.join("\n"));
+            *table = text_editor::Content::with_text(&rows.join("\n"));
         }
     }
 
@@ -326,8 +321,8 @@ impl SubjectDialog {
     /// model from the draft over `base` (unmodelled keys survive).
     pub fn commit(&self, base: &SubjectInfo) -> Result<SubjectInfo, &'static str> {
         let mut next = base.clone();
-        for i in 0..FIELDS.len() {
-            next.set_parcel(i, self.fields[i].clone());
+        for (i, field) in self.fields.iter().enumerate().take(FIELDS.len()) {
+            next.set_parcel(i, field.clone());
         }
         let date = next.inspection_date.trim();
         if !date.is_empty() && !valid_iso_date(date) {
@@ -383,420 +378,6 @@ fn valid_iso_date(s: &str) -> bool {
         _ => return false,
     };
     (1..=days).contains(&d)
-}
-
-// ---------------------------------------------------------------------------
-// View
-// ---------------------------------------------------------------------------
-
-fn input_style(_: &iced::Theme, _: text_input::Status) -> text_input::Style {
-    text_input::Style {
-        background: Background::Color(bg_app()),
-        border: Border {
-            color: border(),
-            width: 1.0,
-            radius: 0.0.into(),
-        },
-        icon: muted(),
-        placeholder: muted(),
-        value: text_main(),
-        selection: crate::dialog::SELECTION,
-    }
-}
-
-fn editor_style(_: &iced::Theme, _: text_editor::Status) -> text_editor::Style {
-    text_editor::Style {
-        background: Background::Color(bg_app()),
-        border: Border {
-            color: border(),
-            width: 1.0,
-            radius: 0.0.into(),
-        },
-        placeholder: muted(),
-        value: text_main(),
-        selection: crate::dialog::SELECTION,
-    }
-}
-
-fn label(s: &'static str) -> Element<'static, Message> {
-    text(s).font(SEGOE).size(11.0).color(text_main()).into()
-}
-
-fn chip(s: &'static str, msg: SubjectMsg) -> Element<'static, Message> {
-    button(container(text(s).font(SEGOE).size(12.0).color(text_main())).padding([5, 9]))
-        .padding(0)
-        .on_press(Message::SubjectInfo(msg))
-        .style(|_, status| button::Style {
-            background: Some(Background::Color(bg_hover())),
-            border: Border {
-                color: if matches!(status, button::Status::Hovered) {
-                    accent()
-                } else {
-                    border()
-                },
-                width: 1.0,
-                radius: 2.0.into(),
-            },
-            text_color: text_main(),
-            ..button::Style::default()
-        })
-        .into()
-}
-
-fn field_cell(d: &SubjectDialog, i: usize) -> Element<'static, Message> {
-    let placeholder = match i {
-        IDX_GPS => GPS_PLACEHOLDER,
-        IDX_INSPECTION => "YYYY-MM-DD",
-        _ => "",
-    };
-    row![
-        container(label(FIELDS[i])).width(112),
-        text_input(placeholder, &d.fields[i])
-            .size(12.0)
-            .padding([6, 7])
-            .width(Length::Fill)
-            .style(input_style)
-            .on_input(move |s| Message::SubjectInfo(SubjectMsg::Field(i, s))),
-    ]
-    .spacing(6)
-    .align_y(Alignment::Center)
-    .width(Length::Fill)
-    .into()
-}
-
-fn parcel_panel(d: &SubjectDialog, auto_filled: bool) -> Element<'static, Message> {
-    let mut col = column![].spacing(10);
-    if !auto_filled {
-        col = col.push(
-            row![
-                button(
-                    row![
-                        crate::icons::icon("arrow-square-in", false, 14.0, hex_rgb(0x63B3ED)),
-                        text("Auto-Fill").font(SEGOE).size(11.0).color(text_main()),
-                    ]
-                    .spacing(6)
-                    .align_y(Alignment::Center),
-                )
-                .padding([5, 10])
-                .on_press(Message::SubjectInfo(SubjectMsg::AutoFill))
-                .style(|_, status| button::Style {
-                    background: Some(Background::Color(bg_hover())),
-                    border: Border {
-                        color: if matches!(status, button::Status::Hovered) {
-                            accent()
-                        } else {
-                            border()
-                        },
-                        width: 1.0,
-                        radius: 2.0.into(),
-                    },
-                    text_color: text_main(),
-                    ..button::Style::default()
-                }),
-                text("Pull subject, client and appraiser details from the open suite report.")
-                    .font(SEGOE)
-                    .size(10.0)
-                    .color(muted()),
-            ]
-            .spacing(10)
-            .align_y(Alignment::Center),
-        );
-    }
-    let mut grid = column![].spacing(9);
-    for cells in GRID_ROWS {
-        let mut r = row![].spacing(14);
-        for &i in cells {
-            r = r.push(field_cell(d, i));
-        }
-        // The county and GPS cells sit alone in the left column.
-        if matches!(cells, [7] | [12]) {
-            r = r.push(Space::new().width(Length::Fill));
-        }
-        grid = grid.push(r);
-    }
-    col = col.push(grid);
-
-    let meta = |s: &'static str| -> Element<'static, Message> {
-        text(s)
-            .font(SEGOE)
-            .size(10.0)
-            .color(muted())
-            .width(Length::FillPortion(1))
-            .into()
-    };
-    col = col.push(Space::new().height(6));
-    col = col.push(
-        container(
-            row![
-                meta("Created By: Appraisal Sketch"),
-                meta("Modified By: Appraisal Sketch"),
-                meta("Format Version: Sketch-Web"),
-            ]
-            .spacing(8),
-        )
-        .padding(9)
-        .width(Length::Fill)
-        .style(|_| container::Style {
-            border: Border {
-                color: border(),
-                width: 1.0,
-                radius: 0.0.into(),
-            },
-            ..container::Style::default()
-        }),
-    );
-
-    // `<details>`: the summary toggles the three name/value rows.
-    let caret = if d.extras_open {
-        "caret-down"
-    } else {
-        "caret-right"
-    };
-    col = col.push(
-        button(
-            row![
-                crate::icons::icon(caret, false, 10.0, muted()),
-                text("Expand additional fields")
-                    .font(SEGOE)
-                    .size(11.0)
-                    .color(muted()),
-            ]
-            .spacing(5)
-            .align_y(Alignment::Center),
-        )
-        .padding(0)
-        .on_press(Message::SubjectInfo(SubjectMsg::ToggleExtras))
-        .style(|_, _| button::Style::default()),
-    );
-    if d.extras_open {
-        let mut extras = column![row![
-            text("Name")
-                .font(SEGOE_SEMIBOLD)
-                .size(11.0)
-                .color(muted())
-                .width(Length::FillPortion(1)),
-            text("Value")
-                .font(SEGOE_SEMIBOLD)
-                .size(11.0)
-                .color(muted())
-                .width(Length::FillPortion(1)),
-        ]
-        .spacing(7)]
-        .spacing(5);
-        for i in 0..3 {
-            extras = extras.push(
-                row![
-                    text_input("", &d.extra[i].0)
-                        .size(12.0)
-                        .padding([6, 7])
-                        .style(input_style)
-                        .on_input(move |s| Message::SubjectInfo(SubjectMsg::ExtraName(i, s))),
-                    text_input("", &d.extra[i].1)
-                        .size(12.0)
-                        .padding([6, 7])
-                        .style(input_style)
-                        .on_input(move |s| Message::SubjectInfo(SubjectMsg::ExtraValue(i, s))),
-                ]
-                .spacing(7),
-            );
-        }
-        col = col.push(extras);
-    }
-    col.into()
-}
-
-fn comments_panel(d: &SubjectDialog) -> Element<'_, Message> {
-    column![
-        column![
-            label("Comments"),
-            text_editor(&d.comments)
-                .on_action(|a| Message::SubjectInfo(SubjectMsg::Comments(a)))
-                .font(SEGOE)
-                .size(12.0)
-                .padding(7)
-                .height(Length::Fill)
-                .style(editor_style),
-        ]
-        .spacing(5)
-        .height(310),
-        row![
-            Space::new().width(Length::Fill),
-            chip("Save Default", SubjectMsg::SaveDefault),
-            chip("Apply Default", SubjectMsg::ApplyDefault),
-        ]
-        .spacing(7),
-    ]
-    .spacing(8)
-    .into()
-}
-
-fn table_cell(d: &SubjectDialog, i: usize) -> Element<'_, Message> {
-    let title: &'static str = ["Comment Table 1", "Comment Table 2", "Comment Table 3"][i];
-    column![
-        label(title),
-        text_editor(&d.tables[i])
-            .on_action(move |a| Message::SubjectInfo(SubjectMsg::Table(i, a)))
-            .font(SEGOE)
-            .size(12.0)
-            .padding(7)
-            .height(Length::Fill)
-            .style(editor_style),
-    ]
-    .spacing(4)
-    .width(Length::FillPortion(1))
-    .height(165)
-    .into()
-}
-
-fn tab_button(
-    d: &SubjectDialog,
-    tab: Tab,
-    title: &'static str,
-    width: f32,
-) -> Element<'static, Message> {
-    let active = d.tab == tab;
-    column![
-        button(
-            container(text(title).font(SEGOE).size(12.0).color(if active {
-                text_main()
-            } else {
-                muted()
-            }))
-            .padding([7, 12])
-            .width(Length::Fill),
-        )
-        .padding(0)
-        .width(Length::Fill)
-        .on_press(Message::SubjectInfo(SubjectMsg::Tab(tab)))
-        .style(move |_, _| button::Style {
-            background: active.then_some(Background::Color(bg_hover())),
-            text_color: text_main(),
-            ..button::Style::default()
-        }),
-        container(Space::new())
-            .width(Length::Fill)
-            .height(2)
-            .style(move |_| container::Style {
-                background: Some(Background::Color(if active {
-                    accent()
-                } else {
-                    Color::TRANSPARENT
-                })),
-                ..container::Style::default()
-            }),
-    ]
-    .width(width)
-    .into()
-}
-
-/// The dialog's layer, or None when closed.
-pub fn layer(d: &SubjectDialog, auto_filled: bool) -> Option<Element<'_, Message>> {
-    if !d.open {
-        return None;
-    }
-    let title = row![
-        text("Subject Info")
-            .font(SEGOE_BOLD)
-            .size(13.0)
-            .color(text_main()),
-        Space::new().width(Length::Fill),
-        button(text("\u{d7}").font(SEGOE).size(20.0).color(muted()))
-            .padding(0)
-            .on_press(Message::SubjectInfo(SubjectMsg::Close))
-            .style(|_, _| button::Style::default()),
-    ]
-    .align_y(Alignment::Center);
-
-    let tabs = container(row![
-        tab_button(d, Tab::Parcel, "Parcel Info", 84.0),
-        tab_button(d, Tab::Comments, "General Comments", 136.0),
-        tab_button(d, Tab::Tables, "Comment Tables", 122.0),
-    ])
-    .width(Length::Fill)
-    .style(|_| container::Style {
-        border: Border {
-            color: border(),
-            width: 0.0,
-            radius: 0.0.into(),
-        },
-        ..container::Style::default()
-    });
-    let rule = container(Space::new())
-        .width(Length::Fill)
-        .height(1)
-        .style(|_| container::Style {
-            background: Some(Background::Color(border())),
-            ..container::Style::default()
-        });
-
-    let body: Element<'_, Message> = match d.tab {
-        Tab::Parcel => scrollable(
-            container(parcel_panel(d, auto_filled)).padding(iced::Padding {
-                right: 14.0,
-                ..iced::Padding::ZERO
-            }),
-        )
-        .height(Length::Fill)
-        .into(),
-        Tab::Comments => comments_panel(d),
-        Tab::Tables => column![
-            table_cell(d, 0),
-            row![table_cell(d, 1), table_cell(d, 2)].spacing(10),
-        ]
-        .spacing(10)
-        .into(),
-    };
-
-    let actions = row![
-        Space::new().width(Length::Fill),
-        chip("Cancel", SubjectMsg::Close),
-        chip("OK", SubjectMsg::Ok),
-    ]
-    .spacing(8);
-
-    let card = container(
-        column![
-            title,
-            column![tabs, rule],
-            container(body).height(Length::Fill),
-            actions
-        ]
-        .spacing(10),
-    )
-    .padding(12)
-    .width(720)
-    .height(match d.tab {
-        // `max-height: min(620px, 100vh - 40px)`: the parcel tab outgrows the
-        // 500px min-height and scrolls at the cap.
-        Tab::Parcel => 620.0,
-        _ => 500.0,
-    })
-    .style(|_| container::Style {
-        background: Some(Background::Color(bg_panel())),
-        border: Border {
-            color: border(),
-            width: 1.0,
-            radius: 5.0.into(),
-        },
-        ..container::Style::default()
-    });
-
-    // No Escape or backdrop handler: the original closes only through the
-    // x, Cancel and OK. The backdrop still swallows presses (it is modal).
-    let backdrop = container(card)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .center_x(Length::Fill)
-        .center_y(Length::Fill)
-        .style(|_| container::Style {
-            background: Some(Color::from_rgba(0.0, 0.0, 0.0, 0.46).into()),
-            ..container::Style::default()
-        });
-    Some(iced::widget::opaque(backdrop))
-}
-
-fn hex_rgb(v: u32) -> Color {
-    Color::from_rgb8((v >> 16) as u8, (v >> 8) as u8, v as u8)
 }
 
 #[cfg(test)]

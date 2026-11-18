@@ -154,7 +154,7 @@ pub enum AreaStyle {
     LineColor(String),
 }
 
-/// Which select the ribbon cycles.
+/// Which select the inspector cycles.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AreaCycle {
     FillPattern,

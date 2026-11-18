@@ -495,7 +495,7 @@ fn transform_sketch(d: &mut Drawing, f: impl Fn(Pt) -> Pt, rotation_delta: f64) 
 /// `rotateSketch(degrees)`: the whole sketch about its own centre, north
 /// included.
 ///
-/// Its ribbon buttons (`rotate-sketch`, `flip-sketch`) are **hidden in the
+/// Its buttons (`rotate-sketch`, `flip-sketch`) are **hidden in the
 /// original's own build** — they exist in the command registry with zero-sized
 /// rects, so nothing on screen can reach them. Kept because the behaviour is
 /// verified against the original and a command palette or the buttons

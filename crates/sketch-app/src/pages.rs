@@ -99,6 +99,7 @@ impl Pages {
     }
 
     /// `#page-display`: "N of M".
+    #[cfg(test)]
     pub fn display(&self) -> String {
         format!("{} of {}", self.current + 1, self.pages.len())
     }
@@ -195,6 +196,51 @@ impl Pages {
             }
             None => false,
         }
+    }
+
+    /// Rename page `index`; a blank name resets to the default `"Page N"` label.
+    pub fn set_page_name(&mut self, index: usize, name: &str) -> bool {
+        let Some(page) = self.pages.get_mut(index) else {
+            return false;
+        };
+        let clean = name.trim();
+        let next = if clean.is_empty() {
+            String::new()
+        } else {
+            clean.to_owned()
+        };
+        if page.name == next {
+            return false;
+        }
+        page.name = next;
+        true
+    }
+
+    /// Move page `from` to index `to`, keeping `current` and `underlay` pointing
+    /// at the same underlying pages.
+    pub fn move_page(&mut self, from: usize, to: usize) -> bool {
+        let len = self.pages.len();
+        if from >= len || to >= len || from == to {
+            return false;
+        }
+        let moved = self.pages.remove(from);
+        self.pages.insert(to, moved);
+        let remap = |idx: usize| -> usize {
+            if idx == from {
+                to
+            } else if from < to && idx > from && idx <= to {
+                idx - 1
+            } else if to < from && idx >= to && idx < from {
+                idx + 1
+            } else {
+                idx
+            }
+        };
+        self.current = remap(self.current);
+        if let Some(u) = self.underlay {
+            self.underlay = Some(remap(u));
+        }
+        true
     }
 }
 
@@ -321,5 +367,29 @@ mod tests {
         assert_eq!(parse_float(" 1e2x"), Some(100.0));
         assert_eq!(parse_float("1e"), Some(1.0));
         assert_eq!(parse_float(".5"), Some(0.5));
+    }
+
+    #[test]
+    fn move_page_and_rename_preserve_current_and_underlay() {
+        let mut p = Pages::default();
+        p.add_page();
+        p.add_page();
+        assert!(p.set_page_name(0, "First"));
+        assert!(p.set_page_name(1, "Second"));
+        assert!(p.set_page_name(2, "Third"));
+        p.set_underlay(Some(0));
+        assert_eq!(p.current, 2);
+
+        assert!(p.move_page(2, 0));
+        assert_eq!(p.current, 0);
+        assert_eq!(p.underlay, Some(1));
+        assert_eq!(p.page_name(0), "Third");
+        assert_eq!(p.page_name(1), "First");
+        assert_eq!(p.page_name(2), "Second");
+
+        assert!(p.move_page(1, 2));
+        assert_eq!(p.current, 0);
+        assert_eq!(p.underlay, Some(2));
+        assert_eq!(p.page_name(2), "First");
     }
 }

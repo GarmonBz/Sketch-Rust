@@ -69,7 +69,7 @@ pub fn choices(pages: &Pages) -> Vec<Choice> {
 
 /// `--accent-soft`.
 fn accent_soft() -> Color {
-    crate::command_palette::accent_soft()
+    over(accent(), 0.14, bg_panel())
 }
 
 fn tag<'a>(label: &'static str, on: bool, press: Option<Message>) -> Element<'a, Message> {

@@ -1,0 +1,621 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch Rust Interface Proposal</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@500;600&display=swap">
+<style>
+/* Layout: one reading column for the plan; renderings break out wider and scroll sideways on phones. */
+:root {
+  --bg: #E9EDF2; --surface: #F7F8FA; --ink: #20252B; --muted: #586474; --rule: #C3CBD5;
+  --accent: #1677BD; --tape: #F6AD55; --tape-ink: #1E1E1E; --flag: #C53030;
+  --body: "Barlow", "Segoe UI", system-ui, sans-serif;
+  --display: "Barlow Semi Condensed", "Barlow", "Arial Narrow", sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #1E1E1E; --surface: #252526; --ink: #D4D4D4; --muted: #9A9A9A; --rule: #3F3F46;
+  --accent: #63B3ED; --tape: #F6AD55; --tape-ink: #1E1E1E; --flag: #FC8181; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #1E1E1E; --surface: #252526; --ink: #D4D4D4; --muted: #9A9A9A; --rule: #3F3F46;
+  --accent: #63B3ED; --tape: #F6AD55; --tape-ink: #1E1E1E; --flag: #FC8181; color-scheme: dark }
+
+body { background: var(--bg); color: var(--ink); font: 400 17px/1.55 var(--body); }
+.wrap { max-width: 1180px; margin: 0 auto; padding-block: 48px 80px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 56px; }
+.col { max-width: 44rem; display: flex; flex-direction: column; gap: 16px; }
+h1, h2, h3 { font-family: var(--display); font-weight: 600; text-wrap: balance; margin: 0; line-height: 1.15; }
+h1 { font-size: clamp(2rem, 5vw, 3.1rem); letter-spacing: -0.01em; }
+h2 { font-size: 1.75rem; }
+h3 { font-size: 1.2rem; }
+p { margin: 0; }
+.lede { font-size: 1.2rem; color: var(--muted); }
+section { display: flex; flex-direction: column; gap: 20px; }
+.note { border-left: 4px solid var(--tape); background: var(--surface); padding: 14px 18px; max-width: 44rem; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 0.95rem; }
+th, td { text-align: left; vertical-align: top; padding: 10px 14px 10px 0; border-bottom: 1px solid var(--rule); }
+th { font-family: var(--display); font-weight: 600; color: var(--muted); font-size: 0.9rem; }
+td:first-child { font-weight: 600; white-space: nowrap; }
+figure { margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.frame { overflow-x: auto; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); }
+.frame svg { display: block; width: 100%; min-width: 760px; height: auto; }
+figcaption { color: var(--muted); max-width: 44rem; font-size: 0.95rem; }
+figcaption b { color: var(--ink); font-weight: 600; }
+.swatches { display: flex; flex-wrap: wrap; gap: 12px; }
+.sw { width: 132px; display: flex; flex-direction: column; gap: 6px; font-size: 0.85rem; color: var(--muted); }
+.sw i { display: block; height: 52px; border-radius: 6px; border: 1px solid var(--rule); }
+.sw b { color: var(--ink); font-weight: 600; }
+.type { display: flex; flex-wrap: wrap; gap: 32px; align-items: baseline; }
+.type .big { font: 600 2.6rem/1 var(--display); font-variant-numeric: tabular-nums; }
+.floors { display: grid; grid-template-columns: auto repeat(4, minmax(0, 1fr)); gap: 10px 12px; align-items: center; max-width: 44rem; font-size: 0.85rem; color: var(--muted); }
+.floors .fl { background: #FFFFFF; border-radius: 6px; padding: 8px; }
+.floors .fl i { display: block; height: 46px; border: 3px solid; }
+.floors .fl span { display: block; margin-top: 6px; color: #20252B; font-weight: 600; font-style: normal; }
+.floors .fl small { color: #586474; font-family: var(--display); }
+ol.steps { margin: 0; padding-left: 1.3rem; display: flex; flex-direction: column; gap: 12px; max-width: 44rem; }
+ol.steps b { font-weight: 600; }
+ul { margin: 0; padding-left: 1.2rem; display: flex; flex-direction: column; gap: 8px; max-width: 44rem; }
+code { font-size: 0.9em; background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; padding: 0 4px; }
+</style>
+
+<div class="wrap">
+  <header class="col">
+    <h1>A new interface for Sketch Rust</h1>
+    <p class="lede">The program today is a pixel-for-pixel port of the browser app, which follows the ribbon, tool rail, area-code panel and status bar arrangement common to Apex-style sketch programs. This proposal keeps every feature and rebuilds how the screen is organised, named and styled.</p>
+    <p class="note">I am not a lawyer, and I could not compare against Apex itself here. I worked from the reference screenshots in <code>refs/ui-spec</code>. A new layout, vocabulary and visual identity removes the look-and-feel resemblance. It does not settle questions about code, file formats or bundled data, which are listed at the end.</p>
+  </header>
+
+  <section>
+    <h2>What changes</h2>
+    <div class="scroll"><table>
+      <tr><th>Today</th><th>Proposed</th><th>What that removes</th></tr>
+      <tr><td>Office-style ribbon and File backstage</td><td>One 44px bar: menu, document name, page tabs, command search, Send to report</td><td>The ribbon tabs, the Edit Tools contextual tab, the quick-access toolbar</td></tr>
+      <tr><td>17-button left tool rail</td><td>A floating tool tray at the bottom of the drawing. Ten buttons, with the other seven rail tools one press away in fly-outs</td><td>The vertical rail and its grouping</td></tr>
+      <tr><td>Right dock listing every area code</td><td>A left ledger with two views. Drawn lists your areas with their calculations and running totals. Types lists all 32 built-in area types plus your own, to drag or tap onto an outline</td><td>The right-hand dock and the separate Calcs tab. Every type stays</td></tr>
+      <tr><td>Define Area panel, pick a code</td><td>A chooser that opens on the area the moment it closes. Type to search, Enter to apply</td><td>The define-area workflow and its name</td></tr>
+      <tr><td>Length typed into a status-bar readout</td><td>A tape-measure entry strip that sits next to the wall you are drawing</td><td>The status-bar segment display</td></tr>
+      <tr><td>28px status bar with twenty controls</td><td>Three small groups on the drawing: zoom and scale, snapping, north</td><td>The status bar</td></tr>
+      <tr><td>Symbols and Text dock tabs</td><td>An Insert drawer that opens above the tool tray</td><td>Two more dock tabs</td></tr>
+      <tr><td>Dark grey with bright blue, multi-coloured icons, Segoe UI and Arial</td><td>The same greys and blue, in all three themes. One icon colour, amber kept for the length strip only, Barlow</td><td>The multi-coloured icon tinting and the system fonts. The palette stays because it is the app's own</td></tr>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Renderings</h2>
+    <figure><div class="frame" id="r1"></div>
+      <figcaption><b>Drawing a wall.</b> The amber strip is the length you are typing. It follows the wall instead of living in a status bar. The ledger on the left already totals the two finished areas.</figcaption></figure>
+    <figure><div class="frame" id="r2"></div>
+      <figcaption><b>Naming an area.</b> Closing the porch opens the chooser on top of it. The panel on the right appears only while something is selected, and replaces the Edit Tools ribbon tab and the area properties dialog.</figcaption></figure>
+    <figure><div class="frame" id="r3"></div>
+      <figcaption><b>Placing a symbol, light theme.</b> The Insert drawer holds symbols and room labels. This uses the current light theme's colours. The blue theme carries over the same way.</figcaption></figure>
+    <figure><div class="frame" id="r4"></div>
+      <figcaption><b>Start screen.</b> Replaces the File backstage. Recent sketches show their outline and living area, and an open Appraise-It report is offered directly.</figcaption></figure>
+  </section>
+
+  <section>
+    <h2>Tablet and phone</h2>
+    <p class="col">The tablet is the main touch target. It is the size an appraiser can sketch on while walking a house, and it has room for the full layout. The same parts rearrange by window width, so the Android version is a layout of this design and not a second one. Nothing is removed on a smaller screen. It moves into a slide-over, a sheet or a menu.</p>
+    <figure><div class="frame" id="r8"></div>
+      <figcaption><b>Tablet, landscape (1280 × 800).</b> The full desktop layout with touch-sized controls: 48px rows and buttons, undo and redo always in the bar. The number and direction pad floats on the right, where a thumb reaches it, and hides when a keyboard is attached.</figcaption></figure>
+    <figure><div class="frame" id="r9"></div>
+      <figcaption><b>Tablet, portrait (800 × 1280).</b> The panels slide over the drawing instead of taking space from it. Left: the Types list open, with First Floor armed and ready to tap onto an outline. Right: an area selected, with its inspector open. The tool tray keeps all ten tools in one row.</figcaption></figure>
+    <figure><div class="frame" id="r5"></div>
+      <figcaption><b>Phone, 372 wide, the smallest case.</b> Left: drawing a wall with the number and direction pad, which grows out of today's Touch Panel. Middle: the area sheet on its Types view, listing every built-in type. Tap one, then tap an outline. Right: the symbol library, where selecting a symbol offers Place and Edit.</figcaption></figure>
+    <div class="scroll"><table>
+      <tr><th>Part</th><th>Desktop and landscape tablet</th><th>Portrait tablet</th><th>Phone</th></tr>
+      <tr><td>Top bar</td><td>Full bar with page tabs and search</td><td>Menu, name, undo, redo. Page chips on a second row</td><td>Same as portrait tablet</td></tr>
+      <tr><td>Tools</td><td>Floating tray with fly-outs</td><td>Same</td><td>Scrolling bar along the bottom edge. Hold a tool for its fly-out</td></tr>
+      <tr><td>Ledger</td><td>Left panel</td><td>Slides over the drawing</td><td>Bottom sheet: Drawn, Types, Totals</td></tr>
+      <tr><td>Inspector</td><td>Right panel when something is selected</td><td>Slides over the drawing</td><td>Bottom sheet that replaces the tool bar while something is selected</td></tr>
+      <tr><td>Length entry</td><td>Strip beside the wall. Keyboard on desktop, floating pad on a tablet</td><td>Strip plus floating pad</td><td>Pad docked along the bottom</td></tr>
+      <tr><td>Dialogs</td><td>Centred windows</td><td>Centred windows</td><td>Full-screen pages with a back arrow</td></tr>
+    </table></div>
+    <h3>Every mouse and keyboard action gets a touch equivalent</h3>
+    <div class="scroll"><table>
+      <tr><th>Today</th><th>On touch</th></tr>
+      <tr><td>Right-click menu</td><td>Press and hold</td></tr>
+      <tr><td>Wheel zoom, middle-drag or Space-drag pan</td><td>Pinch and two-finger drag</td></tr>
+      <tr><td>Type a length, press an arrow</td><td>Number and direction pad, with Turn left, Turn right, Close area and Laser</td></tr>
+      <tr><td>Shift + wheel to bow a wall, wheel to scale a label or symbol</td><td>Stepper in the inspector, plus the existing drag handles</td></tr>
+      <tr><td>Ctrl + click to add to the selection</td><td>A Select more switch on the Select tool</td></tr>
+      <tr><td>Hover to preview an outline or read a tooltip</td><td>First tap previews, second tap confirms. Hold a button to see its name</td></tr>
+      <tr><td>Drag a type, symbol or label onto the drawing</td><td>Still works, and tap-then-tap already exists as the alternative</td></tr>
+      <tr><td>Double-click to finish a run or edit a label</td><td>A Done button, or tap the selected item again</td></tr>
+      <tr><td>Keyboard shortcuts</td><td>Every command is in the menu and in command search. Shortcuts still work with a keyboard attached</td></tr>
+      <tr><td>Stylus</td><td>The pen draws walls and moves handles while fingers pan and zoom. This uses the Input mode setting (Pen as Ink, Pen as Mouse, Touch) that Options already stores but does not yet act on</td></tr>
+    </table></div>
+    <p class="note">Three things need checking before Android work starts, and I have not verified them: how well the iced toolkit runs on Android, the Bluetooth laser library on Android, and file pickers and printing, which use Windows-only code today. Appraise-It Pro is a Windows program, so the report hand-off stays desktop only.</p>
+  </section>
+
+  <section>
+    <h2>Area types are fully editable</h2>
+    <figure><div class="frame" id="r6"></div>
+      <figcaption><b>Area types.</b> All 32 built-in types are listed and none is hidden. Every field of every type can be changed, including the built-in ones.</figcaption></figure>
+    <h3>Living space floors get four distinct colours</h3>
+    <p class="col">Today the four living-space floors are four close shades of blue, which are hard to tell apart on a multi-storey sketch. The proposal keeps First Floor as it is and gives the other three their own hue. None of them repeats the greens used for building area, the purple for garages, the grey for basements or the amber for porches.</p>
+    <div class="floors">
+      <b>Today</b>
+      <div class="fl"><i style="border-color:#2B6CB0;background:rgba(43,108,176,.10)"></i><span>First</span><small>#2B6CB0</small></div>
+      <div class="fl"><i style="border-color:#2C5282;background:rgba(44,82,130,.10)"></i><span>Second</span><small>#2C5282</small></div>
+      <div class="fl"><i style="border-color:#3182CE;background:rgba(49,130,206,.10)"></i><span>Third</span><small>#3182CE</small></div>
+      <div class="fl"><i style="border-color:#4299E1;background:rgba(66,153,225,.10)"></i><span>Fourth</span><small>#4299E1</small></div>
+      <b>Proposed</b>
+      <div class="fl"><i style="border-color:#2B6CB0;background:rgba(43,108,176,.10)"></i><span>First</span><small>#2B6CB0 blue</small></div>
+      <div class="fl"><i style="border-color:#0987A0;background:rgba(9,135,160,.10)"></i><span>Second</span><small>#0987A0 teal</small></div>
+      <div class="fl"><i style="border-color:#B83280;background:rgba(184,50,128,.10)"></i><span>Third</span><small>#B83280 magenta</small></div>
+      <div class="fl"><i style="border-color:#C53030;background:rgba(197,48,48,.10)"></i><span>Fourth</span><small>#C53030 red</small></div>
+    </div>
+    <p class="col">These are new defaults only. A sketch that was saved with its own type table keeps its colours, and so does a customised type library. Any of the four can still be changed in the editor above.</p>
+    <ul>
+      <li><b>All 32 stay.</b> First to Fourth Floor living area, First to Tenth Floor building area, Garage, Carport, Finished and Unfinished BSMT, the four porches, Patio, Wood Deck, Balcony, Pool, Shed, Storage, Land, Subject Site, Non-Calculated Area and Undefined Area.</li>
+      <li><b>Today</b> you can create a type with every field, but an existing type only lets you change its name, colours and fill. Anything else means editing raw JSON.</li>
+      <li><b>Proposed:</b> one form for code, name, description, group, multiplier, sign, whether it counts as living area, line colour, fill colour, fill style and opacity. Plus New, Duplicate, Delete, reorder, Import, Export and Restore defaults.</li>
+      <li><b>One rule kept:</b> Undefined Area can be restyled but not deleted, because areas fall back to it when their type is deleted.</li>
+      <li><b>Each drawn area</b> stays editable in the inspector: name, type, factor, sign, auto-subtract, deduct-from, attributes, fill and line style, label options, and its walls by handle or typed length.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>The symbol library is fully editable</h2>
+    <figure><div class="frame" id="r7"></div>
+      <figcaption><b>Symbol library.</b> All 639 symbols in all 29 categories are shown by default. The right-hand side edits the selected symbol, including its shape.</figcaption></figure>
+    <ul>
+      <li><b>Already in the app:</b> rename, move to a category, add to favourites, hide and restore, delete, delete or rename a category, merge duplicates, import from DXF.</li>
+      <li><b>To add:</b> edit a symbol's properties (description, wall snapping, wall gap, end cap, units), edit its shape, make a symbol from whatever is selected in the sketch, duplicate, create an empty category, reorder, export the library, restore the original library.</li>
+      <li><b>Shape editing</b> reuses the sketch's own drawing tools on a small canvas, so there is no second editor to learn.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Where every feature goes</h2>
+    <p class="col">The project's inventory lists 634 user-reachable features. Each one keeps a home. My first draft was too thin in places, and this table puts back what it left out: the type list, the calculation tree, fence and lasso, wall shapes, chain dimensions, the image tools and the view controls.</p>
+    <div class="scroll"><table>
+      <tr><th>Inventory group</th><th>Features</th><th>New home</th></tr>
+      <tr><td>Title bar, ribbon, File menu</td><td>34</td><td>Top bar and its menu: New, Open, Save, Save As, Import, Import CAD, the four exports, Print, Print Preview, Page Layout, Recent, Options, Exit. Undo, redo and undo history sit in the bar. Background and interface theme are under View.</td></tr>
+      <tr><td>Dock</td><td>20</td><td>Ledger (Drawn, Types, Layers), Insert drawer (symbols, labels), inspector. Pin, collapse and resize carry over to the panels.</td></tr>
+      <tr><td>Status bar</td><td>36</td><td>Drawing controls: zoom slider, in, out, Centre, Fit, zoom to rectangle, 1:N scale, grid, snap, area snap, the four snap pitches, the Show in sketch filter with its six switches, north angle. Totals move to the ledger foot. Underlay moves to the page tabs. Laser and direction pad buttons stay on the drawing.</td></tr>
+      <tr><td>Drawing</td><td>64</td><td>Wall and Inner tools, with Line, Rectangle, Circle and Polygon in the Wall fly-out. The length strip shows length, angle and pen up or down. Every keyboard entry form is kept: rise and run, turns, absolute angle, bay mirror, endpoint jump, diagonal moves, auto-close. Draw colour is in the top bar menu and the inspector.</td></tr>
+      <tr><td>Select and edit</td><td>88</td><td>Select tool with Fence and Lasso in its fly-out. Curve tool with Insert vertex in its fly-out. The inspector takes over Edit Tools: length, line style, colour, thickness. Cut, copy, paste, select by type, rotate, flip, nudge, scale, order and delete are in the Edit menu and the press-and-hold menu.</td></tr>
+      <tr><td>Areas</td><td>79</td><td>Area tool, the chooser, and the ledger. Types view: arm, drag, usage counts, assign to selected, select areas using a type, edit, new, delete, Undefined, Find undefined. Drawn view: each row opens to base area, factor, total, subtracted, net and perimeter. Redefine, Clone, Reopen, Detect regions, label defaults and suffix are in the ledger's menu. Area attributes, breakdown with its copy and downloads, and Make negative are in the inspector.</td></tr>
+      <tr><td>Symbols</td><td>45</td><td>Insert tool and drawer, the library screen, and the inspector for flip swing, wider, narrower, rotate and resize.</td></tr>
+      <tr><td>Labels, dimensions, shapes, measure</td><td>46</td><td>Label tool opens the drawer on the 25 built-in room labels with search, letter filter and Edit list. Shape tool opens the room shape form. Measure tool has Chain dimension in its fly-out, and its run controls (finish, close, undo point, clear, copy) appear in the length strip. Text font, size and style are in the inspector.</td></tr>
+      <tr><td>Pages, layers, reference image, geo</td><td>57</td><td>Page tabs with add, delete, first, last and underlay. Layers in the ledger with show, lock, rename, reorder, group and export. A Trace image panel holds all the image tools: load, show, hide, remove, set scale, size, rotate, flip, move, align, intensity, and the three map options.</td></tr>
+      <tr><td>Files, print, options</td><td>81</td><td>Menu and start screen. Options keeps its six tabs and every setting. Page Layout is unchanged in content.</td></tr>
+      <tr><td>Remaining</td><td>84</td><td>Property details (Subject Info) with its three tabs, mini-map, laser connection and status, shortcut sheet, email support, command search with every command, toasts and confirmations.</td></tr>
+    </table></div>
+    <p class="col">The 17 rail tools map to ten tray buttons like this. Select holds Fence and Lasso. Wall holds the wall shapes. Curve holds Insert vertex. Measure holds Chain dimension. Inner, Area, Shape, Label, Insert and Pan are direct. Direction pad moves to the drawing controls, Geo to the Trace image panel, and Pages to the page tabs.</p>
+  </section>
+
+  <section>
+    <h2>Colour and type</h2>
+    <div class="swatches">
+      <div class="sw"><i style="background:#2D2D30"></i><b>Bar</b>#2D2D30, top bar and pop-ups (current ribbon grey)</div>
+      <div class="sw"><i style="background:#252526"></i><b>Panel</b>#252526, ledger and inspector (current panel grey)</div>
+      <div class="sw"><i style="background:#1E1E1E"></i><b>Field</b>#1E1E1E, inputs (current app background)</div>
+      <div class="sw"><i style="background:#007ACC"></i><b>Blue</b>#007ACC, active tool, selection, primary action (current accent)</div>
+      <div class="sw"><i style="background:#F6AD55"></i><b>Amber</b>#F6AD55, length strip only (current icon orange)</div>
+      <div class="sw"><i style="background:#FC8181"></i><b>Red</b>#FC8181, areas that still need a type (current icon red)</div>
+    </div>
+    <div class="type">
+      <div><div class="big">1,224.0 sf</div><p>Barlow Semi Condensed for dimensions, totals and headings</p></div>
+      <div style="max-width:24rem"><p style="font-weight:600">Barlow for everything else</p><p>Both are open-licensed and can ship inside the installer, so the program looks the same on every machine and no longer depends on Segoe UI or Arial.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Build order</h2>
+    <ol class="steps">
+      <li><b>Tokens and fonts.</b> Keep the three palettes in <code>theme.rs</code>, add the amber strip colour, bundle Barlow, drop the double-ink text pass that imitated Chrome's rendering.</li>
+      <li><b>Flexible layout.</b> The chrome is pinned at coordinates measured from a 1400×860 screenshot, and <code>ribbon_tabs.rs</code> is generated from that spec. The new shell uses normal iced rows and columns so it resizes properly.</li>
+      <li><b>Size classes.</b> Build each panel once and place it by window width: side panel when wide, slide-over when medium, bottom sheet when narrow. Tablet landscape and portrait are the two touch layouts to get right first. The phone follows from them. Test by resizing the desktop window, well before any Android work.</li>
+      <li><b>Coverage checklist.</b> Turn the 634-row inventory into a checklist that names each feature's new home, and keep it passing as the old chrome is removed.</li>
+      <li><b>Top bar.</b> Replaces <code>titlebar.rs</code>, <code>ribbon.rs</code>, <code>ribbon_tabs.rs</code> and <code>backstage.rs</code>. Every ribbon command moves to the menu or the existing command search.</li>
+      <li><b>Tool tray.</b> Replaces <code>rail.rs</code>.</li>
+      <li><b>Ledger, inspector and Insert drawer.</b> Split <code>dock.rs</code> into these three. The inspector also absorbs <code>area_props.rs</code>.</li>
+      <li><b>Area chooser and tape strip.</b> New on-drawing widgets over the existing area and keyboard-entry logic.</li>
+      <li><b>Area type editor.</b> One form over the existing type table, replacing the raw JSON editor and the two partial dialogs.</li>
+      <li><b>Symbol editor.</b> Property and shape editing on top of the existing library functions in <code>symbol_edit.rs</code>.</li>
+      <li><b>Touch input.</b> The number and direction pad, press-and-hold menus, pinch and two-finger pan, 48px minimum targets.</li>
+      <li><b>Drawing controls and start screen.</b> Replace <code>statusbar.rs</code> and the recent-files list.</li>
+      <li><b>Dialogs, help text and tests.</b> Restyle the dialogs, rewrite the guide with the new names, and update the 9,000-line <code>e2e.rs</code> suite, which presses controls at old positions.</li>
+      <li><b>Remove the old reference material.</b> Before distributing, delete <code>refs/</code>, the parity documents and the old chrome modules.</li>
+    </ol>
+    <p class="col">The chrome steps can each land behind a setting that switches between old and new chrome, so the program stays usable throughout. Drawing, geometry, file formats and exports in <code>sketch-core</code> are untouched.</p>
+  </section>
+
+  <section>
+    <h2>Outside the interface</h2>
+    <ul>
+      <li><b>Source lineage.</b> <code>refs/</code> holds the original web app's code and markup. If any of that was derived from Apex material and not written independently, a new interface does not change that. This is the question to put to a lawyer.</li>
+      <li><b>Old builds in <code>dist/</code>.</b> Versions 0.1.21 to 0.1.29 ship an <code>APEX-COMPATIBILITY.md</code> describing an AXF reader and writer, including encrypted payloads, and integration as an Apex replacement inside the host program. The current code refuses AXF, but those older builds and documents should not be distributed, and how that reader was written matters more than any screen layout.</li>
+      <li><b>Leftover identifiers.</b> Saved areas still carry an <code>apex.calculation</code> attribute key in <code>area_calc.rs</code> and <code>area_repair.rs</code>. Renaming it, with a fallback that reads the old key, removes the name from files the program writes.</li>
+      <li><b>Default lists.</b> The built-in area codes (GLA1, GBA1, GAR, BSMT) and the room-label list should be checked against their source. The terms themselves are industry standard. The exact list and order may not be.</li>
+      <li><b>Names.</b> The window title still says Appraisal Sketch. The guide mentions Apex and AXF by name. Mentioning them factually is normally fine, but worth a review.</li>
+      <li><b>Already clear.</b> AXF files are refused. The symbols are CC0 and the icons are MIT.</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+const TH = {
+  dark:  { chrome:'#2D2D30', panel:'#252526', field:'#1E1E1E', canvas:'#FFFFFF', g1:'#EEF1F4', g2:'#CFD5DB', ink:'#D4D4D4', muted:'#9A9A9A',
+           cink:'#20252B', cmuted:'#586474', rule:'#3F3F46', accent:'#007ACC', onAccent:'#FFFFFF', link:'#63B3ED', tape:'#F6AD55', tapeInk:'#1E1E1E',
+           preview:'#C77A14', flag:'#FC8181', pop:'#2D2D30', shadow:'rgba(0,0,0,.35)', living:'#2B6CB0', garage:'#805AD5', porch:'#B7791F' },
+  light: { chrome:'#DDE3EA', panel:'#F7F8FA', field:'#FFFFFF', canvas:'#FFFFFF', g1:'#EEF1F4', g2:'#CFD5DB', ink:'#20252B', muted:'#586474',
+           cink:'#20252B', cmuted:'#586474', rule:'#AAB4C0', accent:'#1677BD', onAccent:'#FFFFFF', link:'#1677BD', tape:'#F6AD55', tapeInk:'#1E1E1E',
+           preview:'#C77A14', flag:'#C53030', pop:'#FFFFFF', shadow:'rgba(32,37,43,.2)', living:'#2B6CB0', garage:'#805AD5', porch:'#B7791F' }
+};
+const F = '"Barlow","Segoe UI",sans-serif', FC = '"Barlow Semi Condensed","Barlow","Arial Narrow",sans-serif';
+const R = (x,y,w,h,fill,o={}) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" rx="${o.rx||0}" ${o.stroke?`stroke="${o.stroke}" stroke-width="${o.sw||1}"`:''} ${o.x||''}/>`;
+const T = (x,y,s,size,fill,o={}) => `<text x="${x}" y="${y}" font-size="${size}" fill="${fill}" font-family='${o.c?FC:F}' font-weight="${o.w||400}" text-anchor="${o.a||'start'}" ${o.x||''}>${s}</text>`;
+const L = (x1,y1,x2,y2,stroke,o={}) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" stroke-width="${o.sw||1}" ${o.dash?`stroke-dasharray="${o.dash}"`:''} stroke-linecap="${o.cap||'butt'}"/>`;
+
+const ICON = {
+  Select: 'M5 3l10 7.5-4.6.9 2.6 5-1.8.9-2.6-5L5 15z',
+  Wall: 'M4.5 15.5L15.5 4.5 M3 17h3v-3H3z M14 6h3V3h-3z',
+  Inner: 'M4 16l3-3 M9 11l2-2 M13 7l3-3',
+  Shape: 'M4 5h12v10H4z',
+  Area: 'M4 5h8v4h4v7H4z M7 13l2-2 M10 13l3-3',
+  Undo: 'M5 8h8a4 4 0 0 1 0 8H9 M5 8l3.5-3.5 M5 8l3.5 3.5',
+  Redo: 'M15 8H7a4 4 0 0 0 0 8h4 M15 8l-3.5-3.5 M15 8l-3.5 3.5',
+  Back: 'M12 4l-6 6 6 6',
+  Curve: 'M4 15C4 8 10 5 16 5',
+  Measure: 'M3 13L13 3l4 4L7 17z M6.5 12.5l1.5 1.5 M9 10l1.5 1.5 M11.5 7.5L13 9',
+  Label: 'M5 5h10 M10 5v11 M8 16h4',
+  Insert: 'M5 16V5 M5 16h10 M5 5a11 11 0 0 1 10 11',
+  Pan: 'M10 3v14 M3 10h14 M10 3l-2 2 M10 3l2 2 M10 17l-2-2 M10 17l2-2 M3 10l2-2 M3 10l2 2 M17 10l-2-2 M17 10l-2 2'
+};
+const icon = (name,x,y,color) => `<path transform="translate(${x},${y})" d="${ICON[name]}" fill="none" stroke="${color}" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>`;
+
+function grid(t,x0,y0,x1,y1,ox,oy,s){
+  let o = R(x0,y0,x1-x0,y1-y0,t.canvas);
+  for(let x=ox-Math.ceil((ox-x0)/s)*s,i=Math.round((x-ox)/s); x<x1; x+=s,i++) o+=L(x,y0,x,y1,i%10===0?t.g2:t.g1);
+  for(let y=oy-Math.ceil((oy-y0)/s)*s,i=Math.round((y-oy)/s); y<y1; y+=s,i++) o+=L(x0,y,x1,y,i%10===0?t.g2:t.g1);
+  return o;
+}
+function poly(t,pts,ox,oy,s,color,skip,name,sf,cx,cy,sel){
+  const P = pts.map(p=>[ox+p[0]*s, oy+p[1]*s]);
+  let o = `<polygon points="${P.map(p=>p.join(',')).join(' ')}" fill="${color}" fill-opacity=".12" stroke="${sel?t.accent:t.cink}" stroke-width="${sel?4:3}" stroke-linejoin="miter"/>`;
+  P.forEach((a,i)=>{ if(skip.includes(i)) return; const b=P[(i+1)%P.length];
+    const dx=b[0]-a[0], dy=b[1]-a[1], len=Math.round((Math.abs(dx)+Math.abs(dy))/s);
+    const mx=(a[0]+b[0])/2, my=(a[1]+b[1])/2, nx=Math.sign(dy), ny=-Math.sign(dx);
+    o+=T(mx+nx*10, my+ny*10+(ny>0?10:ny<0?0:4), len+'′', 13, t.cmuted, {c:1,w:500,a:nx>0?'start':nx<0?'end':'middle'}); });
+  if(name){ o+=T(ox+cx*s, oy+cy*s-2, name, 14, t.cink, {w:600,a:'middle'});
+            o+=T(ox+cx*s, oy+cy*s+16, sf, 14, t.cmuted, {c:1,w:500,a:'middle'}); }
+  return o;
+}
+const LIV=[[0,0],[28,0],[28,6],[44,6],[44,30],[0,30]], GAR=[[44,8],[66,8],[66,30],[44,30]], POR=[[8,30],[24,30],[24,36],[8,36]];
+
+function topbar(t,title,saved,tabs){
+  let o = R(0,0,1400,44,t.chrome) + L(0,44,1400,44,t.rule);
+  o += R(12,12,20,20,t.accent,{rx:4}) + `<path d="M17 27V17h10" fill="none" stroke="${t.onAccent}" stroke-width="2.4"/>`;
+  o += L(46,17,60,17,t.ink,{sw:1.6}) + L(46,22,60,22,t.ink,{sw:1.6}) + L(46,27,60,27,t.ink,{sw:1.6});
+  o += T(76,27,title,14,t.ink,{w:600});
+  if(saved) o += T(214,27,saved,12,t.muted);
+  if(tabs){ let x=514; tabs.forEach((n,i)=>{ const w=n==='+'?32:104;
+      if(i===0) o+=R(x,8,w,28,t.field,{rx:6,stroke:t.rule});
+      o+=T(x+w/2,27,n,13,i===0?t.ink:t.muted,{w:i===0?600:400,a:'middle'}); x+=w+4; });
+    o += R(912,8,204,28,t.field,{rx:6,stroke:t.rule}) + T(924,27,'Search commands',13,t.muted) + T(1106,27,'Ctrl K',12,t.muted,{a:'end',c:1,w:500});
+    o += R(1128,8,128,28,t.accent,{rx:6}) + T(1192,27,'Send to report',13,t.onAccent,{w:600,a:'middle'}); }
+  o += L(1310,22,1322,22,t.muted,{sw:1.4}) + R(1339,16,11,11,'none',{stroke:t.muted,sw:1.4}) + L(1368,16,1380,28,t.muted,{sw:1.4}) + L(1380,16,1368,28,t.muted,{sw:1.4});
+  return o;
+}
+function ledger(t,rows,totals,note){
+  let o = R(0,45,264,815,t.panel) + L(264,45,264,860,t.rule);
+  o += T(16,74,'Areas',16,t.ink,{w:600,c:1});
+  o += R(150,58,98,24,t.chrome,{rx:6,stroke:t.rule}) + R(152,60,58,20,t.field,{rx:4}) + T(181,74,'Drawn',11,t.ink,{w:600,a:'middle'}) + T(229,74,'Types',11,t.muted,{a:'middle'});
+  let y=96;
+  rows.forEach(r=>{
+    if(r.g){ o+=T(16,y+22,r.g,12,t.muted,{w:500}); y+=30; return; }
+    if(r.sel) o+=R(8,y,248,36,t.accent,{rx:6,x:'fill-opacity=".14"'});
+    o+=R(16,y+11,14,14,r.c,{rx:3,x:'fill-opacity=".85"'});
+    o+=T(40,y+23,r.n,14,r.flag?t.flag:t.ink,{w:r.sel?600:400});
+    o+=T(248,y+23,r.v,14,t.ink,{c:1,w:500,a:'end'}); y+=38; });
+  if(note){ o+=R(12,y+8,240,54,'none',{rx:6,stroke:t.rule,x:'stroke-dasharray="4 3"'}); o+=T(24,y+30,note[0],13,t.ink,{w:600}); o+=T(24,y+48,note[1],12,t.muted); }
+  o += L(16,640,248,640,t.rule) + T(16,666,'Layers',13,t.ink) + T(248,666,'3 shown',12,t.muted,{a:'end'});
+  o += L(0,690,264,690,t.rule) + R(0,691,264,169,t.chrome);
+  o += T(16,718,'Gross living area',12,t.muted,{w:500}) + T(16,754,totals[0],32,t.ink,{c:1,w:600}) ;
+  o += T(16,786,'Building area',13,t.muted) + T(248,786,totals[1],14,t.ink,{c:1,w:500,a:'end'});
+  o += T(16,810,'Not counted',13,t.muted) + T(248,810,totals[2],14,t.ink,{c:1,w:500,a:'end'});
+  o += T(16,842,'Show the math',13,t.link,{w:600,x:'text-decoration="underline"'});
+  return o;
+}
+function tray(t,cx,active){
+  const tools=['Select','Wall','Inner','Area','Shape','Curve','Measure','Label','Insert','Pan'], w=62, W=tools.length*w+12, x0=cx-W/2, y=784;
+  let o = R(x0,y+3,W,58,t.shadow,{rx:14}) + R(x0,y,W,58,t.pop,{rx:14,stroke:t.rule});
+  tools.forEach((n,i)=>{ const x=x0+6+i*w, on=n===active;
+    if(on) o+=R(x+2,y+5,w-4,48,t.accent,{rx:9});
+    o+=icon(n,x+w/2-10,y+9,on?t.onAccent:t.ink) + T(x+w/2,y+46,n,11,on?t.onAccent:t.muted,{a:'middle',w:on?600:500}); });
+  return o;
+}
+function hud(t,x0,x1){
+  let o = R(x0+16,812,150,30,t.pop,{rx:8,stroke:t.rule}) + T(x0+32,832,'−',16,t.ink,{a:'middle'}) + T(x0+70,832,'100%',13,t.ink,{c:1,w:500,a:'middle'}) + T(x0+108,832,'+',16,t.ink,{a:'middle'}) + L(x0+124,818,x0+124,836,t.rule) + T(x0+145,832,'Fit',12,t.muted,{a:'middle'});
+  o += R(x1-196,812,180,30,t.pop,{rx:8,stroke:t.rule}) + T(x1-184,832,'Grid 1′',12,t.ink,{w:600}) + L(x1-134,818,x1-134,836,t.rule) + T(x1-124,832,'Snap 6″',12,t.ink,{w:600}) + L(x1-70,818,x1-70,836,t.rule) + T(x1-60,832,'90°',12,t.muted);
+  o += `<circle cx="${x1-36}" cy="82" r="18" fill="${t.pop}" stroke="${t.rule}"/><path d="M${x1-36} 68l6 20-6-4-6 4z" fill="${t.ink}"/>` + T(x1-36,116,'N',11,t.muted,{a:'middle',w:600});
+  return o;
+}
+const svg = (inner) => `<svg viewBox="0 0 1400 860" role="img" xmlns="http://www.w3.org/2000/svg">${inner}</svg>`;
+
+/* 1 — drawing a wall */
+(function(){ const t=TH.dark, ox=420, oy=150, s=12; let o='';
+  o+=grid(t,265,45,1400,860,ox,oy,s);
+  o+=poly(t,LIV,ox,oy,s,t.living,[3,4],'Main floor','1,224.0 sf',20,17);
+  o+=poly(t,GAR,ox,oy,s,t.garage,[3],'Garage','484.0 sf',55,19);
+  const ax=ox+8*s, ay=oy+30*s, by=oy+36*s, bx=ox+24*s;
+  o+=L(ax,ay,ax,by,t.cink,{sw:3}) + T(ax-10,(ay+by)/2+4,'6′',13,t.cmuted,{c:1,w:500,a:'end'});
+  o+=L(ax,by,bx,by,t.preview,{sw:3,dash:'8 6'}) + `<circle cx="${ax}" cy="${by}" r="5" fill="${t.canvas}" stroke="${t.cink}" stroke-width="2"/><circle cx="${bx}" cy="${by}" r="5" fill="${t.tape}" stroke="${t.tapeInk}" stroke-width="1.5"/>`;
+  const tx=ax+2, ty=by+18;
+  o+=R(tx,ty+3,188,44,t.shadow,{rx:6}) + R(tx,ty,188,44,t.tape,{rx:6});
+  for(let i=0;i<=30;i++) o+=L(tx+6+i*5.87,ty,tx+6+i*5.87,ty+(i%6===0?10:i%3===0?7:4),t.tapeInk,{sw:1});
+  o+=T(tx+14,ty+34,'16′ 0″',22,t.tapeInk,{c:1,w:600}) + R(tx+146,ty+14,28,24,'none',{rx:5,stroke:t.tapeInk,sw:1.5}) + `<path d="M${tx+153} ${ty+26}h13m-4-4l4 4-4 4" fill="none" stroke="${t.tapeInk}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`;
+  o+=T(tx,ty+68,'Type a length, then press an arrow key. Press A to close the area.',13,t.cmuted);
+  o+=topbar(t,'412 Larkspur Lane','Saved 2 min ago',['Main floor','Upper floor','Site','+']);
+  o+=ledger(t,[{g:'Living area'},{n:'Main floor',v:'1,224.0',c:t.living},{g:'Garage'},{n:'Garage',v:'484.0',c:t.garage}],['1,224 sf','1,708 sf','0 sf'],['Drawing an area','2 walls so far, 22′ of wall']);
+  o+=tray(t,832,'Wall') + hud(t,265,1400);
+  document.getElementById('r1').innerHTML=svg(o); })();
+
+/* 2 — naming an area */
+(function(){ const t=TH.dark, ox=312, oy=150, s=11; let o='';
+  o+=grid(t,265,45,1120,860,ox,oy,s);
+  o+=poly(t,LIV,ox,oy,s,t.living,[3,4],'Main floor','1,224.0 sf',20,17);
+  o+=poly(t,GAR,ox,oy,s,t.garage,[3],'Garage','484.0 sf',55,19);
+  o+=poly(t,POR,ox,oy,s,t.porch,[0],'Area 3','96.0 sf',16,32.6,true);
+  POR.forEach(p=>o+=R(ox+p[0]*s-4,oy+p[1]*s-4,8,8,t.canvas,{stroke:t.accent,sw:2}));
+  const px=600, py=452;
+  o+=R(px,py+5,288,246,t.shadow,{rx:10}) + `<path d="M${px+1} ${py+60}l-12 10 12 10z" fill="${t.pop}" stroke="${t.rule}"/>` + R(px,py,288,246,t.pop,{rx:10,stroke:t.rule});
+  o+=T(px+16,py+28,'What is this area?',15,t.ink,{w:600,c:1});
+  o+=R(px+16,py+40,256,32,t.field,{rx:6,stroke:t.accent,sw:2}) + T(px+28,py+61,'por',14,t.ink) + L(px+50,py+48,px+50,py+65,t.ink,{sw:1.2});
+  [['Open Frame Porch','OFP',1],['Screen Frame Porch','SFP'],['Enclosed Frame Porch','EFP'],['Porch','PORCH']].forEach((r,i)=>{ const y=py+82+i*34;
+    if(r[2]) o+=R(px+8,y,272,32,t.accent,{rx:6,x:'fill-opacity=".14"'});
+    o+=T(px+20,y+21,r[0],14,t.ink,{w:r[2]?600:400}) + T(px+268,y+21,r[1],12,t.muted,{a:'end'}); });
+  o+=L(px,py+216,px+288,py+216,t.rule) + T(px+16,py+236,'4 of 32 types match. Enter applies the first.',12,t.muted);
+  o+=topbar(t,'412 Larkspur Lane','Edited just now',['Main floor','Upper floor','Site','+']);
+  o+=ledger(t,[{g:'Living area'},{n:'Main floor',v:'1,224.0',c:t.living},{g:'Garage'},{n:'Garage',v:'484.0',c:t.garage},{g:'Needs a type'},{n:'Area 3',v:'96.0',c:t.flag,flag:1,sel:1}],['1,224 sf','1,708 sf','96 sf']);
+  /* inspector */
+  o+=R(1120,45,280,815,t.panel) + L(1120,45,1120,860,t.rule);
+  o+=T(1136,74,'Area 3',16,t.ink,{w:600,c:1}) + T(1384,74,'Close',12,t.muted,{a:'end'});
+  const fld=(y,lab,val,flag)=>T(1136,y,lab,12,t.muted,{w:500})+R(1136,y+8,248,32,t.field,{rx:6,stroke:t.rule})+T(1148,y+29,val,14,flag?t.flag:t.ink);
+  o+=fld(104,'Name','Area 3') + fld(168,'Type','Not chosen yet',1);
+  o+=T(1136,246,'Size',12,t.muted,{w:500}) + T(1136,276,'96.0 sf',26,t.ink,{c:1,w:600}) + T(1384,276,'16′ × 6′',14,t.muted,{c:1,w:500,a:'end'});
+  o+=T(1136,312,'Counts toward',12,t.muted,{w:500}) + R(1136,320,248,32,t.chrome,{rx:6,stroke:t.rule}) + R(1302,322,80,28,t.field,{rx:4});
+  o+=T(1178,341,'Living',13,t.muted,{a:'middle'}) + T(1260,341,'Building',13,t.muted,{a:'middle'}) + T(1342,341,'Neither',13,t.ink,{a:'middle',w:600});
+  o+=L(1136,376,1384,376,t.rule) + T(1136,402,'Walls',12,t.muted,{w:500});
+  [['North','16′ 0″','shared with Main floor'],['East','6′ 0″',''],['South','16′ 0″',''],['West','6′ 0″','']].forEach((r,i)=>{ const y=428+i*30;
+    o+=T(1136,y,r[0],14,t.ink)+T(1200,y,r[1],14,t.ink,{c:1,w:500})+T(1384,y,r[2],12,t.muted,{a:'end'}); });
+  o+=L(1136,548,1384,548,t.rule) + T(1136,576,'Split area',13,t.link,{w:600}) + T(1136,604,'Copy to another page',13,t.link,{w:600}) + T(1136,632,'Delete area',13,t.flag,{w:600});
+  o+=tray(t,692,'Select') + hud(t,265,1120);
+  document.getElementById('r2').innerHTML=svg(o); })();
+
+/* 3 — insert drawer, light */
+(function(){ const t=TH.light, ox=420, oy=96, s=12; let o='';
+  o+=grid(t,265,45,1400,860,ox,oy,s);
+  o+=poly(t,LIV,ox,oy,s,t.living,[3,4],'Main floor','1,224.0 sf',20,17);
+  o+=poly(t,GAR,ox,oy,s,t.garage,[3],'Garage','484.0 sf',55,19);
+  o+=poly(t,POR,ox,oy,s,t.porch,[0],'Open Frame Porch','96.0 sf',16,32.6);
+  const door=(x,y,c,dash)=>L(x,y,x+36,y,t.canvas,{sw:5})+`<path d="M${x} ${y}v-36a36 36 0 0 1 36 36" fill="none" stroke="${c}" stroke-width="1.8" ${dash?'stroke-dasharray="4 3"':''}/>`;
+  o+=door(ox+14*s,oy+30*s,t.cink) + door(ox+36*s,oy+30*s,t.preview,1);
+  o+=R(ox+36*s-30,oy+30*s+12,96,22,t.tape,{rx:5}) + T(ox+36*s+18,oy+30*s+27,'8′ 0″ from corner',11,t.tapeInk,{a:'middle',w:600,c:1});
+  const dx=572, dy=574;
+  o+=R(dx,dy+4,520,196,t.shadow,{rx:12}) + R(dx,dy,520,196,t.pop,{rx:12,stroke:t.rule});
+  ['Doors 58','Windows 25','Stairs 7','Kitchen 30','Favorites','All 29'].forEach((n,i)=>{ const x=dx+16+[0,68,150,210,284,350][i];
+    o+=T(x,dy+28,n,13,i===0?t.ink:t.muted,{w:i===0?600:400}); if(i===0) o+=L(x,dy+36,x+36,dy+36,t.accent,{sw:3}); });
+  o+=R(dx+396,dy+10,108,26,t.field,{rx:6,stroke:t.rule}) + T(dx+406,dy+28,'Find a symbol',12,t.muted);
+  o+=L(dx,dy+44,dx+520,dy+44,t.rule);
+  const tiles=['Exterior 90 Degree','French-Dbl 90 Deg','Sliding 6′','Interior 90 Degree','Garage-Dbl'];
+  tiles.forEach((n,i)=>{ const x=dx+13+i*100, y=dy+58, on=i===0;
+    o+=R(x,y,94,92,on?t.field:'none',{rx:8,stroke:on?t.accent:t.rule,sw:on?2:1});
+    const gx=x+29, gy=y+52, c=t.ink;
+    if(i===0) o+=`<path d="M${gx} ${gy}v-36a36 36 0 0 1 36 36" fill="none" stroke="${c}" stroke-width="1.6"/>`;
+    if(i===1) o+=`<path d="M${gx} ${gy}v-18a18 18 0 0 1 18 18m18 0v-18a18 18 0 0 0-18 18" fill="none" stroke="${c}" stroke-width="1.6"/>`;
+    if(i===2) o+=L(gx,gy-10,gx+22,gy-10,c,{sw:1.6})+L(gx+14,gy-4,gx+36,gy-4,c,{sw:1.6});
+    if(i===3) o+=`<path d="M${gx+36} ${gy}v-36a36 36 0 0 0-36 36" fill="none" stroke="${c}" stroke-width="1.6"/>`;
+    if(i===4) o+=R(gx,gy-14,36,10,'none',{stroke:c,sw:1.6})+L(gx+12,gy-14,gx+12,gy-4,c)+L(gx+24,gy-14,gx+24,gy-4,c);
+    if(i===5) o+=L(gx,gy-8,gx+10,gy-8,c,{sw:4})+L(gx+26,gy-8,gx+36,gy-8,c,{sw:4});
+    o+=T(x+47,y+80,n,10,on?t.ink:t.muted,{a:'middle',w:on?600:400}); });
+  o+=T(dx+16,dy+180,'Click a wall to place it. Space flips the swing.',12,t.muted) + T(dx+504,dy+180,'Edit library',12,t.link,{a:'end',w:600});
+  o+=topbar(t,'412 Larkspur Lane','Saved just now',['Main floor','Upper floor','Site','+']);
+  o+=ledger(t,[{g:'Living area'},{n:'Main floor',v:'1,224.0',c:t.living},{g:'Garage'},{n:'Garage',v:'484.0',c:t.garage},{g:'Porch/Patio'},{n:'Open Frame Porch',v:'96.0',c:t.porch}],['1,224 sf','1,708 sf','96 sf']);
+  o+=tray(t,832,'Insert') + hud(t,265,1400);
+  document.getElementById('r3').innerHTML=svg(o); })();
+
+/* 4 — start screen */
+(function(){ const t=TH.dark; let o=R(0,0,1400,860,t.panel);
+  o+=topbar(t,'Sketch Rust','',null);
+  o+=T(88,150,'Start a sketch',34,t.ink,{c:1,w:600});
+  o+=R(88,186,320,56,t.accent,{rx:8}) + T(112,220,'New sketch',16,t.onAccent,{w:600}) + T(384,220,'Ctrl N',12,t.onAccent,{a:'end',c:1,w:500});
+  [['Open a file','Ctrl O'],['Import a CAD drawing','DXF'],['Continue from a photo or plan','Image']].forEach((r,i)=>{ const y=254+i*60;
+    o+=R(88,y,320,52,t.pop,{rx:8,stroke:t.rule}) + T(112,y+31,r[0],15,t.ink,{w:500}) + T(384,y+31,r[1],12,t.muted,{a:'end',c:1,w:500}); });
+  o+=L(88,462,408,462,t.rule) + T(88,494,'Appraise-It Pro',13,t.muted,{w:500});
+  o+=`<circle cx="94" cy="520" r="5" fill="${t.accent}"/>` + T(108,525,'One report is open: 88 Alder Court',14,t.ink);
+  o+=T(108,550,'Draw the sketch for this report',14,t.link,{w:600,x:'text-decoration="underline"'});
+  o+=T(520,150,'Recent sketches',18,t.ink,{c:1,w:600});
+  const shapes=[[LIV,GAR,POR],[[[0,0],[40,0],[40,26],[22,26],[22,34],[0,34]]],[[[0,6],[18,6],[18,0],[46,0],[46,28],[0,28]],[[46,6],[64,6],[64,28],[46,28]]]];
+  const recs=[['412 Larkspur Lane','1,224 sf living area','Edited today'],['88 Alder Court','1,516 sf living area','Edited Nov 12'],['1907 Quarry Road','1,180 sf living area','Edited Nov 9'],['23 Ferry Street, Unit B','1,516 sf living area','Edited Nov 6'],['660 Windmill Way','1,180 sf living area','Edited Oct 30'],['15 Tannery Row','1,224 sf living area','Edited Oct 28']];
+  recs.forEach((r,i)=>{ const x=520+(i%3)*276, y=172+Math.floor(i/3)*312, sh=shapes[[0,1,2,1,2,0][i]];
+    o+=R(x,y,256,292,t.pop,{rx:10,stroke:t.rule});
+    o+=`<clipPath id="c${i}"><rect x="${x+1}" y="${y+1}" width="254" height="196" rx="9"/></clipPath><g clip-path="url(#c${i})">`+grid(t,x+1,y+1,x+255,y+197,x+38,y+50,8)+'</g>';
+    sh.forEach((p,k)=>{ const sc=2.7, P=p.map(q=>[x+38+q[0]*sc,y+50+q[1]*sc].join(',')).join(' ');
+      o+=`<polygon points="${P}" fill="${[t.living,t.garage,t.porch][k]}" fill-opacity=".14" stroke="${t.cink}" stroke-width="2"/>`; });
+    o+=L(x,y+198,x+256,y+198,t.rule) + T(x+16,y+226,r[0],15,t.ink,{w:600}) + T(x+16,y+250,r[1],14,t.muted,{c:1,w:500}) + T(x+16,y+272,r[2],12,t.muted); });
+  o+=T(520,822,'Sketches are saved as Sketchie files. Drag one here to open it.',13,t.muted);
+  document.getElementById('r4').innerHTML=svg(o); })();
+
+/* 5 — three phones */
+(function(){ const t=TH.dark; let o=R(0,0,1400,860,'#141414');
+  const phone=(x,inner)=>`<g transform="translate(${x},30)"><clipPath id="ph${x}"><rect width="372" height="800" rx="30"/></clipPath><g clip-path="url(#ph${x})">${R(0,0,372,800,t.panel)}${inner}</g><rect width="372" height="800" rx="30" fill="none" stroke="${t.rule}" stroke-width="3"/></g>`;
+  const ptop=()=>R(0,0,372,52,t.chrome)+L(18,20,32,20,t.ink,{sw:1.6})+L(18,26,32,26,t.ink,{sw:1.6})+L(18,32,32,32,t.ink,{sw:1.6})+T(48,32,'412 Larkspur Lane',15,t.ink,{w:600})+icon('Undo',262,16,t.ink)+icon('Redo',296,16,t.muted)+[0,6,12].map(d=>`<circle cx="346" cy="${20+d}" r="1.6" fill="${t.ink}"/>`).join('')+L(0,52,372,52,t.rule)
+    +R(0,53,372,39,t.panel)+R(12,60,84,24,t.field,{rx:12,stroke:t.rule})+T(54,76,'Main floor',12,t.ink,{w:600,a:'middle'})+T(136,76,'Upper floor',12,t.muted,{a:'middle'})+T(196,76,'Site',12,t.muted,{a:'middle'})+T(226,76,'+',14,t.muted,{a:'middle'})+T(360,76,'GLA 1,224 sf',12,t.ink,{a:'end',c:1,w:600})+L(0,92,372,92,t.rule);
+  const plan=(oy,por)=>poly(t,LIV,21,oy,5,t.living,[0,1,2,3,4,5],'Main floor','1,224.0 sf',20,16)+poly(t,GAR,21,oy,5,t.garage,[0,1,2,3],'Garage','484.0 sf',55,18)+(por?poly(t,POR,21,oy,5,t.porch,[0,1,2,3],null,null,0,0,true):'');
+  const key=(x,y,w,h,s,o2={})=>R(x,y,w,h,o2.fill||t.chrome,{rx:8,stroke:o2.fill?o2.fill:t.rule})+T(x+w/2,y+h/2+(o2.size?o2.size*0.36:7),s,o2.size||20,o2.ink||t.ink,{a:'middle',c:1,w:o2.w||500});
+  /* A: drawing */
+  let a=grid(t,0,93,372,444,21,150,10)+plan(150,false);
+  const ax=21+8*5, ay=150+30*5, by=150+36*5, bx=21+24*5;
+  a+=L(ax,ay,ax,by,t.cink,{sw:3})+L(ax,by,bx,by,t.preview,{sw:3,dash:'6 5'})+`<circle cx="${bx}" cy="${by}" r="5" fill="${t.tape}" stroke="${t.tapeInk}" stroke-width="1.5"/>`;
+  a+=R(0,444,372,56,t.chrome)+L(0,444,372,444,t.rule);
+  ['Select','Wall','Inner','Area','Shape','Curve'].forEach((n,i)=>{ const x=i*62, on=n==='Wall'; if(on) a+=R(x+3,448,56,48,t.accent,{rx:9});
+    a+=icon(n,x+21,452,on?t.onAccent:t.ink)+T(x+31,490,n,11,on?t.onAccent:t.muted,{a:'middle',w:on?600:500}); });
+  a+=R(0,500,372,300,t.panel)+L(0,500,372,500,t.rule);
+  a+=R(12,510,348,46,t.tape,{rx:8}); for(let i=0;i<=56;i++) a+=L(18+i*6,510,18+i*6,510+(i%6===0?9:i%3===0?6:3),t.tapeInk);
+  a+=T(24,545,'16′ 0″',24,t.tapeInk,{c:1,w:600})+T(348,545,'90°, pen down',14,t.tapeInk,{a:'end',c:1,w:500});
+  ['7','8','9','4','5','6','1','2','3','′','0','.'].forEach((k,i)=>a+=key(12+(i%3)*62,566+Math.floor(i/3)*56,56,50,k));
+  const dp=(c,r,s,o2)=>key(204+c*54,566+r*56,48,50,s,o2);
+  a+=dp(0,0,'Turn L',{size:11})+dp(1,0,'↑')+dp(2,0,'Turn R',{size:11})+dp(0,1,'←')+dp(1,1,'Pen',{size:12})+dp(2,1,'→')+dp(0,2,'⌫')+dp(1,2,'↓')+dp(2,2,'Laser',{size:11});
+  a+=key(204,734,156,50,'Close area',{fill:t.accent,ink:t.onAccent,size:15,w:600});
+  /* B: types sheet */
+  let b=grid(t,0,93,372,360,21,120,10)+plan(120,true);
+  b+=R(0,352,372,460,t.chrome,{rx:18,stroke:t.rule})+R(166,361,40,4,t.muted,{rx:2});
+  b+=T(16,394,'Drawn 3',14,t.muted)+T(92,394,'Types 32',14,t.ink,{w:600})+L(92,402,150,402,t.accent,{sw:3})+T(176,394,'Totals',14,t.muted)+T(356,394,'Edit types',13,t.link,{a:'end',w:600})+L(0,404,372,404,t.rule);
+  b+=R(12,414,348,36,t.field,{rx:8,stroke:t.rule})+T(26,437,'Find a type',14,t.muted);
+  b+=T(16,472,'Porch/Patio',12,t.muted,{w:500})+T(356,472,'7 types',12,t.muted,{a:'end'});
+  [['Open Frame Porch','OFP','#DD6B20',1],['Screen Frame Porch','SFP','#C05621'],['Enclosed Frame Porch','EFP','#9C4221'],['Patio','PAT','#B7791F'],['Porch','PORCH','#D69E2E'],['Wood Deck','DK','#975A16'],['Balcony','BAL','#ED8936']].forEach((r,i)=>{ const y=482+i*42;
+    if(r[3]) b+=R(8,y+2,356,38,t.accent,{rx:8,x:'fill-opacity=".22"'});
+    b+=R(16,y+13,16,16,r[2],{rx:4})+T(44,y+26,r[0],14,t.ink,{w:r[3]?600:400})+T(356,y+26,r[1],12,t.muted,{a:'end',c:1,w:500}); });
+  /* C: symbol library */
+  let c=R(0,0,372,52,t.chrome)+icon('Back',14,16,t.ink)+T(48,32,'Symbol library',15,t.ink,{w:600})+T(356,32,'New',14,t.link,{a:'end',w:600})+L(0,52,372,52,t.rule);
+  c+=R(12,62,348,36,t.field,{rx:8,stroke:t.rule})+T(26,85,'Find in 639 symbols',14,t.muted);
+  [['Favorites',12,78],['Doors 58',96,78,1],['Windows 25',180,92],['Stairs 7',278,70],['Fire 119',354,70]].forEach(r=>{ c+=R(r[1],108,r[2],28,r[3]?t.accent:t.chrome,{rx:14,stroke:r[3]?t.accent:t.rule})+T(r[1]+r[2]/2,127,r[0],12,r[3]?t.onAccent:t.ink,{a:'middle',w:r[3]?600:400}); });
+  ['Exterior 45 Degree','Exterior 90 Degree','French-Dbl 45 Deg','French-Dbl 90 Deg','French-Sgl 45 Deg','French-Sgl 90 Deg','Garage-Dbl','Garage Single','Interior 45 Degree','Interior 90 Degree','Sliding 5′','Sliding 6′'].forEach((n,i)=>{ const x=12+(i%3)*119, y=150+Math.floor(i/3)*127, on=i===1, gx=x+37, gy=y+72, k=t.ink;
+    c+=R(x,y,110,118,on?t.field:t.chrome,{rx:10,stroke:on?t.accent:t.rule,sw:on?2:1});
+    if(i<2||i===8||i===9) c+=`<path d="M${gx} ${gy}v-36a36 36 0 0 1 36 36" fill="none" stroke="${k}" stroke-width="1.6"/>`+(i%2===0?L(gx,gy,gx+25,gy-25,k,{sw:1.6}):'');
+    else if(i<6) c+=`<path d="M${gx} ${gy}v-18a18 18 0 0 1 18 18m18 0v-18a18 18 0 0 0-18 18" fill="none" stroke="${k}" stroke-width="1.6"/>`;
+    else if(i<8) c+=R(gx-6,gy-22,48,12,'none',{stroke:k,sw:1.6})+(i===6?L(gx+18,gy-22,gx+18,gy-10,k):'');
+    else c+=L(gx-4,gy-18,gx+22,gy-18,k,{sw:1.6})+L(gx+14,gy-10,gx+40,gy-10,k,{sw:1.6});
+    c+=T(x+55,y+102,n,11,on?t.ink:t.muted,{a:'middle',w:on?600:400}); });
+  c+=R(0,672,372,128,t.chrome)+L(0,672,372,672,t.rule)+T(16,700,'Exterior 90 Degree',15,t.ink,{w:600})+T(16,720,'Doors. Snaps to one side of a wall.',12,t.muted);
+  c+=key(12,736,110,44,'Place',{fill:t.accent,ink:t.onAccent,size:15,w:600})+key(131,736,72,44,'Edit',{size:14})+key(212,736,84,44,'Favorite',{size:14})+key(305,736,55,44,'More',{size:14});
+  o+=phone(70,ptop()+a)+phone(514,ptop()+b)+phone(958,c);
+  document.getElementById('r5').innerHTML=svg(o); })();
+
+/* shared tablet parts */
+const KEY=(t,x,y,w,h,s,o2={})=>R(x,y,w,h,o2.fill||t.chrome,{rx:8,stroke:o2.fill||t.rule})+T(x+w/2,y+h/2+(o2.size?o2.size*0.36:7),s,o2.size||20,o2.ink||t.ink,{a:'middle',c:1,w:o2.w||500});
+const TBAR=(t,W,title)=>R(0,0,W,56,t.chrome)+L(0,56,W,56,t.rule)+R(16,16,24,24,t.accent,{rx:5})+`<path d="M22 34V22h12" fill="none" stroke="${t.onAccent}" stroke-width="2.6"/>`+L(56,22,72,22,t.ink,{sw:1.8})+L(56,28,72,28,t.ink,{sw:1.8})+L(56,34,72,34,t.ink,{sw:1.8})+T(90,34,title,16,t.ink,{w:600});
+const TTRAY=(t,x0,y,bw,active)=>{ const tools=['Select','Wall','Inner','Area','Shape','Curve','Measure','Label','Insert','Pan'];
+  let o=R(x0-6,y+3,tools.length*bw+12,68,t.shadow,{rx:16})+R(x0-6,y,tools.length*bw+12,68,t.pop,{rx:16,stroke:t.rule});
+  tools.forEach((n,i)=>{ const x=x0+i*bw, on=n===active; if(on) o+=R(x+3,y+6,bw-6,56,t.accent,{rx:10});
+    o+=icon(n,x+bw/2-10,y+14,on?t.onAccent:t.ink)+T(x+bw/2,y+54,n,12,on?t.onAccent:t.muted,{a:'middle',w:on?600:500}); }); return o; };
+const ZOOMCHIP=(t,x,y)=>R(x,y,170,40,t.pop,{rx:10,stroke:t.rule})+T(x+22,y+27,'−',18,t.ink,{a:'middle'})+T(x+66,y+26,'100%',14,t.ink,{c:1,w:500,a:'middle'})+T(x+110,y+27,'+',18,t.ink,{a:'middle'})+L(x+130,y+8,x+130,y+32,t.rule)+T(x+150,y+26,'Fit',13,t.muted,{a:'middle'});
+const NORTH=(t,cx,cy)=>`<circle cx="${cx}" cy="${cy}" r="20" fill="${t.pop}" stroke="${t.rule}"/><path d="M${cx} ${cy-14}l6 22-6-5-6 5z" fill="${t.ink}"/>`;
+
+/* 8 — tablet landscape */
+(function(){ const t=TH.dark, ox=340, oy=130, s=10; let d='';
+  d+=grid(t,301,57,1280,800,ox,oy,s);
+  d+=poly(t,LIV,ox,oy,s,t.living,[3,4],'Main floor','1,224.0 sf',20,17)+poly(t,GAR,ox,oy,s,t.garage,[3],'Garage','484.0 sf',55,19);
+  const ax=ox+8*s, ay=oy+30*s, by=oy+36*s, bx=ox+24*s;
+  d+=L(ax,ay,ax,by,t.cink,{sw:3})+T(ax-10,(ay+by)/2+4,'6′',13,t.cmuted,{c:1,w:500,a:'end'})+L(ax,by,bx,by,t.preview,{sw:3,dash:'8 6'})+`<circle cx="${ax}" cy="${by}" r="5" fill="${t.canvas}" stroke="${t.cink}" stroke-width="2"/><circle cx="${bx}" cy="${by}" r="6" fill="${t.tape}" stroke="${t.tapeInk}" stroke-width="1.5"/>`;
+  const tx=ax+2, ty=by+18;
+  d+=R(tx,ty+3,200,48,t.shadow,{rx:6})+R(tx,ty,200,48,t.tape,{rx:6}); for(let i=0;i<=32;i++) d+=L(tx+6+i*5.87,ty,tx+6+i*5.87,ty+(i%6===0?10:i%3===0?7:4),t.tapeInk);
+  d+=T(tx+14,ty+38,'16′ 0″',24,t.tapeInk,{c:1,w:600})+T(tx+188,ty+38,'90°',15,t.tapeInk,{a:'end',c:1,w:500});
+  d+=T(tx,ty+74,'Enter a length on the pad, then a direction.',14,t.cmuted);
+  d+=ZOOMCHIP(t,316,72)+R(496,72,208,40,t.pop,{rx:10,stroke:t.rule})+T(512,98,'Grid 1′',13,t.ink,{w:600})+L(572,80,572,104,t.rule)+T(584,98,'Snap 6″',13,t.ink,{w:600})+L(650,80,650,104,t.rule)+T(664,98,'90°',13,t.muted)+NORTH(t,1244,92);
+  d+=TBAR(t,1280,'412 Larkspur Lane')+T(244,34,'Saved',13,t.muted);
+  ['Main floor','Upper floor','Site','+'].forEach((n,i)=>{ const w=n==='+'?44:112, x=440+[0,118,236,354][i]; if(i===0) d+=R(x,10,w,36,t.field,{rx:8,stroke:t.rule}); d+=T(x+w/2,33,n,14,i===0?t.ink:t.muted,{a:'middle',w:i===0?600:400}); });
+  d+=R(1000,10,44,36,'none',{rx:8})+icon('Undo',1012,18,t.ink)+icon('Redo',1060,18,t.muted)+`<circle cx="1118" cy="27" r="7" fill="none" stroke="${t.ink}" stroke-width="1.8"/>`+L(1123,32,1129,38,t.ink,{sw:1.8})+R(1160,10,104,36,t.accent,{rx:8})+T(1212,33,'Export',14,t.onAccent,{a:'middle',w:600});
+  d+=R(0,57,300,743,t.panel)+L(300,57,300,800,t.rule)+T(20,95,'Areas',18,t.ink,{c:1,w:600})+R(160,72,124,36,t.chrome,{rx:8,stroke:t.rule})+R(162,74,60,32,t.field,{rx:6})+T(192,95,'Drawn',13,t.ink,{a:'middle',w:600})+T(253,95,'Types',13,t.muted,{a:'middle'});
+  d+=T(20,146,'Living space',13,t.muted,{w:500})+R(20,172,16,16,t.living,{rx:4})+T(48,186,'Main floor',15,t.ink)+T(280,186,'1,224.0',15,t.ink,{a:'end',c:1,w:500});
+  d+=T(20,234,'Garage / carport',13,t.muted,{w:500})+R(20,260,16,16,t.garage,{rx:4})+T(48,274,'Garage',15,t.ink)+T(280,274,'484.0',15,t.ink,{a:'end',c:1,w:500});
+  d+=R(16,304,268,60,'none',{rx:8,stroke:t.rule,x:'stroke-dasharray="4 3"'})+T(30,328,'Drawing an area',14,t.ink,{w:600})+T(30,350,'2 walls so far, 22′ of wall',13,t.muted);
+  d+=L(20,588,280,588,t.rule)+T(20,618,'Layers',14,t.ink)+T(280,618,'3 shown',13,t.muted,{a:'end'});
+  d+=R(0,640,300,160,t.chrome)+L(0,640,300,640,t.rule)+T(20,670,'Gross living area',13,t.muted,{w:500})+T(20,712,'1,224 sf',36,t.ink,{c:1,w:600})+T(20,746,'Building area',14,t.muted)+T(280,746,'1,708 sf',15,t.ink,{a:'end',c:1,w:500})+T(20,780,'Show the math',14,t.link,{w:600});
+  d+=TTRAY(t,322,716,66,'Wall');
+  d+=R(1012,391,256,400,t.shadow,{rx:14})+R(1012,388,256,400,t.pop,{rx:14,stroke:t.rule});
+  [['Turn L','↑','Turn R','⌫'],['←','↓','→','Laser'],['7','8','9','′'],['4','5','6','.'],['1','2','3','0']].forEach((row,r)=>row.forEach((k,c)=>d+=KEY(t,1022+c*60,400+r*58,54,52,k,k.length>1?{size:12}:{})));
+  d+=KEY(t,1022,692,234,52,'Close area',{fill:t.accent,ink:t.onAccent,size:16,w:600})+T(1140,772,'Hides when a keyboard is attached',12,t.muted,{a:'middle'});
+  const o=R(0,0,1400,860,'#141414')+`<g transform="translate(60,30)"><clipPath id="tl"><rect width="1280" height="800" rx="26"/></clipPath><g clip-path="url(#tl)">${R(0,0,1280,800,t.panel)}${d}</g><rect width="1280" height="800" rx="26" fill="none" stroke="${t.rule}" stroke-width="3"/></g>`;
+  document.getElementById('r8').innerHTML=svg(o); })();
+
+/* 9 — tablet portrait, two states */
+(function(){ const t=TH.dark, ox=70, oy=330, s=10;
+  const base=(sel,active)=>{ let d=grid(t,0,105,800,1280,ox,oy,s);
+    d+=poly(t,LIV,ox,oy,s,t.living,[3,4],'Main floor','1,224.0 sf',20,17)+poly(t,GAR,ox,oy,s,t.garage,[3],'Garage','484.0 sf',55,19)+poly(t,POR,ox,oy,s,t.porch,[0],'Area 3','96.0 sf',16,33.2,sel);
+    if(sel) POR.forEach(p=>d+=R(ox+p[0]*s-6,oy+p[1]*s-6,12,12,t.canvas,{stroke:t.accent,sw:2}));
+    d+=ZOOMCHIP(t,16,120)+NORTH(t,764,140);
+    d+=TBAR(t,800,'412 Larkspur Lane')+icon('Undo',626,18,t.ink)+icon('Redo',674,18,t.muted)+`<circle cx="730" cy="27" r="7" fill="none" stroke="${t.ink}" stroke-width="1.8"/>`+L(735,32,741,38,t.ink,{sw:1.8})+[0,6,12].map(k=>`<circle cx="776" cy="${22+k}" r="1.8" fill="${t.ink}"/>`).join('');
+    d+=R(0,57,800,47,t.panel)+L(0,104,800,104,t.rule)+R(16,65,108,32,t.field,{rx:16,stroke:t.rule})+T(70,86,'Main floor',13,t.ink,{a:'middle',w:600})+T(176,86,'Upper floor',13,t.muted,{a:'middle'})+T(246,86,'Site',13,t.muted,{a:'middle'})+T(284,86,'+',16,t.muted,{a:'middle'})+T(784,86,'GLA 1,224 sf',14,t.ink,{a:'end',c:1,w:600});
+    d+=TTRAY(t,46,1190,71,active); return d; };
+  /* left: Types slide-over */
+  let a=base(false,'Area');
+  a+=R(320,105,12,1075,t.shadow)+R(0,105,320,1075,t.chrome)+L(320,105,320,1180,t.rule)+T(20,148,'Areas',18,t.ink,{c:1,w:600})+R(176,124,128,36,t.panel,{rx:8,stroke:t.rule})+R(240,126,62,32,t.field,{rx:6})+T(208,147,'Drawn',13,t.muted,{a:'middle'})+T(271,147,'Types',13,t.ink,{a:'middle',w:600});
+  a+=R(16,172,288,40,t.field,{rx:8,stroke:t.rule})+T(30,197,'Find in 32 types',14,t.muted);
+  const G=['#22543D','#276749','#2F855A','#38A169','#48BB78','#68D391','#8FD694','#A9DC86','#BCE07C','#C9E274'], N=['First','Second','Third','Fourth','Fifth','Sixth','Seventh','Eighth','Ninth','Tenth'];
+  const rows=[['Living space'],...['#2B6CB0','#0987A0','#B83280','#C53030'].map((c,i)=>[N[i]+' Floor','GLA'+(i+1),c]),['Building area'],...G.map((c,i)=>[N[i]+' Floor','GBA'+(i+1),c]),['Garage / carport'],['Garage','GAR','#805AD5'],['Carport','GAR2','#9F7AEA'],['Basement'],['Finished BSMT','BSMT','#4A5568'],['Unfinished BSMT','BSMT2','#718096'],['Porch/Patio'],['Open Frame Porch','OFP','#DD6B20']];
+  let y=222; rows.forEach(r=>{ if(r.length===1){ a+=T(20,y+22,r[0],13,t.muted,{w:500}); y+=32; return; }
+    if(r[1]==='GLA1') a+=R(8,y+2,304,36,t.accent,{rx:8,x:'fill-opacity=".25"'});
+    a+=R(20,y+12,16,16,r[2],{rx:4})+T(48,y+25,r[0],14,t.ink,{w:r[1]==='GLA1'?600:400})+T(304,y+25,r[1],12,t.muted,{a:'end',c:1,w:500}); y+=40; });
+  a+=R(350,120,322,44,t.pop,{rx:10,stroke:t.rule})+R(364,134,16,16,'#2B6CB0',{rx:4})+T(390,148,'First Floor is ready. Tap an outline.',14,t.ink);
+  /* right: inspector slide-over */
+  let b=base(true,'Select'); const X=496, W=288;
+  const F=(yy,lab,val,flag)=>T(X,yy,lab,13,t.muted,{w:500})+R(X,yy+8,W,44,t.field,{rx:8,stroke:t.rule})+T(X+14,yy+36,val,15,flag?t.flag:t.ink);
+  b+=R(468,105,12,1075,t.shadow)+R(480,105,320,1075,t.chrome)+L(480,105,480,1180,t.rule)+T(X,148,'Area 3',18,t.ink,{c:1,w:600})+T(X+W,148,'Done',14,t.link,{a:'end',w:600});
+  b+=F(180,'Name','Area 3')+F(260,'Type','Not chosen yet',1)+`<path d="M${X+W-26} 290l6 6 6-6" fill="none" stroke="${t.muted}" stroke-width="1.8"/>`;
+  b+=T(X,350,'Size',13,t.muted,{w:500})+T(X,386,'96.0 sf',30,t.ink,{c:1,w:600})+T(X+W,386,'16′ × 6′',15,t.muted,{a:'end',c:1,w:500});
+  b+=T(X,426,'Counts toward',13,t.muted,{w:500})+R(X,434,W,44,t.panel,{rx:8,stroke:t.rule})+R(X+194,436,92,40,t.field,{rx:6})+T(X+48,461,'Living',14,t.muted,{a:'middle'})+T(X+144,461,'Building',14,t.muted,{a:'middle'})+T(X+240,461,'Neither',14,t.ink,{a:'middle',w:600});
+  b+=T(X,508,'Factor',13,t.muted,{w:500})+R(X,516,W,44,t.field,{rx:8,stroke:t.rule})+T(X+24,545,'−',20,t.ink,{a:'middle'})+L(X+48,524,X+48,552,t.rule)+T(X+W/2,544,'1.00',15,t.ink,{a:'middle',c:1,w:500})+L(X+W-48,524,X+W-48,552,t.rule)+T(X+W-24,545,'+',20,t.ink,{a:'middle'});
+  b+=L(X,588,X+W,588,t.rule)+T(X,618,'Walls',13,t.muted,{w:500});
+  [['North','16′ 0″','shared'],['East','6′ 0″',''],['South','16′ 0″',''],['West','6′ 0″','']].forEach((r,i)=>{ const yy=652+i*44; b+=T(X,yy,r[0],15,t.ink)+T(X+90,yy,r[1],15,t.ink,{c:1,w:500})+T(X+W,yy,r[2],13,t.muted,{a:'end'})+L(X,yy+16,X+W,yy+16,t.rule); });
+  ['Fill and line style','Label options','Attributes','Clone area','Reopen as walls'].forEach((n,i)=>b+=T(X,850+i*44,n,15,t.link,{w:600}));
+  b+=T(X,1070,'Delete area',15,t.flag,{w:600});
+  const dev=(x,id,inner)=>`<g transform="translate(${x},24) scale(0.84)"><clipPath id="${id}"><rect width="800" height="1280" rx="30"/></clipPath><g clip-path="url(#${id})">${R(0,0,800,1280,t.panel)}${inner}</g><rect width="800" height="1280" rx="30" fill="none" stroke="${t.rule}" stroke-width="3.5"/></g>`;
+  document.getElementById('r9').innerHTML=`<svg viewBox="0 0 1400 1124" role="img" xmlns="http://www.w3.org/2000/svg">${R(0,0,1400,1124,'#141414')}${dev(18,'tp1',a)}${dev(710,'tp2',b)}</svg>`; })();
+
+/* shared dialog parts */
+const DLG=(t,title,sub)=>R(0,0,1400,860,'#141414')+R(160,60,1080,740,t.panel,{rx:10,stroke:t.rule})+T(184,100,title,20,t.ink,{c:1,w:600})+T(1180,100,sub,13,t.muted,{a:'end'})+L(1200,88,1212,100,t.muted,{sw:1.5})+L(1212,88,1200,100,t.muted,{sw:1.5})+L(160,740,1240,740,t.rule);
+const FLD=(t,x,y,w,lab,val,drop)=>T(x,y,lab,12,t.muted,{w:500})+R(x,y+8,w,32,t.field,{rx:6,stroke:t.rule})+T(x+12,y+29,val,14,t.ink)+(drop?`<path d="M${x+w-22} ${y+21}l5 5 5-5" fill="none" stroke="${t.muted}" stroke-width="1.6"/>`:'');
+const BTN=(t,x,w,lab,kind)=>R(x,754,w,30,kind?t.accent:t.chrome,{rx:6,stroke:kind?t.accent:t.rule})+T(x+w/2,774,lab,13,kind?t.onAccent:t.ink,{a:'middle',w:kind?600:500});
+
+/* 6 — area types editor */
+(function(){ const t=TH.dark; let o=DLG(t,'Area types','32 built in, 0 added');
+  o+=R(184,120,336,32,t.field,{rx:6,stroke:t.rule})+T(196,141,'Find a type',13,t.muted)+L(540,120,540,740,t.rule);
+  const G=['#22543D','#276749','#2F855A','#38A169','#48BB78','#68D391','#8FD694','#A9DC86','#BCE07C','#C9E274'], N=['First','Second','Third','Fourth','Fifth','Sixth','Seventh','Eighth','Ninth','Tenth'];
+  const rows=[['Living space'],...['#2B6CB0','#0987A0','#B83280','#C53030'].map((c,i)=>[N[i]+' Floor','GLA'+(i+1),c,i===0?1:0]),['Building area'],...G.map((c,i)=>[N[i]+' Floor','GBA'+(i+1),c,0]),['Garage / carport'],['Garage','GAR','#805AD5',1],['Carport','GAR2','#9F7AEA',0],['Basement'],['Finished BSMT','BSMT','#4A5568',0]];
+  rows.forEach((r,i)=>{ const y=162+i*27.5;
+    if(r.length===1){ o+=T(184,y+19,r[0],12,t.muted,{w:500}); return; }
+    if(r[1]==='GLA1') o+=R(180,y+1,340,26,t.accent,{rx:5,x:'fill-opacity=".25"'});
+    o+=R(190,y+7,13,13,r[2],{rx:3})+T(214,y+19,r[0],13,t.ink,{w:r[1]==='GLA1'?600:400})+T(440,y+19,r[1],12,t.muted,{c:1,w:500})+T(512,y+19,r[3]?r[3]+' used':'',11,t.muted,{a:'end'}); });
+  o+=R(526,162,4,570,t.chrome,{rx:2})+R(526,162,4,360,t.muted,{rx:2});
+  const A=564, B=902, W=314;
+  o+=T(A,146,'First Floor',18,t.ink,{c:1,w:600})+T(1216,146,'Built in. Used by 1 area in this sketch.',12,t.muted,{a:'end'});
+  o+=FLD(t,A,172,W,'Code','GLA1')+FLD(t,B,172,W,'Name','First Floor');
+  o+=FLD(t,A,236,W,'Description','Gross Living Area')+FLD(t,B,236,W,'Group','Living space',1);
+  o+=FLD(t,A,300,W,'Multiplier','1.00')+T(B,300,'Sign',12,t.muted,{w:500})+R(B,308,W,32,t.chrome,{rx:6,stroke:t.rule})+R(B+2,310,W/2-2,28,t.field,{rx:4})+T(B+W/4,329,'Adds',13,t.ink,{a:'middle',w:600})+T(B+W*3/4,329,'Subtracts',13,t.muted,{a:'middle'});
+  const sw=(x,y,lab,c,hex)=>T(x,y,lab,12,t.muted,{w:500})+R(x,y+8,W,32,t.field,{rx:6,stroke:t.rule})+R(x+6,y+14,36,20,c,{rx:4})+T(x+52,y+29,hex,14,t.ink,{c:1,w:500});
+  o+=sw(A,364,'Line colour','#2B6CB0','#2B6CB0')+sw(B,364,'Fill colour','#2B6CB0','#2B6CB0');
+  o+=FLD(t,A,428,W,'Fill style','Solid',1)+T(B,428,'Fill opacity',12,t.muted,{w:500})+L(B,452,B+260,452,t.rule,{sw:4,cap:'round'})+L(B,452,B+26,452,t.accent,{sw:4,cap:'round'})+`<circle cx="${B+26}" cy="452" r="8" fill="${t.accent}"/>`+T(B+W,457,'10%',14,t.ink,{a:'end',c:1,w:500});
+  o+=R(A,490,18,18,t.accent,{rx:4})+`<path d="M${A+4} 499l4 4 6-8" fill="none" stroke="#fff" stroke-width="2"/>`+T(A+28,504,'Count in gross living area',14,t.ink);
+  o+=T(A,540,'Preview',12,t.muted,{w:500})+R(A,548,652,130,t.canvas,{rx:6})+R(A+226,566,200,94,'#2B6CB0',{stroke:'#2B6CB0',sw:3,x:'fill-opacity=".10"'})+T(A+326,608,'First Floor',14,t.cink,{a:'middle',w:600})+T(A+326,628,'GLA1  1,224.0 sf',13,t.cmuted,{a:'middle',c:1,w:500});
+  o+=T(A,712,'Delete type',13,t.flag,{w:600})+T(A+90,712,'Areas using a deleted type become Undefined.',12,t.muted);
+  o+=BTN(t,184,92,'New type',1)+BTN(t,284,86,'Duplicate')+BTN(t,378,70,'Import')+BTN(t,456,70,'Export')+BTN(t,534,128,'Restore defaults')+BTN(t,1056,76,'Cancel')+BTN(t,1140,76,'Save',1);
+  document.getElementById('r6').innerHTML=svg(o); })();
+
+/* 7 — symbol library */
+(function(){ const t=TH.dark; let o=DLG(t,'Symbol library','639 symbols in 29 categories, 0 hidden');
+  [['All symbols',639],['Favorites',43],['Doors',58,1],['Windows',25],['Stairs',7],['Kitchen',30],['Bath',15],['bathroom',38],['bedroom',13],['furniture',21],['Fireplaces',6],['Fire',119],['Cameras',21],['Arrows',8],['Circles',21],['Shapes',5],['landscaping',19],['Pools',5],['CADdillo - Furniture',68],['CADdillo - Outdoor',24]].forEach((r,i)=>{ const y=118+i*30;
+    if(r[2]) o+=R(180,y+1,222,28,t.accent,{rx:5,x:'fill-opacity=".25"'});
+    o+=T(190,y+20,r[0],13,t.ink,{w:r[2]?600:400})+T(394,y+20,r[1],12,t.muted,{a:'end',c:1,w:500}); });
+  o+=R(406,120,4,600,t.chrome,{rx:2})+R(406,120,4,420,t.muted,{rx:2})+L(416,120,416,740,t.rule)+L(888,120,888,740,t.rule);
+  o+=R(432,120,196,32,t.field,{rx:6,stroke:t.rule})+T(444,141,'Find in Doors',13,t.muted)+R(640,120,104,32,t.accent,{rx:6})+T(692,141,'New symbol',13,t.onAccent,{a:'middle',w:600})+R(752,120,120,32,t.chrome,{rx:6,stroke:t.rule})+T(812,141,'Import DXF',13,t.ink,{a:'middle',w:500});
+  ['Exterior 45 Degree','Exterior 90 Degree','French-Dbl 45 Deg','French-Dbl 90 Deg','French-Sgl 45 Deg','French-Sgl 90 Deg','Garage-Dbl','Garage Single','Interior 45 Degree','Interior 90 Degree','Sliding 5′','Sliding 6′'].forEach((n,i)=>{ const x=432+(i%4)*112, y=166+Math.floor(i/4)*160, on=i===1, gx=x+34, gy=y+88, k=t.ink;
+    o+=R(x,y,104,150,on?t.field:t.chrome,{rx:8,stroke:on?t.accent:t.rule,sw:on?2:1});
+    if(i<2||i===8||i===9) o+=`<path d="M${gx} ${gy}v-36a36 36 0 0 1 36 36" fill="none" stroke="${k}" stroke-width="1.6"/>`+(i%2===0?L(gx,gy,gx+25,gy-25,k,{sw:1.6}):'');
+    else if(i<6) o+=`<path d="M${gx} ${gy}v-18a18 18 0 0 1 18 18m18 0v-18a18 18 0 0 0-18 18" fill="none" stroke="${k}" stroke-width="1.6"/>`;
+    else if(i<8) o+=R(gx-6,gy-22,48,12,'none',{stroke:k,sw:1.6})+(i===6?L(gx+18,gy-22,gx+18,gy-10,k):'');
+    else o+=L(gx-4,gy-18,gx+22,gy-18,k,{sw:1.6})+L(gx+14,gy-10,gx+40,gy-10,k,{sw:1.6});
+    o+=T(x+52,y+122,n,11,on?t.ink:t.muted,{a:'middle',w:on?600:400})+T(x+52,y+138,i>5&&i<8?'Centre of wall':i>9?'Centre of wall':'One side',10,t.muted,{a:'middle'}); });
+  o+=T(432,668,'Showing 12 of 58. Scroll for more.',12,t.muted);
+  const X=904, W=312;
+  o+='<clipPath id="pv"><rect x="904" y="120" width="312" height="180" rx="6"/></clipPath><g clip-path="url(#pv)">'+grid(t,X,120,X+W,300,X+96,250,12)+'</g>';
+  o+=`<path d="M${X+96} 250v-108a108 108 0 0 1 108 108" fill="none" stroke="${t.cink}" stroke-width="2"/>`+L(X+96,250,X+204,250,t.cink,{sw:2,dash:'4 4'});
+  [[96,250],[96,142],[204,250],[172,174]].forEach(p=>o+=R(X+p[0]-4,p[1]-4,8,8,t.canvas,{stroke:t.accent,sw:2}));
+  o+=R(X+214,266,90,26,t.pop,{rx:6,stroke:t.rule})+T(X+259,284,'Edit shape',12,t.ink,{a:'middle',w:600});
+  o+=FLD(t,X,322,W,'Name','Exterior 90 Degree')+FLD(t,X,386,W,'Category','Doors',1)+FLD(t,X,450,W,'Description','Exterior 90 Degree');
+  o+=FLD(t,X,514,150,'Snaps to wall','One side',1)+FLD(t,X+162,514,150,'Wall gap','36 in');
+  o+=FLD(t,X,578,150,'Units','Inches',1)+FLD(t,X+162,578,150,'End cap','0 in');
+  o+=T(X,654,'Add to favorites',13,t.link,{w:600})+T(X+116,654,'Duplicate',13,t.link,{w:600})+T(X+190,654,'Hide',13,t.link,{w:600})+T(X+W,654,'Delete',13,t.flag,{a:'end',w:600});
+  o+=T(X,682,'Placed 2 times in this sketch.',12,t.muted);
+  o+=BTN(t,184,112,'New category')+BTN(t,304,132,'Rename category')+BTN(t,444,112,'Export library')+BTN(t,564,176,'Restore original library')+BTN(t,1140,76,'Close',1);
+  document.getElementById('r7').innerHTML=svg(o); })();
+</script>
+
+</html>

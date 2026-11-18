@@ -265,6 +265,9 @@ pub fn key_down(key: &Key, mods: Modifiers, ctx: KeyContext) -> Option<KeyCmd> {
                         DIGITS[ch as usize - 48]
                     }));
                 }
+                if ch == '\'' {
+                    return Some(KeyCmd::Buffer("'"));
+                }
                 if ch == '<' || ch == ',' {
                     return Some(KeyCmd::Buffer("<"));
                 }

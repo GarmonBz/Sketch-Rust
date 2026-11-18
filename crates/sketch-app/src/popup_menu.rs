@@ -1,29 +1,16 @@
-//! The three ribbon popup menus (`UIManager.showCommandPopup`,
-//! ui-manager.js:1400): Flip Sketch (`showFlipMenu`), Canvas background
-//! (`showCanvasBackgroundMenu`) and Interface theme (`showInterfaceThemeMenu`).
-//!
-//! Same `.command-popup` panel the select-by-type menu uses (190px, 5px
-//! padding, 29px rows, a 1px border and the 0 8 22 shadow), placed at
-//! `left = min(innerWidth - w - 8, max(8, anchor.left))` and
-//! `top = min(innerHeight - h - 8, max(8, anchor.bottom + 2))`. The theme
-//! menus mark the current choice with a ` ✓` in `#63B3ED` after its label
-//! (`button.active span::after`). A press outside dismisses the menu (the
-//! original's one-shot `pointerdown` listener); like the original it has no
-//! Escape handler.
+//! Popup menus for Flip Sketch, Canvas background, Interface theme, and Quick Access.
 
-use iced::widget::{button, container, mouse_area, opaque, row, stack};
+use iced::widget::{button, container, mouse_area, opaque, pin, row, stack, text};
 use iced::{alignment, Background, Border, Color, Element, Length, Padding, Vector};
 
 use crate::canvas_theme::CanvasTheme;
-use crate::icons::icon;
-use crate::snap::nudge;
+use crate::icons::mono;
 use crate::theme::*;
 use crate::transform::Axis;
 use crate::Message;
 
 const ROW_H: f32 = 29.0;
 const PAD: f32 = 5.0;
-const ROW_Y0: f32 = crate::shapes::ROW_Y0;
 const WIDTH: f32 = 190.0;
 const LABEL_SIZE: f32 = 13.33;
 
@@ -148,21 +135,22 @@ pub fn placement(anchor: (f32, f32), size: (f32, f32), window: (f32, f32)) -> (f
 }
 
 fn menu_row<'a>(entry: &Entry) -> Element<'a, Message> {
-    let name = nudge(
-        0.5,
-        0.0,
-        label(entry.label, LABEL_SIZE, ARIAL, text_main(), 16.0),
-    );
-    // `button.active span::after { content: ' ✓'; color: #63B3ED }`: the
-    // check follows the label by one space.
     let name: Element<'a, Message> = if entry.active {
-        row![name, label("\u{2713}", LABEL_SIZE, ARIAL, ICON_BLUE, 16.0)]
-            .spacing(4)
-            .into()
+        row![
+            text(entry.label).size(LABEL_SIZE).font(ARIAL).color(text_main()),
+            text("\u{2713}").size(LABEL_SIZE).font(ARIAL).color(ICON_BLUE),
+        ]
+        .spacing(4)
+        .align_y(alignment::Vertical::Center)
+        .into()
     } else {
-        name.into()
+        text(entry.label)
+            .size(LABEL_SIZE)
+            .font(ARIAL)
+            .color(text_main())
+            .into()
     };
-    let body = row![icon(entry.icon, false, 13.34, muted()), name]
+    let body = row![mono(entry.icon, 13.34, muted()), name]
         .spacing(9)
         .align_y(alignment::Vertical::Center);
     button(body)
@@ -197,13 +185,13 @@ pub fn layer<'a>(
 ) -> Option<Element<'a, Message>> {
     let (kind, anchor) = menu.open?;
     let items = entries(kind, canvas, interface);
-    let mut rows = stack![].width(Length::Fill).height(Length::Fill);
-    for (i, entry) in items.iter().enumerate() {
-        rows = rows.push(at(PAD, ROW_Y0 + ROW_H * i as f32, menu_row(entry)));
+    let mut rows = iced::widget::Column::new().width(Length::Fill);
+    for entry in &items {
+        rows = rows.push(menu_row(entry));
     }
-    // iced draws the border inside the box: add the two border pixels.
     let height = ROW_H * items.len() as f32 + PAD * 2.0 + 2.0;
     let panel = container(rows)
+        .padding(PAD)
         .width(WIDTH)
         .height(height)
         .style(|_| container::Style {
@@ -227,7 +215,7 @@ pub fn layer<'a>(
             .height(Length::Fill),
     )
     .on_press(Message::PopupMenu(PopupMsg::Close));
-    Some(stack![backdrop, at(x, y, opaque(panel))].into())
+    Some(stack![backdrop, pin(opaque(panel)).x(x).y(y)].into())
 }
 
 #[cfg(test)]

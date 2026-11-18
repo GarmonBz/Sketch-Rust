@@ -1,21 +1,12 @@
-//! Select by type (screen 6e): `selectByType` and its command popup
-//! (refs/sketch-app.js:842-869, refs/ui-manager.js:1421-1426).
-//!
-//! The menu is the same command popup the wall-shape and undo-history menus
-//! use: 190 wide, 29px rows, 13.33px Arial labels with a 13.34px icon, opened
-//! 2px under the Edit Tools › Select button.
+//! Select by type options and helpers.
 
-use iced::widget::{container, stack};
 use iced::{Background, Border, Color, Element, Length, Vector};
 
-use crate::shapes::menu_row_sized;
-use crate::theme::at;
-use crate::theme::{bg_panel, border};
+use crate::theme::{bg_hover, bg_panel, border, text_main, ARIAL};
+use crate::icons::mono;
 
 const ROW_H: f32 = 29.0;
 const PAD: f32 = 5.0;
-/// See `shapes::ROW_Y0`.
-const ROW_Y0: f32 = crate::shapes::ROW_Y0;
 const WIDTH: f32 = 190.0;
 const LABEL_SIZE: f32 = 13.33;
 
@@ -40,7 +31,7 @@ impl SelectKind {
         SelectKind::Freeform,
     ];
 
-    fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             SelectKind::All => "Select All",
             SelectKind::Areas => "Select Areas",
@@ -71,6 +62,7 @@ pub struct SelectMenu {
 }
 
 impl SelectMenu {
+    #[cfg(test)]
     pub fn open_at(&mut self, x: f32, y: f32) {
         self.open = Some((x, y));
     }
@@ -80,29 +72,54 @@ impl SelectMenu {
     }
 }
 
+fn row_item<'a>(label_s: &str, glyph: &str, kind: SelectKind) -> Element<'a, crate::Message> {
+    let body = iced::widget::row![
+        mono(glyph, 13.34, crate::theme::muted()),
+        iced::widget::text(label_s.to_string())
+            .size(LABEL_SIZE)
+            .font(ARIAL)
+            .color(text_main()),
+    ]
+    .spacing(9)
+    .align_y(iced::alignment::Vertical::Center);
+    iced::widget::button(body)
+        .padding(iced::Padding {
+            top: 0.0,
+            bottom: 0.0,
+            left: 10.0,
+            right: 10.0,
+        })
+        .width(Length::Fill)
+        .height(ROW_H)
+        .on_press(crate::Message::SelectByType(kind))
+        .style(|_, status| {
+            let hovered = matches!(
+                status,
+                iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed
+            );
+            iced::widget::button::Style {
+                background: hovered.then_some(Background::Color(bg_hover())),
+                border: Border::default(),
+                text_color: text_main(),
+                ..iced::widget::button::Style::default()
+            }
+        })
+        .into()
+}
+
 /// The popup's layer, or None when closed.
 pub fn layer<'a>(v: &SelectMenu) -> Option<Element<'a, crate::Message>> {
     let (x, y) = v.open?;
-    let mut rows = stack![].width(Length::Fill).height(Length::Fill);
-    for (i, kind) in SelectKind::ALL.into_iter().enumerate() {
-        rows = rows.push(at(
-            PAD,
-            ROW_Y0 + ROW_H * i as f32,
-            menu_row_sized(
-                kind.label(),
-                kind.icon(),
-                LABEL_SIZE,
-                crate::Message::SelectByType(kind),
-            ),
-        ));
+    let mut rows = iced::widget::Column::new().width(Length::Fill);
+    for kind in SelectKind::ALL {
+        rows = rows.push(row_item(kind.label(), kind.icon(), kind));
     }
-    // iced draws the border inside the box, so the CSS height (content +
-    // padding + 2 borders) needs them added explicitly.
     let height = ROW_H * SelectKind::ALL.len() as f32 + PAD * 2.0 + 2.0;
-    let panel = container(rows)
+    let panel = iced::widget::container(rows)
+        .padding(PAD)
         .width(WIDTH)
         .height(height)
-        .style(|_| container::Style {
+        .style(|_| iced::widget::container::Style {
             background: Some(Background::Color(bg_panel())),
             border: Border {
                 color: border(),
@@ -114,9 +131,9 @@ pub fn layer<'a>(v: &SelectMenu) -> Option<Element<'a, crate::Message>> {
                 offset: Vector::new(0.0, 8.0),
                 blur_radius: 11.0,
             },
-            ..container::Style::default()
+            ..iced::widget::container::Style::default()
         });
-    Some(at(x, y + 2.0, panel))
+    Some(iced::widget::pin(panel).x(x).y(y + 2.0).into())
 }
 
 #[cfg(test)]

@@ -11,19 +11,10 @@
 //! with no window cannot capture one, so it gets a blank canvas-coloured
 //! snapshot of the same proportions.
 
-use iced::widget::{button, container, image, opaque, stack, text};
-use iced::{Background, Border, Color, Element, Length, Padding, Shadow, Vector};
+use iced::widget::image;
 
-use crate::theme::*;
-use crate::Message;
-
-/// `.mini-map-overlay` width.
-const CARD_W: f32 = 260.0;
-/// `right` / `bottom` offsets inside the canvas container.
-const EDGE: f32 = 14.0;
-
-/// The canvas rectangle in the window, in logical px: right of the 41px rail
-/// column, below the 30px title bar and the 99px ribbon.
+/// The legacy canvas origin offset kept for test coordinate math.
+#[cfg(test)]
 pub const CANVAS_ORIGIN: (f32, f32) = (41.0, 129.0);
 
 /// Crop `rect` (x, y, w, h in physical px) out of an RGBA screenshot of
@@ -48,11 +39,7 @@ pub fn crop_rgba(
     Some((w, h, out))
 }
 
-/// The canvas rectangle (x, y, w, h in physical px) inside a window
-/// screenshot: the window's logical size (physical / `scale`) minus the 41px
-/// rail column, the dock (`dock_w`), and the 30 + 99px of title and ribbon
-/// and 28px of status bar. Read off the screenshot itself, so it is right
-/// whatever size the window has been resized to.
+/// The legacy canvas rectangle (x, y, w, h in physical px) kept for coordinate tests.
 #[cfg(test)]
 pub fn canvas_rect(size: (u32, u32), scale: f32, dock_w: f32) -> (u32, u32, u32, u32) {
     canvas_rect_with_nav(size, scale, dock_w, 0.0)
@@ -60,6 +47,7 @@ pub fn canvas_rect(size: (u32, u32), scale: f32, dock_w: f32) -> (u32, u32, u32,
 
 /// `canvas_rect` with the Pages navigator (`nav_w` wide, 0 when closed)
 /// pushing the canvas right.
+#[cfg(test)]
 pub fn canvas_rect_with_nav(
     size: (u32, u32),
     scale: f32,
@@ -79,6 +67,7 @@ pub fn canvas_rect_with_nav(
 
 /// The snapshot from a window screenshot: the canvas rectangle as an image
 /// handle.
+#[cfg(test)]
 pub fn snapshot(
     rgba: &[u8],
     size: (u32, u32),
@@ -87,6 +76,23 @@ pub fn snapshot(
     nav_w: f32,
 ) -> Option<image::Handle> {
     let rect = canvas_rect_with_nav(size, scale, dock_w, nav_w);
+    let (w, h, pixels) = crop_rgba(rgba, size, rect)?;
+    Some(image::Handle::from_rgba(w, h, pixels))
+}
+
+/// Snapshot cropped to an explicit logical window rectangle (`App::canvas_rect`).
+pub fn snapshot_rect(
+    rgba: &[u8],
+    size: (u32, u32),
+    scale: f32,
+    logical: iced::Rectangle,
+) -> Option<image::Handle> {
+    let rect = (
+        (logical.x * scale).round().max(0.0) as u32,
+        (logical.y * scale).round().max(0.0) as u32,
+        (logical.width.max(0.0) * scale).round() as u32,
+        (logical.height.max(0.0) * scale).round() as u32,
+    );
     let (w, h, pixels) = crop_rgba(rgba, size, rect)?;
     Some(image::Handle::from_rgba(w, h, pixels))
 }
@@ -105,65 +111,6 @@ pub fn blank(canvas: (f64, f64)) -> image::Handle {
     ];
     let pixels: Vec<u8> = (0..w * h).flat_map(|_| px).collect();
     image::Handle::from_rgba(w, h, pixels)
-}
-
-/// The overlay layer, or None when the map is closed. `dock_w` and the 28px
-/// status bar keep the card inside the canvas container.
-pub fn layer(map: Option<&image::Handle>, dock_w: f32) -> Option<Element<'_, Message>> {
-    let handle = map?;
-    let close = button(text("\u{d7}").size(14.0).color(Color::WHITE))
-        .padding([0, 4])
-        .on_press(Message::MiniMapClose)
-        .style(|_, _| button::Style {
-            background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.55))),
-            text_color: Color::WHITE,
-            ..button::Style::default()
-        });
-    let picture = image(handle.clone())
-        .width(Length::Fill)
-        .content_fit(iced::ContentFit::Contain);
-    let card = container(stack![
-        picture,
-        container(close)
-            .width(Length::Fill)
-            .align_x(iced::alignment::Horizontal::Right)
-            .padding(Padding {
-                top: -5.0,
-                right: -3.0,
-                bottom: 0.0,
-                left: 0.0,
-            }),
-    ])
-    .width(CARD_W)
-    .padding(8)
-    .style(|_| container::Style {
-        background: Some(Background::Color(bg_panel())),
-        border: Border {
-            color: border(),
-            width: 1.0,
-            radius: 4.0.into(),
-        },
-        shadow: Shadow {
-            color: Color::from_rgba(0.0, 0.0, 0.0, 0.45),
-            offset: Vector::new(0.0, 4.0),
-            blur_radius: 16.0,
-        },
-        ..container::Style::default()
-    });
-    Some(
-        container(opaque(card))
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .align_x(iced::alignment::Horizontal::Right)
-            .align_y(iced::alignment::Vertical::Bottom)
-            .padding(Padding {
-                top: 0.0,
-                right: dock_w + EDGE,
-                bottom: 28.0 + EDGE,
-                left: 0.0,
-            })
-            .into(),
-    )
 }
 
 #[cfg(test)]

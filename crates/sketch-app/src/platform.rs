@@ -141,6 +141,7 @@ pub fn activate_existing(path: &std::path::Path) -> bool {
 
 /// Holds the "this file is open here" event for `path` for as long as the
 /// stream lives, and yields each time another instance asks for the window.
+#[allow(clippy::ptr_arg)]
 pub fn activation_stream(path: &std::path::PathBuf) -> impl iced::futures::Stream<Item = ()> {
     let (tx, rx) = iced::futures::channel::mpsc::unbounded::<()>();
     #[cfg(windows)]
@@ -178,4 +179,72 @@ pub fn activation_stream(path: &std::path::PathBuf) -> impl iced::futures::Strea
         std::mem::forget(tx);
     }
     rx
+}
+
+// ---------------------------------------------------------------------------
+// File pickers. Every native file dialog goes through here so a port only
+// has to replace this block (Android: the Storage Access Framework).
+// ---------------------------------------------------------------------------
+
+/// Ask for one existing file whose extension is in `extensions`.
+pub fn pick_file(filter: &str, extensions: &[&str]) -> Option<std::path::PathBuf> {
+    rfd::FileDialog::new()
+        .add_filter(filter, extensions)
+        .pick_file()
+}
+
+/// Ask for one or more existing files.
+#[cfg_attr(test, allow(dead_code))]
+pub fn pick_files(filter: &str, extensions: &[&str]) -> Option<Vec<std::path::PathBuf>> {
+    rfd::FileDialog::new()
+        .add_filter(filter, extensions)
+        .pick_files()
+}
+
+/// Ask where to save, offering `default_name`.
+pub fn save_file(
+    filter: &str,
+    extensions: &[&str],
+    default_name: impl Into<String>,
+) -> Option<std::path::PathBuf> {
+    rfd::FileDialog::new()
+        .add_filter(filter, extensions)
+        .set_file_name(default_name)
+        .save_file()
+}
+
+/// Ask where to save, offering one `(name, extension)` filter per format in
+/// the order given.
+#[cfg_attr(test, allow(dead_code))]
+pub fn save_file_as(default_name: &str, filters: &[(&str, &str)]) -> Option<std::path::PathBuf> {
+    let mut dialog = rfd::FileDialog::new().set_file_name(default_name);
+    for (name, ext) in filters {
+        dialog = dialog.add_filter(*name, &[*ext]);
+    }
+    dialog.save_file()
+}
+
+/// `pick_file` without blocking the interface thread.
+#[cfg_attr(test, allow(dead_code))]
+pub async fn pick_file_async(filter: &str, extensions: &[&str]) -> Option<std::path::PathBuf> {
+    rfd::AsyncFileDialog::new()
+        .add_filter(filter, extensions)
+        .pick_file()
+        .await
+        .map(|file| file.path().to_path_buf())
+}
+
+/// `save_file` without blocking the interface thread.
+#[cfg_attr(test, allow(dead_code))]
+pub async fn save_file_async(
+    filter: &str,
+    extensions: &[&str],
+    default_name: &str,
+) -> Option<std::path::PathBuf> {
+    rfd::AsyncFileDialog::new()
+        .add_filter(filter, extensions)
+        .set_file_name(default_name)
+        .save_file()
+        .await
+        .map(|file| file.path().to_path_buf())
 }

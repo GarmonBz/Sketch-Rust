@@ -12,4 +12,6 @@ cargo build --release -p sketch-app
 mkdir -p dist
 cp target/release/sketch-app.exe dist/
 cp assets/symbols.json dist/
+cp -f assets/symbols.json dist/symbols.original.json
+chmod a-w dist/symbols.original.json
 ls -l dist

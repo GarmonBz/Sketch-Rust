@@ -109,15 +109,30 @@ impl App {
             }
         }
         for c in &mut lib.categories {
-            c.symbol_ids = lib
-                .symbols
-                .values()
-                .filter(|s| s.category == c.key && !self.symbol_changes.hidden.contains(&s.id))
-                .map(|s| s.id.clone())
-                .collect();
+            let mut ordered: Vec<String> = Vec::with_capacity(c.symbol_ids.len());
+            let mut seen = BTreeSet::new();
+            for id in &c.symbol_ids {
+                if let Some(s) = lib.symbols.get(id) {
+                    if s.category == c.key
+                        && !self.symbol_changes.hidden.contains(id)
+                        && seen.insert(id.clone())
+                    {
+                        ordered.push(id.clone());
+                    }
+                }
+            }
+            for s in lib.symbols.values() {
+                if s.category == c.key
+                    && !self.symbol_changes.hidden.contains(&s.id)
+                    && seen.insert(s.id.clone())
+                {
+                    ordered.push(s.id.clone());
+                }
+            }
+            c.symbol_ids = ordered;
         }
         lib.default_favorites
-            .retain(|id| !self.symbol_changes.hidden.contains(id) && lib.symbols.contains_key(id));
+            .retain(|id| !self.symbol_changes.hidden.contains(id));
         lib.categories.retain(|c| {
             !self.symbol_changes.deleted_categories.contains(&c.key) || !c.symbol_ids.is_empty()
         });
@@ -157,7 +172,7 @@ impl App {
             self.symbol_manager.focus = next_focus;
         }
     }
-    fn store_symbols(&mut self) -> Task<Message> {
+    pub(crate) fn store_symbols(&mut self) -> Task<Message> {
         self.rebuild_symbols();
         if persist::write_json("symbol-library.json", &self.symbol_changes) == Some(false) {
             return self
@@ -212,6 +227,9 @@ impl App {
                     self.symbol_manager.open = false;
                     self.placing_symbol = Some(id.clone());
                     self.dock.preview = Some(id);
+                    if !self.ui.drawer_pinned {
+                        self.ui.drawer = None;
+                    }
                     return self.set_mode(crate::view_state::Mode::PlaceSymbol);
                 }
             }
@@ -222,21 +240,17 @@ impl App {
                 self.symbol_manager.confirm = 4;
             }
             Msg::Open => {
-                if self.symbol_manager.context {
-                    self.symbol_manager.context = false;
+                let focus = if self.symbol_manager.context {
+                    self.symbol_manager.focus.clone()
                 } else {
-                    self.symbol_manager = Manager {
-                        open: true,
-                        category: if self.dock.active == crate::dock::DockTab::Symbols
-                            && self.category_is_real(&self.dock.symbol_category)
-                        {
-                            self.dock.symbol_category.clone()
-                        } else {
-                            String::new()
-                        },
-                        ..Manager::default()
-                    };
-                }
+                    None
+                };
+                self.symbol_manager.open = false;
+                self.symbol_manager.context = false;
+                return crate::ui::symbol_library::update(
+                    self,
+                    crate::ui::symbol_library::Msg::Open(focus),
+                );
             }
             Msg::Close => {
                 self.symbol_manager.open = false;
@@ -422,9 +436,7 @@ impl App {
             }
             Msg::Import => {
                 #[cfg(not(test))]
-                if let Some(paths) = rfd::FileDialog::new()
-                    .add_filter("Symbol or DXF", &["json", "dxf", "dwg"])
-                    .pick_files()
+                if let Some(paths) = crate::platform::pick_files("Symbol or DXF", &["json", "dxf", "dwg"])
                 {
                     let mut added = 0;
                     let mut errors = vec![];
@@ -469,8 +481,9 @@ impl App {
             Msg::View => self.symbol_manager.enlarged = self.symbol_manager.focus.is_some(),
             Msg::Favorites => {
                 self.symbol_manager.open = false;
-                return self
-                    .symbol_organizer_msg(crate::symbol_organizer::SymbolOrganizerMsg::Open);
+                return self.update(Message::Ui(crate::ui::Msg::SymbolLibrary(
+                    crate::ui::symbol_library::Msg::Open(None),
+                )));
             }
         }
         if self.symbol_manager.open && !self.symbol_manager.context {
@@ -638,7 +651,7 @@ impl App {
     /// Points every placed instance of a retired symbol at the symbol that
     /// replaced it: the document, every page, undo/redo, the clipboard and the
     /// user's favorites.
-    fn remap_symbols(&mut self, map: &BTreeMap<String, String>) {
+    pub(crate) fn remap_symbols(&mut self, map: &BTreeMap<String, String>) {
         self.save_current_page();
         let fix = |s: &mut crate::placed_symbol::PlacedSymbol| {
             if let Some(to) = map.get(&s.symbol_type) {
@@ -669,8 +682,9 @@ impl App {
         }
         self.persist_library();
     }
-    /// A placed symbol whose id was retired by a merge takes the id that
-    /// replaced it (`aliases` in `symbols.json`), for sketches saved before.
+    /// A placed symbol whose id was retired (by Merge duplicates, or as a
+    /// duplicate of a newer symbol, 2026-11-17) takes the id that replaced
+    /// it (`aliases` in `symbols.json`), for sketches saved before.
     pub(crate) fn resolve_symbol_aliases(
         &self,
         symbols: &mut [crate::placed_symbol::PlacedSymbol],
@@ -687,7 +701,7 @@ impl App {
     /// Takes `ids` out of the document and everything that could bring them
     /// back: placed instances on every page, undo/redo history, the clipboard,
     /// the selection, and the library overrides and favorites.
-    fn forget_symbols(&mut self, ids: &BTreeSet<String>) {
+    pub(crate) fn forget_symbols(&mut self, ids: &BTreeSet<String>) {
         self.save_current_page();
         for page in &mut self.pages.pages {
             page.symbols.retain(|s| !ids.contains(&s.symbol_type));
@@ -810,7 +824,7 @@ impl App {
                     ]
                     .spacing(8),
                     row![
-                        action("Manage / Rename…", Msg::Open),
+                        action("Edit in library…", Msg::Open),
                         action("Close", Msg::Close)
                     ]
                     .spacing(8),
@@ -1260,7 +1274,7 @@ fn plural(n: usize) -> &'static str {
 }
 /// The category key a new category name files under: `Window Treatments` ->
 /// `window-treatments`.
-fn category_key(name: &str) -> String {
+pub(crate) fn category_key(name: &str) -> String {
     let key: String = name
         .trim()
         .to_lowercase()

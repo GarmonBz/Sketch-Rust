@@ -2,9 +2,9 @@
 //! their position) and the Escape key, then passes every event on to its
 //! content unchanged.
 //!
-//! It replaces a global `event::listen_with` subscription for the File
-//! backstage's close rules (refs/ui-manager.js: a document-level `pointerdown`
-//! outside `#file-menu` and the File tab closes it; Escape closes it; the
+//! It replaces a global `event::listen_with` subscription for popup
+//! menu and overlay close rules (a document-level `pointerdown`
+//! outside an open menu closes it; Escape closes it; the
 //! press still reaches its target). Routing these through the widget tree
 //! means the real window and the headless `iced_test` emulator — which only
 //! delivers events to widgets, never to subscriptions — behave identically.
@@ -30,6 +30,8 @@ pub struct EventTap<'a, Message, Theme = iced::Theme, Renderer = iced::Renderer>
     on_escape: Option<Message>,
     on_move: Option<Box<dyn Fn(Point, f32) -> Message + 'a>>,
     on_release: Option<Message>,
+    on_touch: Option<Message>,
+    on_hardware_key: Option<Message>,
     on_key: Option<KeyHandler<'a, Message>>,
     on_key_up: Option<KeyHandler<'a, Message>>,
     keyboard_action: Option<(iced::advanced::widget::Id, Message)>,
@@ -65,6 +67,8 @@ impl<'a, Message, Theme, Renderer> EventTap<'a, Message, Theme, Renderer> {
             on_escape: None,
             on_move: None,
             on_release: None,
+            on_touch: None,
+            on_hardware_key: None,
             on_key: None,
             on_key_up: None,
             keyboard_action: None,
@@ -101,6 +105,18 @@ impl<'a, Message, Theme, Renderer> EventTap<'a, Message, Theme, Renderer> {
     /// Any mouse button release.
     pub fn on_release(mut self, message: Message) -> Self {
         self.on_release = Some(message);
+        self
+    }
+
+    /// Observe touch events cleanly without capturing them.
+    pub fn on_touch(mut self, message: Message) -> Self {
+        self.on_touch = Some(message);
+        self
+    }
+
+    /// Observe any physical keyboard key press (used to auto-hide Pad).
+    pub fn on_hardware_key(mut self, message: Message) -> Self {
+        self.on_hardware_key = Some(message);
         self
     }
 
@@ -305,7 +321,34 @@ where
                     shell.publish(m.clone());
                 }
             }
+            Event::Touch(t_ev) => {
+                if let Some(m) = &self.on_touch {
+                    shell.publish(m.clone());
+                }
+                match t_ev {
+                    iced::touch::Event::FingerMoved { position, .. } => {
+                        self.last_cursor = Some(*position);
+                        if let Some(f) = &self.on_move {
+                            shell.publish(f(*position, layout.bounds().width));
+                        }
+                    }
+                    iced::touch::Event::FingerLifted { .. }
+                    | iced::touch::Event::FingerLost { .. } => {
+                        if let Some(m) = &self.on_release {
+                            shell.publish(m.clone());
+                        }
+                    }
+                    iced::touch::Event::FingerPressed { position, .. } => {
+                        self.last_cursor = Some(*position);
+                    }
+                }
+            }
             _ => {}
+        }
+        if matches!(event, Event::Keyboard(keyboard::Event::KeyPressed { .. })) {
+            if let Some(m) = &self.on_hardware_key {
+                shell.publish(m.clone());
+            }
         }
         self.content.as_widget_mut().update(
             &mut tree.children[0],

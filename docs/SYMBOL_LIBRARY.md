@@ -1,4 +1,41 @@
-# Residential symbol library — 0.1.25
+# Residential symbol library
+
+## Plain category names and fewer duplicates (0.2.2)
+
+The CADdillo categories now have plain names. Six of them merged into the
+older category of the same kind, with the CADdillo symbols listed first:
+
+| Category | Holds |
+|---|---|
+| Kitchen | CADdillo kitchen plus the older kitchen symbols |
+| Furniture | CADdillo furniture plus the older furniture |
+| Bath & plumbing | CADdillo bath and plumbing plus the older bath symbols |
+| Stairs & accessibility | CADdillo stairs, ramps and rails plus the older stairs |
+| Fireplaces & structure | CADdillo fireplaces, chimney and columns plus the older fireplaces |
+| Utilities | CADdillo mechanical items plus the older utility symbols |
+
+Doors & windows, Laundry, Electrical and Outdoor keep their own categories
+under plain names. Bathroom, Bedroom and Landscaping are now in sentence case.
+
+67 older symbols that a CADdillo symbol replaces are retired: for example the
+residential toilet (now Toilet), the standard range (Range 30), the 36-inch
+refrigerator (Fridge 36), the 90-degree interior and exterior doors (Door
+Swing 30 and 36), and the matching copies in the old built-in Favorites set.
+Older symbols with no CADdillo equivalent stay, such as corner and oval tubs,
+45-degree doors, double garage doors, sliding doors, ranges with grills and the
+fire-protection symbols.
+
+Retired symbols are deleted: `symbols.json` holds the 572 symbols you can place,
+and no copy of the old shapes is kept. Each retired id is listed under `aliases`
+in `symbols.json` with its replacement. When a sketch that uses one opens (or a
+layer is imported), Sketch Rust puts the replacement in its place, at the same
+position, rotation, scale and wall; the sketch saves the new id from then on.
+The replacement is the newer drawing of the same fixture, so it can differ a
+little in size or detail. The full list is in `tools/symbol-curation.json`; run
+`python tools/apply-symbol-curation.py` to apply it to a catalog. Saved
+preferences for categories that kept their key still apply.
+
+## Residential symbol library — 0.1.25
 
 177 CADdillo residential DXF blocks are available in the CADdillo categories:
 doors/windows, laundry, utilities, furniture, kitchen, bath/plumbing,
@@ -46,7 +83,8 @@ brand are not included in this permission. See the publisher's
 [CC0 dedication](https://creativecommons.org/publicdomain/zero/1.0/).
 No vendor logo or copyright notice is added to sketches or report/print images.
 
-The checked-in selection manifest and verified source archive are under
-`refs/caddillo`. Run `tools/import-caddillo.ps1` to reproduce the library using
+The selection manifest and verified source archive were kept under
+`refs/caddillo`; that folder was removed from the working tree with the rest of
+`refs/` in the interface cutover (commit 81ddd69) and is in git history before it. Run `tools/import-caddillo.ps1` to reproduce the library using
 the same Rust DXF importer used by the app. Archive SHA256:
 `2555528a67338f5e13c173e2f15da8d3db0292a10b20c36b6db07597ad528ed9`.

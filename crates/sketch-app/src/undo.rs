@@ -38,6 +38,10 @@ pub struct Snapshot {
     /// for a snapshot built without the App.
     pub north_angle: Option<f64>,
     pub active_layer_id: Option<String>,
+    /// Global area type catalogue and all pages, populated for catalogue-wide
+    /// edits so renaming/deleting a type across pages undoes and redoes cleanly.
+    pub area_codes: Option<Vec<sketch_core::geometry::AreaCode>>,
+    pub pages: Option<Vec<crate::pages::Page>>,
 }
 
 /// The two stacks. `push` clears redo, as `pushUndo` does.
@@ -104,6 +108,19 @@ impl UndoStack {
     /// See the `revision` field.
     pub fn revision(&self) -> u64 {
         self.revision
+    }
+
+    pub fn next_undo_has_types(&self) -> bool {
+        self.undo.last().is_some_and(|s| s.area_codes.is_some())
+    }
+
+    pub fn next_redo_has_types(&self) -> bool {
+        self.redo.last().is_some_and(|s| s.area_codes.is_some())
+    }
+
+    pub fn undo_range_has_types(&self, index: usize) -> bool {
+        let target = index.min(self.undo.len());
+        self.undo[target..].iter().any(|s| s.area_codes.is_some())
     }
 
     pub fn can_undo(&self) -> bool {
@@ -176,6 +193,8 @@ mod tests {
             dimension_chains: Vec::new(),
             layers: None,
             active_layer_id: None,
+            area_codes: None,
+            pages: None,
         }
     }
 

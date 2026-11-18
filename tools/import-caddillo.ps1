@@ -13,4 +13,7 @@ try {
     $env:CARGO_INCREMENTAL = '0'
     cargo run -p sketch-core --example import_caddillo --offline -- (Join-Path $extract 'caddillo-blocks')
     if ($LASTEXITCODE -ne 0) { throw 'Catalog import failed.' }
+    # Re-apply the owner's category merges, plain names and retired duplicates.
+    python tools/apply-symbol-curation.py
+    if ($LASTEXITCODE -ne 0) { throw 'Symbol curation failed.' }
 } finally { Pop-Location }

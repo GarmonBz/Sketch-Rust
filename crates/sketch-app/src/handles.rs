@@ -400,16 +400,18 @@ pub enum HandleHit {
 }
 
 /// `getRotationHandleHit` for the text and area handles (the symbol handle
-/// has its own hit test): within 11px of a handle's centre.
-pub fn hit_handle(
+/// has its own hit test), with a configurable screen-px hit radius (e.g.
+/// 11 px desktop, 24 px radius / 48 px target in Touch density).
+pub fn hit_handle_with_radius(
     d: &Drawing,
     sel: &Selection,
     computed: &BTreeMap<i64, Computed>,
     pan: (f64, f64),
     zoom: f64,
     screen: (f64, f64),
+    hit_radius: f64,
 ) -> Option<HandleHit> {
-    let near = |h: (f64, f64)| (screen.0 - h.0).hypot(screen.1 - h.1) <= 11.0;
+    let near = |h: (f64, f64)| (screen.0 - h.0).hypot(screen.1 - h.1) <= hit_radius;
     // Later entries win, as the original's reverse scan does.
     for b in selected_text_boxes(d, sel, computed, pan, zoom)
         .iter()
@@ -556,15 +558,20 @@ pub enum SymbolHandle {
     Resize,
 }
 
-/// `getRotationHandleHit` (symbol) / `getSymbolResizeHandleHit`: the rotation
-/// handle within 11px, a corner within 7px on each axis.
-pub fn hit_symbol_handle(b: &SymbolBox, screen: (f64, f64)) -> Option<SymbolHandle> {
-    if (screen.0 - b.handle.0).hypot(screen.1 - b.handle.1) <= 11.0 {
+/// `getRotationHandleHit` / `getSymbolResizeHandleHit` with explicit screen-px
+/// tolerances (11/7 desktop, 24 px for Touch 48 px target).
+pub fn hit_symbol_handle_with_radius(
+    b: &SymbolBox,
+    screen: (f64, f64),
+    rotate_r: f64,
+    resize_r: f64,
+) -> Option<SymbolHandle> {
+    if (screen.0 - b.handle.0).hypot(screen.1 - b.handle.1) <= rotate_r {
         return Some(SymbolHandle::Rotate);
     }
     b.corners
         .iter()
-        .any(|c| (screen.0 - c.0).abs() <= 7.0 && (screen.1 - c.1).abs() <= 7.0)
+        .any(|c| (screen.0 - c.0).abs() <= resize_r && (screen.1 - c.1).abs() <= resize_r)
         .then_some(SymbolHandle::Resize)
 }
 
@@ -800,14 +807,21 @@ mod tests {
         // The handle is above the top edge (smaller screen y), 30px clear.
         assert!((b.handle.0 - 100.0).abs() < 1e-9 && (b.handle.1 - 60.0).abs() < 1e-9);
         assert_eq!(
-            hit_symbol_handle(&b, (100.0, 66.0)),
+            hit_symbol_handle_with_radius(&b, (100.0, 66.0), 11.0, 7.0),
             Some(SymbolHandle::Rotate)
         );
         assert_eq!(
-            hit_symbol_handle(&b, (130.0, 110.0)),
+            hit_symbol_handle_with_radius(&b, (130.0, 110.0), 11.0, 7.0),
             Some(SymbolHandle::Resize)
         );
-        assert_eq!(hit_symbol_handle(&b, (100.0, 100.0)), None);
+        assert_eq!(
+            hit_symbol_handle_with_radius(&b, (100.0, 100.0), 11.0, 7.0),
+            None
+        );
+        assert_eq!(
+            hit_symbol_handle_with_radius(&b, (100.0, 82.0), 24.0, 24.0),
+            Some(SymbolHandle::Rotate)
+        );
         // A quarter turn clockwise swings the handle to the right.
         let b = symbol_box(Pt::new(0.0, 0.0), 90.0, 1.0, bounds, (100.0, 100.0), 1.0);
         assert!((b.handle.0 - 140.0).abs() < 1e-9 && (b.handle.1 - 100.0).abs() < 1e-9);

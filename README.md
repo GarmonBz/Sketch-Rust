@@ -1,8 +1,9 @@
 # Sketch Rust
 
 A native Windows floor-plan sketching program for appraisers: draw walls to scale,
-define areas, and get living-area and building-area calculations. It is a Rust port
-of the browser-based Appraisal Sketch app.
+define areas, and get living-area and building-area calculations.
+
+![Sketch Rust with a sample house: living area, garage and porch, with the Areas ledger and its totals on the left](docs/images/sketch-rust.png)
 
 ## Install
 
@@ -71,12 +72,10 @@ cargo test --workspace
 | `crates/sketch-app` | The desktop application (iced UI) |
 | `installer/` | The WiX source of the Windows installer |
 | `assets/` | Symbol library, icons, cursors |
-| `refs/` | The original web app's source and UI measurements the port is checked against |
 | `docs/` | Release notes, build validation, the Appraise-It Pro plan and symbol-library notes |
 | `tools/` | Packaging and test scripts |
 
-`STATUS.md` is the running change ledger; `ACCEPTANCE.md` records the parity checks
-against the original app.
+`STATUS.md` is the running change ledger.
 
 ## License
 

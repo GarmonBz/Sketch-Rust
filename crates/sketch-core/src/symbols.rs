@@ -220,8 +220,8 @@ pub struct Entity {
 #[serde(default, rename_all = "camelCase")]
 pub struct Symbol {
     /// Independent native CAD records retained while placement is edited.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub native_apex: Option<serde_json::Value>,
+    #[serde(default, alias = "nativeApex", skip_serializing_if = "Option::is_none")]
+    pub native_cad: Option<serde_json::Value>,
     pub id: String,
     pub category: String,
     pub category_name: String,
@@ -275,7 +275,11 @@ impl SymbolLibrary {
     pub fn duplicate_groups(&self) -> Vec<Vec<String>> {
         use std::hash::{Hash, Hasher};
         let mut by_shape: std::collections::HashMap<u64, Vec<&Symbol>> = Default::default();
-        for symbol in self.symbols.values().filter(|s| !s.geometry.is_empty()) {
+        for symbol in self
+            .symbols
+            .values()
+            .filter(|s| !s.geometry.is_empty())
+        {
             let mut hasher = std::collections::hash_map::DefaultHasher::new();
             serde_json::to_string(&(
                 &symbol.geometry,
@@ -328,12 +332,12 @@ mod tests {
             return;
         };
         let library = SymbolLibrary::load(&path).expect("library loads");
-        assert_eq!(library.symbols.len(), 639);
-        assert_eq!(library.symbol_count, 639);
-        assert_eq!(library.categories.len(), 29);
+        assert_eq!(library.symbols.len(), 572);
+        assert_eq!(library.symbol_count, 572);
+        assert_eq!(library.categories.len(), 23);
         assert_eq!(library.default_favorites.len(), 18);
         assert_eq!(library.version, 1);
-        assert_eq!(library.symbol_count(), 639);
+        assert_eq!(library.symbol_count(), 572);
     }
 
     #[test]
@@ -365,7 +369,7 @@ mod tests {
         if let Some(path) = real_library_path() {
             assert_eq!(resolve(Some(&path)), path);
             let library = SymbolLibrary::load_resolved(Some(&path)).expect("load_resolved");
-            assert_eq!(library.symbols.len(), 639);
+            assert_eq!(library.symbols.len(), 572);
         }
         // With no file anywhere, resolution still returns a usable candidate path.
         let fallback = resolve(None);
@@ -417,5 +421,17 @@ mod tests {
     fn load_reports_io_error_for_missing_file() {
         let err = SymbolLibrary::load(Path::new("definitely/not/here/symbols.json")).unwrap_err();
         assert!(matches!(err, SymbolLibraryError::Io(_)));
+    }
+
+    #[test]
+    fn native_cad_reads_legacy_native_apex_alias_and_writes_native_cad() {
+        let legacy = r#"{"id":"x/y","nativeApex":{"kind":"block","code":42}}"#;
+        let sym: Symbol = serde_json::from_str(legacy).expect("reads legacy alias");
+        assert!(sym.native_cad.is_some());
+        let written = serde_json::to_string(&sym).expect("serializes");
+        assert!(written.contains("\"nativeCad\""));
+        assert!(!written.contains("\"nativeApex\""));
+        let round: Symbol = serde_json::from_str(&written).expect("reads new key");
+        assert_eq!(round.native_cad, sym.native_cad);
     }
 }
