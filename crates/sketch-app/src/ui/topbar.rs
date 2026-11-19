@@ -66,9 +66,24 @@ pub fn top_bar<'a>(
     let menu_btn = menu_trigger(app.ui.menu_open, d, compact);
     let doc_btn = doc_title_button(app, class);
 
-    let mut left = row![app_mark(d), menu_btn, doc_btn]
+    let mut left = row![app_mark(d), menu_btn]
         .spacing(if compact { SPACE_1 } else { SPACE_2 })
         .align_y(Alignment::Center);
+
+    if app.symbol_edit_session.is_none() {
+        left = left
+            .push(kit::tooltip(
+                kit::icon_button("folder-open", false, Some(Message::OpenFile), d),
+                "Open (Ctrl+O)",
+                iced::widget::tooltip::Position::Bottom,
+            ))
+            .push(kit::tooltip(
+                kit::icon_button("floppy-disk", false, Some(Message::SaveFile), d),
+                "Save (F2)",
+                iced::widget::tooltip::Position::Bottom,
+            ));
+    }
+    left = left.push(doc_btn);
 
     if !compact {
         left = left.push(save_state_chip(app));

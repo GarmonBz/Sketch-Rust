@@ -416,7 +416,7 @@ pub fn svg(
         {
             let (x, y) = point(Pt::new(symbol.x, symbol.y));
             let scale = fit.scale * symbol.scale.max(0.001) / 12.0;
-            body+=&format!("<g transform=\"translate({x:.4} {y:.4}) rotate({:.4}) scale({:.6} {scale:.6})\" color=\"{}\" stroke=\"currentColor\" stroke-width=\"{:.4}\" stroke-linecap=\"round\" stroke-linejoin=\"round\">{entities}</g>",-symbol.rotation,if symbol.flip_h{-scale}else{scale},esc(&color),(0.55/scale).max(0.15));
+            body+=&format!("<g transform=\"translate({x:.4} {y:.4}) rotate({:.4}) scale({:.6} {scale:.6})\" color=\"{}\" stroke=\"currentColor\" stroke-width=\"{:.4}\" stroke-linecap=\"round\" stroke-linejoin=\"round\">{entities}</g>",symbol.rotation,if symbol.flip_h{-scale}else{scale},esc(&color),(0.55/scale).max(0.15));
         }
     }
     let north = page.north_angle.rem_euclid(360.0);

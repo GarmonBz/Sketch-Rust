@@ -520,7 +520,9 @@ pub fn export_svg(
         let flip = if symbol.flip_h { " scale(-1 1)" } else { "" };
         symbols += &format!(
             "<g transform=\"translate({x:.2} {y:.2}) rotate({:.2}) scale({scale:.4}){flip}\" color=\"{stroke}\" stroke=\"currentColor\" stroke-width=\"{stroke_width:.3}\" stroke-linecap=\"round\" stroke-linejoin=\"round\">{entities}</g>",
-            fmt2(-num_or_zero(symbol.rotation))
+            // Symbol rotation is degrees clockwise on screen (like the
+            // canvas's `ctx.rotate`), which is SVG's own sense.
+            fmt2(num_or_zero(symbol.rotation))
         );
     }
 

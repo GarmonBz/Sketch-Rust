@@ -476,12 +476,11 @@ impl View {
     }
 
     /// `dragState = { type: 'line-endpoint' }`.
-    /// The move delta to apply for this pointer position: whole grid steps
-    /// from the grab point when snapping is on (so an on-grid sketch stays on
-    /// the grid and lengths stay exact), otherwise the raw delta. Returns
+    /// The move delta to apply for this pointer position: when snapping is on,
+    /// the selection's bounds origin is snapped to the grid (so moved geometry
+    /// lands on grid points and lengths stay exact), otherwise the raw delta. Returns
     /// `None` until the drag passes the 2px activation threshold.
     pub fn drag_move(&mut self, world: World, grid: f64, snap: bool) -> Option<(f64, f64)> {
-        let absolute = self.area_snap;
         let threshold = 2.0 / (sketch_core::geometry::PIXELS_PER_FOOT * self.zoom);
         let drag = self.drag.as_mut()?;
         match drag {
@@ -501,11 +500,9 @@ impl View {
                 let mut dy = world.y - last.y;
                 if snap {
                     let step = if grid > 0.0 { grid } else { 1.0 };
-                    let reference = if absolute {
-                        *start_ref
-                    } else {
-                        World { x: 0.0, y: 0.0 }
-                    };
+                    // Absolute snap: the selection's bounds origin lands on
+                    // the grid, so moved lines and areas never drift off it.
+                    let reference = *start_ref;
                     let total_x =
                         crate::drawing::js_round((reference.x + world.x - start.x) / step) * step
                             - reference.x;
@@ -686,13 +683,13 @@ mod tests {
     }
 
     #[test]
-    fn release_audit_ordinary_snap_preserves_off_grid_origin_and_free_labels() {
+    fn ordinary_snap_lands_the_selection_origin_on_the_grid_and_free_labels_stay_free() {
         let mut view = View::new(100.0, 100.0);
         view.drag_start_move(World { x: 0.0, y: 0.0 }, World { x: 0.2, y: 0.2 });
-        assert_eq!(
-            view.drag_move(World { x: 0.8, y: 0.2 }, 1.0, true),
-            Some((1.0, 0.0))
-        );
+        // Origin (0.2, 0.2) + (0.8, 0.2) = (1.0, 0.4) -> snaps to (1.0, 0.0).
+        let (dx, dy) = view.drag_move(World { x: 0.8, y: 0.2 }, 1.0, true).unwrap();
+        assert!((0.2 + dx - 1.0).abs() < 1e-9);
+        assert!((0.2 + dy).abs() < 1e-9);
         view.drag_start_move(World { x: 0.0, y: 0.0 }, World { x: 0.2, y: 0.2 });
         assert_eq!(
             view.drag_move(World { x: 0.8, y: 0.2 }, 1.0, false),

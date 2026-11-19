@@ -55,6 +55,8 @@ icon_table! {
         "arrow-counter-clockwise", "arrow-down", "arrow-left", "arrow-right", "arrow-up",
         "backspace", "caret-up", "check", "compass", "dots-six-vertical", "dots-three",
         "files", "list", "plus-circle", "push-pin",
+        // Top bar Open / Save.
+        "floppy-disk", "folder-open",
     ],
     fill: [
         "arrow-clockwise", "arrow-counter-clockwise", "arrow-square-in", "arrow-square-out",

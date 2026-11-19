@@ -3001,8 +3001,15 @@ impl App {
                         self.view
                             .drag_start_move(w, view_state::World { x: bx, y: by });
                     }
-                    // A press that hits nothing begins the marquee.
-                    None => self.view.marquee_start(w),
+                    // A press that hits nothing deselects (unless adding to
+                    // the selection) and begins the marquee.
+                    None => {
+                        if !self.ui.select_more && !self.selection.is_empty() {
+                            self.selection.clear();
+                            self.sync_edit_tools();
+                        }
+                        self.view.marquee_start(w)
+                    }
                 }
                 Task::none()
             }
