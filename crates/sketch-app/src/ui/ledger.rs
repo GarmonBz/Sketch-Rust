@@ -454,9 +454,9 @@ fn drawing_in_progress_row<'a>(app: &'a App) -> Element<'a, Message> {
         .map(|w| distance(w[0], w[1]))
         .sum();
     let detail = format!(
-        "{wall_count} wall{} · {:.1}'",
+        "{wall_count} wall{} · {}",
         if wall_count == 1 { "" } else { "s" },
-        total_len + 0.0
+        app.drawing.options.units.length(total_len)
     );
     container(
         row![
@@ -639,7 +639,7 @@ fn drawn_area_block<'a>(
             detail_line("Total", format!("{:.1} sf", area.total), false),
             detail_line("Subtracted", sub_text, sub > 0.0),
             detail_line("Net area", format!("{:.1} sf", area.net_area), false),
-            detail_line("Perimeter", format!("{:.1}'", area.perimeter), false),
+            detail_line("Perimeter", app.drawing.options.units.length(area.perimeter), false),
         ]
         .spacing(2),
     )

@@ -2016,7 +2016,6 @@ fn breakdown_layer<'a>(
 
     let footer_left = row![
         kit::text_button("Copy for report", Some(brk(BreakdownMsg::Copy)), d),
-        kit::text_button(dlg.style_label(), Some(brk(BreakdownMsg::ToggleStyle)), d),
         kit::text_button("Download JSON", Some(brk(BreakdownMsg::DownloadJson)), d),
         kit::text_button("Download XML", Some(brk(BreakdownMsg::DownloadXml)), d),
     ]

@@ -1303,6 +1303,23 @@ fn p8_insert_drawer_symbols_and_labels_across_sizes() {
 }
 
 #[test]
+fn measurement_format_applies_to_the_sketch_and_saves_with_it() {
+    let mut harness = harness_next_at(VIEWPORT);
+    draw_closed_square(&mut harness);
+    harness.script(&["click \"Show\"", "click \"Feet and inches\""]);
+    let mut app = state(harness);
+    assert_eq!(app.drawing.options.units.length(10.5), "10' 6\"");
+    let _ = app.update(Message::Status(StatusMsg::PageAdd));
+    assert_eq!(app.drawing.options.units.length(10.5), "10' 6\"");
+
+    let saved = app.build_save_model();
+    let _ = app.update(Message::Status(StatusMsg::LengthFormat { feet_and_inches: false }));
+    assert_eq!(app.drawing.options.units.length(10.5), "10.5'");
+    app.apply_settings(saved.get("settings"));
+    assert_eq!(app.drawing.options.units.length(10.5), "10' 6\"");
+}
+
+#[test]
 fn zoom_fence_button_zooms_to_a_dragged_rectangle() {
     for &(label, w, h, _) in SIZES {
         let size = iced::Size::new(w, h);
@@ -2849,7 +2866,7 @@ fn select_drag_on_a_wall_resizes_the_area_across_sizes() {
             }
             h_app.send(Message::CanvasPress(x, y));
             h_app.send(Message::CanvasDrag(x, y + foot, false));
-            h_app.send(Message::CanvasDrag(x, y + 2.0 * foot, false));
+            h_app.send(Message::CanvasDrag(x, y + 1.8 * foot, false));
             h_app.send(Message::CanvasDragEnd);
             let app = state(h_app);
             assert_eq!(app.drawing.lines.len(), 4, "four walls remain at {label}");
@@ -2878,7 +2895,7 @@ fn select_drag_on_a_wall_endpoint_moves_the_corner_across_sizes() {
         h_app.send(Message::CanvasDragEnd);
         h_app.send(Message::CanvasPress(ex, ey));
         h_app.send(Message::CanvasDrag(ex, ey + foot, false));
-        h_app.send(Message::CanvasDrag(ex, ey + 2.0 * foot, false));
+        h_app.send(Message::CanvasDrag(ex, ey + 1.8 * foot, false));
         h_app.send(Message::CanvasDragEnd);
         let app = state(h_app);
         assert_eq!(app.drawing.lines.len(), 4, "four walls remain at {label}");
@@ -2899,29 +2916,38 @@ fn selected_area_corner_moves_connected_walls_and_can_be_undone() {
         let corner = app.drawing.polygons[0].points[0];
         (corner.x, corner.y)
     });
-    let mut harness = harness_next_at(VIEWPORT);
-    draw_closed_square(&mut harness);
-    harness.script(&["click \"Select\""]);
     let (cx, cy) = drawn_square_center_on_screen(VIEWPORT.width, VIEWPORT.height);
-    harness.script(&[&format!("click ({cx:.1}, {cy:.1})")]);
-    harness.send(Message::CanvasPress(x, y));
-    harness.send(Message::CanvasDrag(x + 24.0, y - 12.0, false));
-    harness.send(Message::CanvasDragEnd);
+    for snap in [true, false] {
+        let mut harness = harness_next_at(VIEWPORT);
+        draw_closed_square(&mut harness);
+        harness.script(&["click \"Select\"", &format!("click ({cx:.1}, {cy:.1})")]);
+        harness.send(Message::Status(StatusMsg::Pitch(crate::statusbar::PitchOption {
+            label: "1/2'",
+            value: 0.5,
+        })));
+        if !snap {
+            harness.send(Message::Status(StatusMsg::ToggleSnap));
+        }
+        harness.send(Message::CanvasPress(x, y));
+        harness.send(Message::CanvasDrag(x + 24.0, y - 12.0, false));
+        harness.send(Message::CanvasDragEnd);
 
-    let mut app = state(harness);
-    let area_id = app.drawing.polygons[0].id;
-    assert!(app.selection.is_poly_selected(area_id));
-    let moved = app.drawing.polygons[0].points[0];
-    assert_eq!(
-        app.drawing.lines.iter().filter(|wall| wall.start == moved || wall.end == moved).count(),
-        2,
-        "both walls should follow the corner"
-    );
-    let _ = app.update(Message::Undo);
-    let original = app.drawing.polygons[0].points[0];
-    let feet_per_pixel = 1.0 / (sketch_core::geometry::PIXELS_PER_FOOT * app.view.zoom);
-    let expected = Pt::new(original.x + 24.0 * feet_per_pixel, original.y + 12.0 * feet_per_pixel);
-    assert!(sketch_core::geometry::distance(moved, expected) < 1e-5);
+        let mut app = state(harness);
+        let area_id = app.drawing.polygons[0].id;
+        assert!(app.selection.is_poly_selected(area_id));
+        let moved = app.drawing.polygons[0].points[0];
+        assert_eq!(
+            app.drawing.lines.iter().filter(|wall| wall.start == moved || wall.end == moved).count(),
+            2,
+            "both walls should follow the corner"
+        );
+        let _ = app.update(Message::Undo);
+        let original = app.drawing.polygons[0].points[0];
+        let k = sketch_core::geometry::PIXELS_PER_FOOT * app.view.zoom;
+        let (dx, dy) = if snap { (1.0, 0.5) } else { (24.0 / k, 12.0 / k) };
+        let expected = Pt::new(original.x + dx, original.y + dy);
+        assert!(sketch_core::geometry::distance(moved, expected) < 1e-5);
+    }
 }
 
 /// Canvas-local screen position of a world point of the closed square.
@@ -2947,14 +2973,13 @@ fn select_drag_on_the_curve_handle_bows_the_wall_across_sizes() {
         h_app.send(Message::CanvasDragEnd);
         h_app.send(Message::CanvasPress(mx, my));
         h_app.send(Message::CanvasDrag(mx, my + foot, false));
-        h_app.send(Message::CanvasDrag(mx, my + 2.0 * foot, false));
+        h_app.send(Message::CanvasDrag(mx, my + 1.8 * foot, false));
         h_app.send(Message::CanvasDragEnd);
         let app = state(h_app);
         let wall = &app.drawing.lines[0];
         assert!(
-            wall.bow_angle.abs() > 1.0,
-            "the wall is bowed at {label}: bow {}",
-            wall.bow_angle
+            (crate::drawing::arc_height_of(wall).abs() - 2.0).abs() < 0.01,
+            "the curve height snaps to 2 ft at {label}"
         );
         assert!(
             (wall.end.x - wall.start.x).hypot(wall.end.y - wall.start.y) > 9.99,

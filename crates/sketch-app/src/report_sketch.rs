@@ -225,7 +225,7 @@ pub fn svg(
             }
             body += &text(
                 at,
-                &format!("{length:.1}'"),
+                &d.options.units.length(length),
                 7.98,
                 angle,
                 "Arial",
@@ -288,7 +288,7 @@ pub fn svg(
             let at = point(tiers.point_at((span[0] + span[1]) / 2.0, 0.0));
             body += &text(
                 (at.0 + nx * 7.0, at.1 + ny * 7.0),
-                &format!("{length:.1}'"),
+                &d.options.units.length(length),
                 7.98,
                 angle,
                 "Arial",
@@ -317,7 +317,7 @@ pub fn svg(
                     (first.0 + last.0) / 2.0 + nx * 7.0,
                     (first.1 + last.1) / 2.0 + ny * 7.0,
                 ),
-                &format!("{:.1}'", tiers.computed.length),
+                &d.options.units.length(tiers.computed.length),
                 7.98,
                 angle,
                 "Arial",

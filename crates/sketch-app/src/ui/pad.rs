@@ -369,7 +369,7 @@ fn readout_bar<'a>(app: &'a App, compact: bool) -> Element<'a, Message> {
     let h = if compact { 30.0 } else { 34.0 };
 
     let mut r = row![
-        text(&hud.len)
+        text(app.drawing.length_readout())
             .font(BSC_SEMIBOLD)
             .size(if compact { 14.0 } else { 15.0 })
             .color(ink),

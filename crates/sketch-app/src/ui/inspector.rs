@@ -309,8 +309,16 @@ fn wall_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
         .as_ref()
         .map(|e| e.endpoint_label)
         .unwrap_or("Length");
+    let units = &app.drawing.options.units;
     let length_val = app.line_length_edit.clone().unwrap_or_else(|| {
-        line.map(|l| format!("{:.2}", distance(l.start, l.end)))
+        line.map(|line| {
+            let length = distance(line.start, line.end);
+            if units.uses_feet_and_inches() {
+                units.length(length)
+            } else {
+                format!("{length:.2}")
+            }
+        })
             .unwrap_or_default()
     });
     let current_style = line
@@ -322,7 +330,7 @@ fn wall_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
     let bow_readout = line
         .map(|l| {
             if curve_height_mode {
-                format!("{:.2}'", l.arc_height)
+                units.length(l.arc_height)
             } else {
                 format!("{:.0}°", l.bow_angle)
             }
@@ -453,7 +461,11 @@ fn wall_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
         kit::group_header("DIMENSIONS", None),
         label_caption(handle_note),
         length_row,
-        label_caption(r#"Decimal feet (10.5) or inches (126")"#),
+        label_caption(if units.uses_feet_and_inches() {
+            r#"Feet and inches (10' 6")"#
+        } else {
+            "Decimal feet (10.50)"
+        }),
         dim_row,
         kit::divider(),
         kit::group_header("APPEARANCE", None),
@@ -605,7 +617,7 @@ fn area_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
     }
     stats = stats
         .push(metric_line("Net area", format!("{net_area:.1} sf")))
-        .push(metric_line("Perimeter", format!("{perimeter:.1}'")));
+        .push(metric_line("Perimeter", app.drawing.options.units.length(perimeter)));
 
     let factor_row: Element<'a, Message> = kit::field(
         FieldProps {
@@ -882,7 +894,7 @@ fn area_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
                 (Some(a), Some(b)) => distance(*a, *b),
                 _ => 0.0,
             };
-            let label = format!("Wall {} · {len:.1}'", idx + 1);
+            let label = format!("Wall {} · {}", idx + 1, app.drawing.options.units.length(len));
             let msg = edge.line_id.map(|id| Message::Ui(UiMsg::SelectWall(id)));
             container(kit::text_button(label, msg, d))
                 .width(Length::FillPortion(1))
@@ -1117,7 +1129,7 @@ fn symbol_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
         .any(|s| app.selection.symbols.contains(&s.id) && s.wall_id.is_some());
     let gap_text = sym
         .filter(|s| s.wall_id.is_some())
-        .map(|s| format!("{:.1}'", s.wall_gap_width))
+        .map(|s| app.drawing.options.units.length(s.wall_gap_width))
         .unwrap_or_else(|| "-".to_owned());
 
     let mut col = column![
@@ -1191,8 +1203,9 @@ fn chain_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
         _ => "Side A",
     };
     let offset_text = chain
-        .map(|c| format!("{:.1}'", c.offset))
-        .unwrap_or_else(|| "0.0'".to_owned());
+        .map_or_else(|| app.drawing.options.units.length(0.0), |c| {
+            app.drawing.options.units.length(c.offset)
+        });
     let overall_on = chain.is_some_and(|c| c.show_overall);
 
     column![

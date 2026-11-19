@@ -8,6 +8,7 @@ pub enum StatusMsg {
     ToggleGrid,
     /// View › Apply (Dims): outside -> inside -> hidden.
     CycleDimensions,
+    LengthFormat { feet_and_inches: bool },
     ToggleSnap,
     ToggleAreaSnap,
     Pitch(PitchOption),

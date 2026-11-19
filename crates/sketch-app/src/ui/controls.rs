@@ -560,7 +560,7 @@ fn snap_popover<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
     kit::popover(body, RADIUS_DIALOG)
 }
 
-fn show_popover<'a>(app: &'a App, _d: Density) -> Element<'a, Message> {
+fn show_popover<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
     let mut list = Column::new().spacing(SPACE_1);
     for (i, &(_, label)) in FILTERS.iter().enumerate() {
         list = list.push(
@@ -572,6 +572,19 @@ fn show_popover<'a>(app: &'a App, _d: Density) -> Element<'a, Message> {
         );
     }
 
+    let units = &app.drawing.options.units;
+    let formats = kit::segmented(
+        [("Decimal feet", false), ("Feet and inches", true)]
+            .into_iter()
+            .map(|(label, feet_and_inches)| kit::Segment {
+                label,
+                selected: !units.metric && units.feet_and_inches == feet_and_inches,
+                focused: false,
+                on_press: Some(Message::Status(StatusMsg::LengthFormat { feet_and_inches })),
+            })
+            .collect(),
+        d,
+    );
     let body = column![
         text("Show in sketch")
             .font(BARLOW_SEMIBOLD)
@@ -579,9 +592,15 @@ fn show_popover<'a>(app: &'a App, _d: Density) -> Element<'a, Message> {
             .color(tokens::text()),
         kit::divider(),
         list,
+        kit::divider(),
+        text("Length format")
+            .font(BARLOW_SEMIBOLD)
+            .size(TEXT_13)
+            .color(tokens::text()),
+        formats,
     ]
     .spacing(SPACE_2)
-    .width(Length::Fixed(186.0));
+    .width(Length::Fixed(204.0));
 
     kit::popover(body, RADIUS_DIALOG)
 }

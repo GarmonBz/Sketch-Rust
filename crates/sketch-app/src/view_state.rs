@@ -597,6 +597,15 @@ impl View {
         }
     }
 
+    /// The active grid pitch for geometry edits.
+    pub fn edit_grid(&self) -> Option<f64> {
+        if self.area_snap {
+            Some(self.area_snap_size)
+        } else {
+            self.snap.then_some(self.grid_size)
+        }
+    }
+
     /// The pitch option on display.
     pub fn pitch_label(&self) -> &'static str {
         PITCHES

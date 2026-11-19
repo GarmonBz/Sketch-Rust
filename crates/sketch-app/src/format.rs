@@ -10,23 +10,20 @@
 //! (JS `toFixed`) and that `formatFeetInches(0.04)` is "0'" while 0.05 is
 //! `0' 1"`.
 //!
-//! The HUD pill does NOT use these: `UIManager.updateHUD` takes a raw number
-//! string and appends "'" itself (ui-manager.js:2866), which is why the live
-//! readout ignores the unit system. That quirk is preserved in
-//! `drawing::Hud`.
+//! Linear measurements share the active sketch's length format.
 
 use crate::drawing::{js_round, js_to_fixed};
 
 /// The formatter's slice of `state.options`.
-/// Length/area formatting (metric, precision, stripping, area suffix).
+/// Length and area display preferences.
 ///
 /// Serde is manual and FLAT with the original's keys — `unitSystem` is a
 /// `"imperial"|"metric"` string, so it reads/writes the save model's
-/// `settings.options` verbatim (the `#[serde(flatten)]` on `Options.units`
-/// lands these four keys inline).
+/// `settings.options` inline through `#[serde(flatten)]` on `Options.units`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Units {
     pub metric: bool,
+    pub feet_and_inches: bool,
     pub decimal_precision: f64,
     pub strip_trailing_zeroes: bool,
     pub area_label_suffix: String,
@@ -40,6 +37,7 @@ impl Default for Units {
     fn default() -> Self {
         Self {
             metric: false,
+            feet_and_inches: false,
             decimal_precision: 0.1,
             strip_trailing_zeroes: false,
             area_label_suffix: "sf".to_string(),
@@ -56,7 +54,7 @@ impl serde::Serialize for Units {
         if !precision.is_finite() || precision <= 0.0 {
             precision = one_tenth();
         }
-        let mut map = s.serialize_map(Some(4))?;
+        let mut map = s.serialize_map(Some(4 + usize::from(self.feet_and_inches)))?;
         map.serialize_entry(
             "unitSystem",
             if self.metric { "metric" } else { "imperial" },
@@ -64,6 +62,9 @@ impl serde::Serialize for Units {
         map.serialize_entry("decimalPrecision", &precision)?;
         map.serialize_entry("stripTrailingZeroes", &self.strip_trailing_zeroes)?;
         map.serialize_entry("areaLabelSuffix", &self.area_label_suffix)?;
+        if self.feet_and_inches {
+            map.serialize_entry("dimensionStyle", "feetinches")?;
+        }
         map.end()
     }
 }
@@ -75,6 +76,8 @@ impl<'de> serde::Deserialize<'de> for Units {
         struct Raw {
             #[serde(default)]
             unit_system: String,
+            #[serde(default)]
+            dimension_style: String,
             #[serde(default = "one_tenth")]
             decimal_precision: f64,
             #[serde(default)]
@@ -88,6 +91,7 @@ impl<'de> serde::Deserialize<'de> for Units {
         let raw = Raw::deserialize(d)?;
         Ok(Units {
             metric: raw.unit_system == "metric",
+            feet_and_inches: raw.dimension_style == "feetinches",
             decimal_precision: if raw.decimal_precision.is_finite() && raw.decimal_precision > 0.0 {
                 raw.decimal_precision
             } else {
@@ -111,8 +115,11 @@ impl Units {
         d as usize
     }
 
-    /// `formatLength`: decimal length in the sketch's units.
+    /// `formatLength`: length in the sketch's selected display format.
     pub fn length(&self, value: f64) -> String {
+        if self.uses_feet_and_inches() {
+            return self.feet_inches(value);
+        }
         let converted = if self.metric { value * 0.3048 } else { value };
         let mut text = js_to_fixed(converted, self.decimals());
         if self.strip_trailing_zeroes {
@@ -120,6 +127,10 @@ impl Units {
         }
         let suffix = if self.metric { " m" } else { "'" };
         format!("{text}{suffix}")
+    }
+
+    pub fn uses_feet_and_inches(&self) -> bool {
+        !self.metric && self.feet_and_inches
     }
 
     /// `formatFeetInches`: feet and whole inches, the way a tape reads.
@@ -144,7 +155,7 @@ impl Units {
     /// `formatLengthDual`: the decimal length plus its feet/inches form.
     pub fn length_dual(&self, value: f64) -> String {
         let text = self.length(value);
-        if self.metric {
+        if self.metric || self.uses_feet_and_inches() {
             return text;
         }
         format!("{text} ({})", self.feet_inches(value))
@@ -206,6 +217,7 @@ mod tests {
     fn imperial(precision: f64, strip: bool) -> Units {
         Units {
             metric: false,
+            feet_and_inches: false,
             decimal_precision: precision,
             strip_trailing_zeroes: strip,
             area_label_suffix: "sf".into(),

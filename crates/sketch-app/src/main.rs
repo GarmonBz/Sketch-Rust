@@ -926,7 +926,18 @@ impl App {
     /// shows and copies. Empty when the pass has not run yet.
     fn breakdown_report(&self) -> String {
         let results = self.breakdown_results();
-        sketch_core::breakdown::to_text(&results, &self.area_codes, &self.breakdown.options(), true)
+        sketch_core::breakdown::to_text(&results, &self.area_codes, &self.breakdown_options(), true)
+    }
+
+    fn breakdown_options(&self) -> sketch_core::breakdown::Options {
+        sketch_core::breakdown::Options {
+            dimension_style: if self.drawing.options.units.uses_feet_and_inches() {
+                "feetinches"
+            } else {
+                "decimal"
+            },
+            ..Default::default()
+        }
     }
 
     /// The last recalculation as compute_all's results (the downloads and
@@ -955,7 +966,7 @@ impl App {
                 perimeter: Some(c.perimeter),
             })
             .collect();
-        sketch_core::breakdown::compute_all(&sources, &self.breakdown.options())
+        sketch_core::breakdown::compute_all(&sources, &self.breakdown_options())
     }
 
     /// The geometry engine, for the recalculation pass.
@@ -1450,6 +1461,15 @@ impl App {
             S::CycleDimensions => {
                 let toast = self.view.cycle_dimensions();
                 return self.toasts.show(toast.into());
+            }
+            S::LengthFormat { feet_and_inches } => {
+                let units = &mut self.drawing.options.units;
+                units.metric = false;
+                units.feet_and_inches = feet_and_inches;
+                if units.area_label_suffix == "m²" {
+                    units.area_label_suffix = "sf".into();
+                }
+                self.view.filter_open = false;
             }
             S::ToggleSnap => self.view.snap = !self.view.snap,
             S::ToggleAreaSnap => self.view.area_snap = !self.view.area_snap,
@@ -3008,8 +3028,18 @@ impl App {
                     Some(view_state::Drag::Vertex { handle, origin, grab }) => {
                         let dx = world.x - grab.x;
                         let dy = world.y - grab.y;
-                        if self.drag_banked || dx.hypot(dy) > 0.02 {
-                            let target = sketch_core::geometry::Pt::new(origin.x + dx, origin.y + dy);
+                        let moved_pointer = dx.hypot(dy) > selection::tolerance(self.view.zoom, 2.0);
+                        if self.drag_banked || moved_pointer {
+                            let origin = sketch_core::geometry::Pt::new(origin.x, origin.y);
+                            let target = if moved_pointer {
+                                let target =
+                                    sketch_core::geometry::Pt::new(origin.x + dx, origin.y + dy);
+                                self.view.edit_grid().map_or(target, |pitch| {
+                                    self.drawing.engine().snap_to_grid(target, pitch)
+                                })
+                            } else {
+                                origin
+                            };
                             let label = match handle {
                                 handles::VertexHandle::WallEnd { .. } => "Edit Wall Endpoint",
                                 handles::VertexHandle::AreaCorner { .. } => "Edit Area Corner",
@@ -3061,16 +3091,14 @@ impl App {
                         }
                     }
                     Some(view_state::Drag::Move { .. }) => {
-                        let grid = if self.view.area_snap {
-                            self.view.area_snap_size
-                        } else {
-                            self.view.grid_size
-                        };
-                        let snap = self.view.area_snap
-                            || (self.view.snap
-                                && (!self.selection.lines.is_empty()
-                                    || !self.selection.polys.is_empty()));
-                        if let Some((dx, dy)) = self.view.drag_move(w, grid, snap) {
+                        let grid = self.view.edit_grid().filter(|_| {
+                            self.view.area_snap
+                                || !self.selection.lines.is_empty()
+                                || !self.selection.polys.is_empty()
+                        });
+                        if let Some((dx, dy)) =
+                            self.view.drag_move(w, grid.unwrap_or(1.0), grid.is_some())
+                        {
                             if (dx != 0.0 || dy != 0.0) && !self.drag_banked {
                                 self.push_undo("Move");
                                 self.drag_banked = true;
@@ -3095,14 +3123,19 @@ impl App {
                             );
                             let normal = (world.x - mid.0) * (-dy / chord)
                                 + (world.y - mid.1) * (dx / chord);
-                            let height = start_arc_height + normal - start_pointer_normal;
+                            let delta = normal - start_pointer_normal;
+                            let delta = self.view.edit_grid().map_or(delta, |pitch| {
+                                drawing::js_round(delta / pitch) * pitch
+                            });
                             let threshold = drawing::Drawing::tolerance(1.0, self.view.zoom);
-                            if self.drag_banked || (height - start_arc_height).abs() > threshold {
+                            if self.drag_banked || delta.abs() > threshold {
                                 if !self.drag_banked {
                                     self.push_undo("Curve Wall");
                                     self.drag_banked = true;
                                 }
-                                let bow = 4.0 * (2.0 * height).atan2(chord).to_degrees();
+                                let bow = 4.0 * (2.0 * (start_arc_height + delta))
+                                    .atan2(chord)
+                                    .to_degrees();
                                 self.drawing.set_line_bow(line_id, bow);
                             }
                         }
@@ -3228,7 +3261,7 @@ impl App {
                     );
                 }
                 let moved = match &self.view.drag {
-                    Some(view_state::Drag::Move { moved, .. }) => *moved,
+                    Some(view_state::Drag::Move { .. }) => self.drag_banked,
                     Some(view_state::Drag::Vertex { .. }) => false,
                     Some(view_state::Drag::ChainOffset { moved, .. }) => *moved,
                     Some(view_state::Drag::SymbolResize { .. }) => self.drag_banked,
@@ -4230,7 +4263,6 @@ impl App {
                 use breakdown_dialog::BreakdownMsg;
                 match m {
                     BreakdownMsg::Close => self.breakdown.open = false,
-                    BreakdownMsg::ToggleStyle => self.breakdown.update(m),
                     BreakdownMsg::Copy => {
                         let text = self.breakdown_report();
                         return iced::clipboard::write(text)
@@ -4563,7 +4595,7 @@ impl App {
                 };
                 let Some(feet) = drawing::parse_wall_length(text) else {
                     return self.toasts.show(
-                        r#"Use a positive length in decimal feet (10.5) or inches (126")."#.into(),
+                        r#"Use a positive length in decimal feet (10.5) or feet and inches (10' 6")."#.into(),
                     );
                 };
                 let before = self.snapshot_model("Set Length");

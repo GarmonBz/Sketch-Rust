@@ -129,7 +129,7 @@ fn wall_body<'a>(app: &'a App) -> Element<'a, Message> {
     });
 
     let top = row![
-        text(&app.drawing.hud.len)
+        text(app.drawing.length_readout())
             .font(BSC_SEMIBOLD)
             .size(NUM_24)
             .color(ink),

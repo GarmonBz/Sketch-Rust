@@ -860,10 +860,10 @@ fn draw_curve_guides(frame: &mut Frame, scene: &Scene, line: &SketchLine) {
         );
     }
 
-    let feet = |v: f64| format!("{v:.1}'");
+    let length = |v| scene.drawing.options.units.length(v);
     guide_label(
         frame,
-        feet(arc_length),
+        length(arc_length),
         Point::new(apex.x, apex.y - 15.0),
         CURVE_GUIDE,
         CONSOLAS_BOLD,
@@ -872,7 +872,7 @@ fn draw_curve_guides(frame: &mut Frame, scene: &Scene, line: &SketchLine) {
     );
     guide_label(
         frame,
-        feet(chord),
+        length(chord),
         Point::new(mid.x, mid.y - 11.0),
         preview_color(&scene.drawing.options),
         CONSOLAS_BOLD,
@@ -883,7 +883,7 @@ fn draw_curve_guides(frame: &mut Frame, scene: &Scene, line: &SketchLine) {
     let rise_len = rise_dx.hypot(rise_dy).max(f32::EPSILON);
     guide_label(
         frame,
-        feet(rise),
+        length(rise),
         Point::new(
             (mid.x + apex.x) / 2.0 + (-rise_dy / rise_len) * 18.0,
             (mid.y + apex.y) / 2.0 + (rise_dx / rise_len) * 18.0,
@@ -895,7 +895,7 @@ fn draw_curve_guides(frame: &mut Frame, scene: &Scene, line: &SketchLine) {
     );
     guide_label(
         frame,
-        feet(m.radius),
+        length(m.radius),
         Point::new((center.x + end.x) / 2.0, (center.y + end.y) / 2.0),
         CURVE_GUIDE,
         CONSOLAS,

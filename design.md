@@ -57,7 +57,8 @@ pinned by `tokens::tests::dark_theme_uses_the_cad_palette`.
 
 On the drawing, a selected area gets a 7% purple (`#A855F7`) wash and a dashed purple
 outline above its walls. Selected walls are outlined in purple. Drag the handles at wall
-endpoints or area corners to reshape the selection.
+endpoints or area corners to reshape the selection. Snap uses the active grid pitch
+when moving walls and areas or dragging their corner and curve handles.
 
 Area colours are data and come from each area type. Each floor of living area keeps its
 own default colour (First `#2B6CB0`, Second `#0987A0`, Third `#B83280`, Fourth
@@ -92,7 +93,8 @@ Rules:
 - Headings, numbers, codes and shortcuts: Barlow Semi Condensed 500 and 600.
 - Numbers in columns are right aligned with tabular figures.
 - Text drawn on the plan (dimensions, labels) uses the fonts chosen in Options > Fonts.
-- Areas and lengths show one decimal everywhere (100.0 sf, 10.0'). Factors show two.
+- Areas show one decimal by default (100.0 sf). Lengths use the sketch's selected
+  format and default to decimal feet (10.5'). Factors show two decimals.
 
 ## 5. Density and spacing
 
@@ -225,6 +227,9 @@ Floating groups on the drawing: zoom (minus, percent with a slider and 1:N scale
 plus, magnifier for zooming to a dragged rectangle, Fit), snapping and display
 (Grid, Snap with pitch, Show filters, Dimensions outside / inside / hidden), and North.
 In Touch density, Pad and Laser buttons join them.
+
+Show > Length format switches the whole sketch between decimal feet and feet and
+inches (10.5' or 10' 6"). The format is saved with the sketch.
 
 ### Length strip
 

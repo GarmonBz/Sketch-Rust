@@ -70,7 +70,7 @@ pub const DEFAULT_STEP_UNIT: &str = "whole";
 /// `#hud-len` / `#hud-ang` / `#hud-state`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Hud {
-    pub len: String,
+    distance_feet: f64,
     pub ang: String,
     pub down: bool,
 }
@@ -78,7 +78,7 @@ pub struct Hud {
 impl Default for Hud {
     fn default() -> Self {
         Hud {
-            len: "0.0'".into(),
+            distance_feet: 0.0,
             ang: "0.0°".into(),
             down: false,
         }
@@ -86,17 +86,17 @@ impl Default for Hud {
 }
 
 impl Hud {
-    /// `updateHUD(distBuf, angleBuf, isDown)`: `None` leaves a field as is;
-    /// an empty string shows "0.0".
-    pub fn update(&mut self, dist: Option<&str>, angle: Option<&str>, down: bool) {
+    /// `None` leaves the measurement as is. An empty angle resets it to zero.
+    fn update(&mut self, dist: Option<f64>, angle: Option<&str>, down: bool) {
         if let Some(d) = dist {
-            self.len = format!("{}'", if d.is_empty() { "0.0" } else { d });
+            self.distance_feet = d;
         }
         if let Some(a) = angle {
             self.ang = format!("{}°", if a.is_empty() { "0.0" } else { a });
         }
         self.down = down;
     }
+
 }
 
 /// JS `Number.prototype.toFixed(d)`. Rust formats the exact binary value
@@ -894,7 +894,17 @@ impl Drawing {
         self.cursor = start;
         self.points = vec![start];
         self.line_ids.clear();
-        self.hud.update(Some(""), None, true);
+        self.hud.update(Some(0.0), None, true);
+    }
+
+    pub fn length_readout(&self) -> String {
+        if self.buffer.is_empty() {
+            self.options.units.length(self.hud.distance_feet)
+        } else if self.buffer.contains('\'') {
+            self.buffer.clone()
+        } else {
+            format!("{}'", self.buffer)
+        }
     }
 
     /// `penUp()`.
@@ -905,7 +915,7 @@ impl Drawing {
         self.pen_down = false;
         self.points.clear();
         self.line_ids.clear();
-        self.hud.update(Some(""), Some(""), false);
+        self.hud.update(Some(0.0), Some(""), false);
     }
 
     /// `handleCanvasClick(worldPt)` in a draw mode. Returns true when the
@@ -960,7 +970,7 @@ impl Drawing {
         self.line_ids.push(id);
         self.points.push(target);
         self.cursor = target;
-        self.hud.update(Some(&js_to_fixed(dist, 1)), Some(""), true);
+        self.hud.update(Some(dist), Some(""), true);
         false
     }
 
@@ -1082,7 +1092,7 @@ impl Drawing {
         self.pen_down = false;
         self.points.clear();
         self.line_ids.clear();
-        self.hud.update(Some(""), Some(""), false);
+        self.hud.update(Some(0.0), Some(""), false);
     }
 
     /// `InputController.handleKeyDown`'s buffer characters: digits and '.'
@@ -1103,7 +1113,7 @@ impl Drawing {
             .is_some_and(|seg| seg.contains('\'') || seg.contains('.'));
         let append = |d: &mut Drawing, s: &str, angle: Option<&str>| {
             d.buffer.push_str(s);
-            d.hud.update(Some(&d.buffer.clone()), angle, d.pen_down);
+            d.hud.update(Some(0.0), angle, d.pen_down);
         };
         let _ = ctx;
         match key {
@@ -1142,8 +1152,7 @@ impl Drawing {
             return false;
         }
         self.buffer.pop();
-        let text = self.buffer.clone();
-        self.hud.update(Some(&text), None, self.pen_down);
+        self.hud.update(Some(0.0), None, self.pen_down);
         true
     }
 
@@ -1208,7 +1217,7 @@ impl Drawing {
             self.commit_to(cursor, dist, angle, ctx.kind.unwrap_or(WallType::Exterior));
         }
         self.buffer.clear();
-        self.hud.update(Some(""), None, self.pen_down);
+        self.hud.update(Some(0.0), None, self.pen_down);
         true
     }
 
@@ -1247,7 +1256,7 @@ impl Drawing {
         self.points.push(target);
         self.cursor = target;
         self.hud.update(
-            Some(&js_to_fixed(length, 1)),
+            Some(length),
             Some(&format!("{}", js_round(angle.to_degrees()))),
             true,
         );
@@ -1287,7 +1296,7 @@ impl Drawing {
         // unlike the mouse path, which clears the angle. Enter then re-sets
         // the length only, so the committed wall's angle stays on screen.
         self.hud.update(
-            Some(&js_to_fixed(dist, 1)),
+            Some(dist),
             Some(&format!("{}", angle as i64)),
             self.pen_down,
         );
@@ -1392,8 +1401,7 @@ impl Drawing {
             let (dx, dy) = (self.cursor.x - last.x, self.cursor.y - last.y);
             let dist = dx.hypot(dy);
             let angle = format!("{}", js_round(dy.atan2(dx).to_degrees()) as i64);
-            self.hud
-                .update(Some(&js_to_fixed(dist, 1)), Some(&angle), self.pen_down);
+            self.hud.update(Some(dist), Some(&angle), self.pen_down);
         }
     }
 
@@ -1538,8 +1546,7 @@ impl Drawing {
             let math_angle = dy.atan2(dx).to_degrees();
             let apex = (90.0 - math_angle + 360.0) % 360.0;
             let apex = format!("{}", js_round(apex) as i64);
-            self.hud
-                .update(Some(&js_to_fixed(dist, 1)), Some(&apex), true);
+            self.hud.update(Some(dist), Some(&apex), true);
         }
     }
 
@@ -1665,13 +1672,14 @@ mod tests {
         assert_eq!(
             d.hud,
             Hud {
-                len: "0.0'".into(),
+                distance_feet: 0.0,
                 ang: "0.0°".into(),
                 down: true
             }
         );
         d.hover(w(500.0, 303.0), c);
-        assert_eq!((d.hud.len.as_str(), d.hud.ang.as_str()), ("10.0'", "95°"));
+        assert_eq!(d.length_readout(), "10.0'");
+        assert_eq!(d.hud.ang, "95°");
     }
 
     #[test]
@@ -1696,9 +1704,10 @@ mod tests {
             .lines
             .iter()
             .all(|l| l.color.as_deref() == Some("#2B6CB0") && l.line_thickness == Some(4.0)));
-        assert_eq!(d.hud.len, "10.0'");
+        assert_eq!(d.length_readout(), "10.0'");
         d.hover(w(350.0, 450.0), c);
-        assert_eq!((d.hud.len.as_str(), d.hud.ang.as_str()), ("8.0'", "285°"));
+        assert_eq!(d.length_readout(), "8.0'");
+        assert_eq!(d.hud.ang, "285°");
         assert!(d.is_active(1) && d.is_active(2));
         d.pen_up();
         assert!(!d.is_active(1));
@@ -1803,7 +1812,7 @@ mod tests {
             assert!(d.buffer_key(k, c));
         }
         assert_eq!(d.buffer, "20");
-        assert_eq!(d.hud.len, "20'", "the buffer echoes into the HUD");
+        assert_eq!(d.length_readout(), "20'", "the buffer echoes into the HUD");
         assert!(d.enter_key(c));
         assert_eq!(d.buffer, "");
         assert_eq!(d.lines.len(), 1);
@@ -1811,7 +1820,7 @@ mod tests {
         assert_eq!(d.lines[0].end, Pt::new(-11.0, 23.0), "20 ft straight up");
         // The live original after Enter: "0.0' | 90° | DOWN" — the length
         // resets and the committed wall's angle stays.
-        assert_eq!(d.hud.len, "0.0'");
+        assert_eq!(d.length_readout(), "0.0'");
         assert_eq!(d.hud.ang, "90°");
 
         // 10<45 from the new cursor.
@@ -1869,7 +1878,8 @@ mod tests {
         assert_eq!(d.cursor, Pt::new(-11.0, 4.0));
         assert!(d.lines.is_empty(), "arrows never commit");
         assert!(d.keyboard_pointer, "the keyboard pointer takes over");
-        assert_eq!((d.hud.len.as_str(), d.hud.ang.as_str()), ("1.0'", "90°"));
+        assert_eq!(d.length_readout(), "1.0'");
+        assert_eq!(d.hud.ang, "90°");
         assert!(d.arrow_move("ArrowRight", false, true, c));
         assert_eq!(d.cursor, Pt::new(-10.9, 4.0));
         // A typed distance drives the next step.

@@ -9,52 +9,16 @@ use crate::Message;
 #[derive(Debug, Clone, Default)]
 pub struct BreakdownDialog {
     pub open: bool,
-    /// `decimal` until the style button flips it.
-    pub feet_inches: bool,
 }
 
 /// A control in the dialog.
 #[derive(Debug, Clone)]
 pub enum BreakdownMsg {
     Copy,
-    ToggleStyle,
     /// The native save dialog is not ported yet; the handler toasts the gap.
     DownloadJson,
     DownloadXml,
     Close,
-}
-
-impl BreakdownDialog {
-    pub fn update(&mut self, msg: BreakdownMsg) {
-        match msg {
-            BreakdownMsg::ToggleStyle => self.feet_inches = !self.feet_inches,
-            BreakdownMsg::Copy
-            | BreakdownMsg::DownloadJson
-            | BreakdownMsg::DownloadXml
-            | BreakdownMsg::Close => {}
-        }
-    }
-
-    /// The report options for the current style.
-    pub fn options(&self) -> sketch_core::breakdown::Options {
-        sketch_core::breakdown::Options {
-            dimension_style: if self.feet_inches {
-                "feetinches"
-            } else {
-                "decimal"
-            },
-            ..sketch_core::breakdown::Options::default()
-        }
-    }
-
-    /// The style button's label, as the original's handler sets it.
-    pub fn style_label(&self) -> &'static str {
-        if self.feet_inches {
-            "Decimal feet"
-        } else {
-            "Feet & inches"
-        }
-    }
 }
 
 /// `previewSvg`'s geometry: every defined polygon scaled into the 720x520
