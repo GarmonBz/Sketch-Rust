@@ -898,12 +898,22 @@ fn p7_inspector_controls_across_selection_kinds_and_sizes() {
         assert!(h_app.shows("DIMENSIONS"), "wall section missing at {label}");
         assert!(h_app.shows("APPEARANCE"), "appearance section missing at {label}");
         assert!(h_app.shows("CURVE"), "curve section missing at {label}");
+        if matches!(class, SizeClass::Wide) {
+            assert!(h_app.shows("Copy"), "wall edit actions missing at {label}");
+        }
 
+        h_app.send(Message::LineLengthInput("126\"".into()));
+        h_app.script(&["click \"Set length\""]);
         h_app.script(&["click \"Dashed\""]);
         h_app.send(Message::Ui(UiMsg::WallBowStep(1.0)));
         h_app.script(&["click \"Toggle dimension\""]);
 
         let app = state(h_app);
+        let wall = app.drawing.first_selected_line(&app.selection).unwrap();
+        assert!(
+            (sketch_core::geometry::distance(wall.start, wall.end) - 10.5).abs() < 1e-6,
+            "wall length in inches was not applied at {label}"
+        );
         assert!(
             app.drawing
                 .lines
@@ -933,15 +943,13 @@ fn p7_inspector_controls_across_selection_kinds_and_sizes() {
         h.script(&["click \"Select\""]);
         let (cx, cy) = drawn_square_center_on_screen(area_vp.width, area_vp.height);
         h.script(&[&format!("click ({cx:.1}, {cy:.1})")]);
-        // The inspector is paged: Area, Math, Look, Edit.
+        h.send(Message::AreaProps);
         assert!(h.shows("Counts toward"));
-        assert!(h.shows("Math") && h.shows("Look") && h.shows("Edit"));
+        assert!(h.shows("CALCULATION") && h.shows("APPEARANCE") && h.shows("EDIT"));
 
         h.send(Message::AreaDialog(AreaDialogMsg::Name("Sunroom".into())));
         h.script(&["click \"Apply\""]);
-        h.script(&["click \"Math\"", "click \"Subtracts (-)\""]);
-        h.script(&["click \"Look\"", "click \"Code\""]);
-        h.script(&["click \"Edit\"", "click \"Clone\""]);
+        h.script(&["click \"Subtracts (-)\"", "click \"Code\"", "click \"Clone\""]);
 
         let mut app = state(h);
         assert!(
@@ -978,14 +986,13 @@ fn p7_inspector_controls_across_selection_kinds_and_sizes() {
         h.script(&["click \"Select\""]);
         let (cx, cy) = drawn_square_center_on_screen(area_vp.width, area_vp.height);
         h.script(&[&format!("click ({cx:.1}, {cy:.1})")]);
-        h.script(&["click \"Edit\"", "click \"Clone\""]);
+        h.script(&["click \"Clone\""]);
         let poly0_id = {
             let mut h2 = harness_next_at(area_vp);
             draw_closed_square(&mut h2);
             state(h2).drawing.polygons[0].id
         };
         h.send(Message::Ui(UiMsg::SetAreaSubtractTarget(Some(poly0_id))));
-        h.send(Message::Ui(UiMsg::InspectorTab(3)));
         assert!(h.shows("Wall 1 · 10.0'"));
         let app = state(h);
         assert!(app
@@ -1005,6 +1012,7 @@ fn p7_inspector_controls_across_selection_kinds_and_sizes() {
         // without coalescing into a double-click.
         h.script(&[&format!("click ({:.1}, {cy:.1})", cx + 12.0)]);
         assert!(h.shows("TEXT LABEL"));
+        assert!(h.shows("Copy"));
         h.script(&["click \"Bold\""]);
         h.send(Message::AdjustSelectedTextSize(2));
         let app = state(h);
@@ -1030,6 +1038,7 @@ fn p7_inspector_controls_across_selection_kinds_and_sizes() {
         h.script(&[&format!("click ({wx:.1}, {wy:.1})")]);
         assert!(h.shows("SYMBOL"));
         assert!(h.shows("WALL OPENING"));
+        assert!(h.shows("Copy"));
         h.script(&["click \"Flip swing\""]);
         h.send(Message::OpeningWider);
         h.send(Message::ScaleSelected(1.1));
@@ -1072,6 +1081,10 @@ fn p7_inspector_controls_across_selection_kinds_and_sizes() {
         h.send(Message::PhotoBytesLoaded(raw, 8, 8));
         h.send(Message::Ui(UiMsg::InspectorAdjustImage));
         assert!(h.shows("TRACE IMAGE"));
+        h.script(&["click \"Move on canvas\""]);
+        assert!(h.shows("Done moving"));
+        h.script(&["click \"Done moving\""]);
+        assert!(h.shows("TRACE IMAGE") && h.shows("Move on canvas"));
         h.script(&["click \"Hide\""]);
         h.script(&["click \"Rotate R\""]);
         let app = state(h);
@@ -1286,6 +1299,38 @@ fn p8_insert_drawer_symbols_and_labels_across_sizes() {
         ))));
         let shot = h.screenshot_in("e2e-next", "p8-insert-compact");
         assert!(shot.exists());
+    }
+}
+
+#[test]
+fn zoom_fence_button_zooms_to_a_dragged_rectangle() {
+    for &(label, w, h, _) in SIZES {
+        let size = iced::Size::new(w, h);
+        let initial = state(harness_next_at(size));
+        let canvas = crate::ui::layout::canvas_rect(&initial);
+        let mut harness = harness_next_at(size);
+
+        // The magnifier is the icon between plus and Fit in the top-left bar.
+        let button = format!("click ({}, {})", canvas.x + 125.0, canvas.y + 24.0);
+        let center = canvas.center() + iced::Vector::new(35.0, 25.0);
+        let selected = initial
+            .view
+            .to_world(f64::from(center.x - canvas.x), f64::from(center.y - canvas.y));
+        let end = format!("({}, {})", center.x + 50.0, center.y + 40.0);
+        harness.script(&[
+            &button,
+            &format!("press ({}, {})", center.x - 50.0, center.y - 40.0),
+            &format!("move {end}"),
+            &format!("release {end}"),
+        ]);
+
+        let app = state(harness);
+        assert!(app.view.zoom > 1.0, "rectangle did not zoom at {label}");
+        let at_center = app.view.to_world(app.view.canvas.0 / 2.0, app.view.canvas.1 / 2.0);
+        assert!((at_center.x - selected.x).abs() < 1e-6, "x center at {label}");
+        assert!((at_center.y - selected.y).abs() < 1e-6, "y center at {label}");
+        assert_eq!(app.view.mode, Mode::Select);
+        assert!(app.view.fence.is_none());
     }
 }
 
@@ -1765,7 +1810,10 @@ fn p10_touch_input_pad_and_gestures_across_sizes() {
             line.start.y,
         );
         assert!(
-            app.endpoint_handle(line.id, offset_world).is_some(),
+            matches!(
+                app.vertex_handle(offset_world),
+                Some((crate::handles::VertexHandle::WallEnd { id, start: true }, _)) if id == line.id
+            ),
             "Touch density endpoint handle must hit within 24 px radius (48 px diameter)"
         );
         assert!(app.context.open.is_some(), "RightPress must open canvas context menu");
@@ -1819,6 +1867,88 @@ fn state_peek_measure_pts(w: f32, h: f32) -> usize {
         &format!("click ({:.1}, {:.1})", cx + 40.0, cy + 40.0),
     ]);
     state(tmp).drawing.measure_points.len()
+}
+
+#[test]
+fn area_type_palette_paints_boundaries_and_fills_on_canvas() {
+    use sketch_core::geometry::Pt;
+    use sketch_core::model::{Polygon, SketchLine};
+
+    let areas = [
+        ("DK", 0xc05621),
+        ("GLA1", 0x2b6cb0),
+        ("OTH", 0xa0aec0),
+        ("PORCH", 0xd69e2e),
+        ("BAL", 0xb7791f),
+        ("GLA2", 0x0987a0),
+    ];
+    let mut fixture = state(harness_next_at(VIEWPORT));
+    fixture.drawing.options.grid_enabled = false;
+    let mut samples = Vec::new();
+    for (index, (code, rgb)) in areas.into_iter().enumerate() {
+        let x = 16.0 * (index % 3) as f64;
+        let y = 16.0 * (index / 3) as f64;
+        let points = [
+            Pt::new(x, y), Pt::new(x + 12.0, y),
+            Pt::new(x + 12.0, y + 12.0), Pt::new(x, y + 12.0),
+        ];
+        for (edge, (start, end)) in points.iter().zip(points.iter().cycle().skip(1)).enumerate() {
+            let id = fixture.drawing.gen_id();
+            let line_color = if code == "DK" && edge == 2 {
+                "#DB2777"
+            } else {
+                "#2B6CB0"
+            };
+            let line: SketchLine = serde_json::from_value(serde_json::json!({
+                "id": id, "start": start, "end": end, "color": line_color,
+            }))
+            .unwrap();
+            fixture.drawing.lines.push(line);
+        }
+        let id = fixture.drawing.gen_id();
+        let edges = Polygon::build_edges(&points, &fixture.drawing.lines);
+        let poly = serde_json::from_value(serde_json::json!({
+            "id": id, "type": code, "points": points, "edges": edges,
+            "name": fixture.area_codes.iter().find(|area| area.code == code).unwrap().name,
+        }))
+        .unwrap();
+        fixture.drawing.polygons.push(poly);
+        samples.push((code, rgb, Pt::new(x + 12.0, y + 4.0), Pt::new(x + 2.0, y + 9.0)));
+    }
+    let file = std::env::temp_dir().join(format!("sketch-rust-canvas-palette-{}.skx", std::process::id()));
+    let bytes = sketch_core::skx::write(&fixture.build_save_model(), &Default::default()).unwrap();
+    std::fs::write(&file, bytes).unwrap();
+
+    let mut harness = harness_next_at(VIEWPORT);
+    harness.send(Message::FileDropped(file.clone()));
+    std::fs::remove_file(file).unwrap();
+    harness.send(Message::PopupMenu(PopupMsg::Canvas(crate::canvas_theme::CanvasTheme::Dark)));
+    harness.send(Message::Status(StatusMsg::CenterFit));
+    harness.send(Message::Status(StatusMsg::ZoomOut));
+    let screenshot = image::open(harness.screenshot_in("e2e-next", "canvas-area-colors"))
+        .unwrap()
+        .into_rgb8();
+    let app = state(harness);
+    assert_eq!(app.drawing.polygons.len(), areas.len());
+    let origin = app.canvas_origin();
+    let pixel = |at: Pt| {
+        let (x, y) = app.view.to_screen(crate::view_state::World { x: at.x, y: at.y });
+        let px = (x + f64::from(origin.x)).round() as u32;
+        let py = (y + f64::from(origin.y)).round() as u32;
+        &screenshot.get_pixel(px, py).0
+    };
+    let background = pixel(Pt::new(14.0, 5.0));
+    for (code, rgb, edge, inside) in samples {
+        let color = [(rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8];
+        for (actual, expected) in pixel(edge).iter().zip(color) {
+            assert!(actual.abs_diff(expected) <= 3, "{code} boundary {:?}", pixel(edge));
+        }
+        for ((actual, background), source) in pixel(inside).iter().zip(background).zip(color) {
+            let blended = (f32::from(*background) * 0.9 + f32::from(source) * 0.1).round() as u8;
+            assert!(actual.abs_diff(blended) <= 5, "{code} fill {:?}", pixel(inside));
+        }
+    }
+    assert_eq!(pixel(Pt::new(4.0, 12.0)), &[219, 39, 119], "custom wall colour");
 }
 
 #[test]
@@ -2761,6 +2891,39 @@ fn select_drag_on_a_wall_endpoint_moves_the_corner_across_sizes() {
     }
 }
 
+#[test]
+fn selected_area_corner_moves_connected_walls_and_can_be_undone() {
+    use sketch_core::geometry::Pt;
+
+    let (x, y) = drawn_square_screen(VIEWPORT.width, VIEWPORT.height, |app| {
+        let corner = app.drawing.polygons[0].points[0];
+        (corner.x, corner.y)
+    });
+    let mut harness = harness_next_at(VIEWPORT);
+    draw_closed_square(&mut harness);
+    harness.script(&["click \"Select\""]);
+    let (cx, cy) = drawn_square_center_on_screen(VIEWPORT.width, VIEWPORT.height);
+    harness.script(&[&format!("click ({cx:.1}, {cy:.1})")]);
+    harness.send(Message::CanvasPress(x, y));
+    harness.send(Message::CanvasDrag(x + 24.0, y - 12.0, false));
+    harness.send(Message::CanvasDragEnd);
+
+    let mut app = state(harness);
+    let area_id = app.drawing.polygons[0].id;
+    assert!(app.selection.is_poly_selected(area_id));
+    let moved = app.drawing.polygons[0].points[0];
+    assert_eq!(
+        app.drawing.lines.iter().filter(|wall| wall.start == moved || wall.end == moved).count(),
+        2,
+        "both walls should follow the corner"
+    );
+    let _ = app.update(Message::Undo);
+    let original = app.drawing.polygons[0].points[0];
+    let feet_per_pixel = 1.0 / (sketch_core::geometry::PIXELS_PER_FOOT * app.view.zoom);
+    let expected = Pt::new(original.x + 24.0 * feet_per_pixel, original.y + 12.0 * feet_per_pixel);
+    assert!(sketch_core::geometry::distance(moved, expected) < 1e-5);
+}
+
 /// Canvas-local screen position of a world point of the closed square.
 fn drawn_square_screen(w: f32, h: f32, pick: impl Fn(&crate::App) -> (f64, f64)) -> (f32, f32) {
     let mut tmp = harness_next_at(iced::Size::new(w, h));
@@ -2895,25 +3058,21 @@ fn select_drag_on_the_rotate_handle_turns_the_area_across_sizes() {
     }
 }
 
-/// The inspector is paged, not scrolled: every page of every selection kind
-/// is captured at the desktop and tablet sizes for visual review.
+/// Capture the unified area and wall inspector at desktop and tablet sizes.
 #[test]
-fn inspector_pages_render_without_scrolling() {
+fn unified_inspector_renders_on_desktop_and_tablet() {
     for (name, w, h, touch) in [("wide", 1400.0, 860.0, false), ("tablet", 1280.0, 800.0, true)] {
         let (cx, cy) = drawn_square_center_on_screen(w, h);
         let (wx, wy) = drawn_square_wall_mid_on_screen(w, h);
-        for (kind, x, y, pages) in [("area", cx, cy, 4u8), ("wall", wx, wy, 2u8)] {
-            for page in 0..pages {
-                let mut app = harness_next_at(iced::Size::new(w, h));
-                if touch {
-                    app.send(Message::Ui(UiMsg::SetDensity(Density::Touch)));
-                }
-                draw_closed_square(&mut app);
-                app.script(&["click \"Select\"", &format!("click ({x:.1}, {y:.1})")]);
-                app.send(Message::Ui(UiMsg::InspectorTab(page)));
-                let shot = app.screenshot_in("e2e-next", &format!("inspector-{kind}-{name}-{page}"));
-                assert!(shot.exists());
+        for (kind, x, y) in [("area", cx, cy), ("wall", wx, wy)] {
+            let mut app = harness_next_at(iced::Size::new(w, h));
+            if touch {
+                app.send(Message::Ui(UiMsg::SetDensity(Density::Touch)));
             }
+            draw_closed_square(&mut app);
+            app.script(&["click \"Select\"", &format!("click ({x:.1}, {y:.1})")]);
+            let shot = app.screenshot_in("e2e-next", &format!("inspector-{kind}-{name}"));
+            assert!(shot.exists());
         }
     }
 }

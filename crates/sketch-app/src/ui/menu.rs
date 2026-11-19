@@ -103,7 +103,7 @@ impl MenuSub {
                 ("photo-load", "Load trace image…"),
                 ("photo-show", "Show trace image"),
                 ("photo-hide", "Hide trace image"),
-                ("photo-edit-mode", "Edit image"),
+                ("photo-adjust", "Edit image"),
                 ("photo-remove", "Remove trace image"),
                 ("geo-load-map", "Load map area"),
                 ("geo-address", "Search address…"),

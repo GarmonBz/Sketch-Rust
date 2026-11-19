@@ -2163,10 +2163,6 @@ impl App {
                     }
                     Task::none()
                 }
-                ui::Msg::InspectorTab(n) => {
-                    self.ui.inspector_tab = n;
-                    Task::none()
-                }
                 ui::Msg::ChainSideFlip => {
                     let ids: Vec<i64> = self.selection.chains.iter().copied().collect();
                     if !ids.is_empty() {
@@ -2754,6 +2750,21 @@ impl App {
                         }
                         None => {}
                     }
+                    if let Some((handle, at)) = self.vertex_handle(world) {
+                        if let handles::VertexHandle::WallEnd { id, start } = handle {
+                            self.selection.active_endpoint = Some((id, start));
+                        }
+                        self.view.drag = Some(view_state::Drag::Vertex {
+                            handle,
+                            origin: view_state::World { x: at.x, y: at.y },
+                            grab: view_state::World {
+                                x: world.x,
+                                y: world.y,
+                            },
+                        });
+                        self.drag_banked = false;
+                        return Task::none();
+                    }
                     // Pressing an area's label / size text or a free text label
                     // picks it (unless it is already part of the selection) and
                     // starts moving the selection (`hitTestAt`'s first passes,
@@ -2946,19 +2957,6 @@ impl App {
                     y: world.y,
                 };
                 match hit {
-                    // A press on an endpoint handle of a selected wall drags
-                    // that vertex (`type: 'line-endpoint'`). Anywhere else on
-                    // the wall drags the wall itself, so its neighbours
-                    // stretch and the area resizes.
-                    Some(selection::Hit::Line(id)) if self.selection.lines.contains(&id) => {
-                        if let Some((start, at)) = self.endpoint_handle(id, world) {
-                            self.view.drag_start_endpoint(id, start, at);
-                        } else {
-                            let (bx, by) = self.selection_bounds();
-                            self.view
-                                .drag_start_move(w, view_state::World { x: bx, y: by });
-                        }
-                    }
                     Some(_) => {
                         // Pressing something already selected keeps the whole
                         // group; a fresh hit selects it first.
@@ -3007,25 +3005,37 @@ impl App {
                     y: world.y,
                 };
                 match self.view.drag.clone() {
-                    Some(view_state::Drag::Endpoint {
-                        line_id,
-                        start,
-                        start_point,
-                        ..
-                    }) => {
-                        let target = sketch_core::geometry::Pt::new(world.x, world.y);
-                        if (target.x - start_point.x).hypot(target.y - start_point.y) > 0.02
-                            && transform::move_line_endpoint(
-                                &mut self.drawing,
-                                &mut self.selection,
-                                line_id,
-                                start,
-                                target,
-                            )
-                            && !self.drag_banked
-                        {
-                            self.push_undo("Edit Wall Endpoint");
-                            self.drag_banked = true;
+                    Some(view_state::Drag::Vertex { handle, origin, grab }) => {
+                        let dx = world.x - grab.x;
+                        let dy = world.y - grab.y;
+                        if self.drag_banked || dx.hypot(dy) > 0.02 {
+                            let target = sketch_core::geometry::Pt::new(origin.x + dx, origin.y + dy);
+                            let label = match handle {
+                                handles::VertexHandle::WallEnd { .. } => "Edit Wall Endpoint",
+                                handles::VertexHandle::AreaCorner { .. } => "Edit Area Corner",
+                            };
+                            let before = (!self.drag_banked).then(|| self.snapshot_model(label));
+                            let moved = match handle {
+                                handles::VertexHandle::WallEnd { id, start } => {
+                                    transform::move_line_endpoint(
+                                        &mut self.drawing,
+                                        &mut self.selection,
+                                        id,
+                                        start,
+                                        target,
+                                    )
+                                }
+                                handles::VertexHandle::AreaCorner { id, vertex } => {
+                                    transform::move_area_corner(&mut self.drawing, id, vertex, target)
+                                }
+                            };
+                            if moved {
+                                self.line_length_edit = None;
+                                if let Some(before) = before {
+                                    self.undo.push(before);
+                                    self.drag_banked = true;
+                                }
+                            }
                         }
                     }
                     Some(view_state::Drag::ChainOffset {
@@ -3219,7 +3229,7 @@ impl App {
                 }
                 let moved = match &self.view.drag {
                     Some(view_state::Drag::Move { moved, .. }) => *moved,
-                    Some(view_state::Drag::Endpoint { moved, .. }) => *moved,
+                    Some(view_state::Drag::Vertex { .. }) => false,
                     Some(view_state::Drag::ChainOffset { moved, .. }) => *moved,
                     Some(view_state::Drag::SymbolResize { .. }) => self.drag_banked,
                     Some(view_state::Drag::SymbolRotate { .. }) => self.drag_banked,
@@ -3848,8 +3858,6 @@ impl App {
                 if self.bg_image.edit_mode {
                     self.ui.inspector_open = true;
                     self.ui.ledger_open = false;
-                } else {
-                    self.ui.inspector_image_adjust = false;
                 }
                 self.sync_canvas();
                 let note = if self.bg_image.edit_mode {
@@ -4550,14 +4558,17 @@ impl App {
                 Task::none()
             }
             Message::ApplyLineLength => {
-                self.push_undo("Set Length");
-                let text = self
-                    .line_length_edit
-                    .clone()
-                    .or_else(|| self.edit_tools_data().map(|d| d.length_text));
-                if let Some(text) = text {
-                    self.drawing
-                        .set_selected_line_length(&self.selection, &text);
+                let Some(text) = self.line_length_edit.as_deref() else {
+                    return Task::none();
+                };
+                let Some(feet) = drawing::parse_wall_length(text) else {
+                    return self.toasts.show(
+                        r#"Use a positive length in decimal feet (10.5) or inches (126")."#.into(),
+                    );
+                };
+                let before = self.snapshot_model("Set Length");
+                if self.drawing.set_selected_line_length(&self.selection, feet) {
+                    self.undo.push(before);
                 }
                 Task::none()
             }
@@ -4655,20 +4666,12 @@ impl App {
                 Task::none()
             }
             Message::AreaColorClicked(fill) => {
-                let Some(poly) = self
-                    .drawing
-                    .polygons
-                    .iter()
-                    .find(|p| self.selection.polys.contains(&p.id))
-                else {
+                let Some(values) = self.area_tools() else {
                     return Task::none();
                 };
-                let hex = if fill {
-                    poly.fill_color.clone().filter(|c| !c.is_empty())
-                } else {
-                    poly.line_color.clone().filter(|c| !c.is_empty())
-                }
-                .unwrap_or_else(|| if fill { "#4299e1" } else { "#3182ce" }.to_string());
+                let color = if fill { values.fill } else { values.line_color };
+                let [r, g, b, _] = color.into_rgba8();
+                let hex = color_dialog::rgb_to_hex(r, g, b);
                 self.color_target = if fill {
                     color_dialog::ColorTarget::AreaFill
                 } else {
@@ -4998,6 +5001,14 @@ impl App {
                 // Select mode: click to select, Ctrl to add (selectLineAt).
                 if self.view.mode == view_state::Mode::Select {
                     let world = self.world(x, y);
+                    if from_touch && !additive {
+                        if let Some((handle, _)) = self.vertex_handle(world) {
+                            if let handles::VertexHandle::WallEnd { id, start } = handle {
+                                self.selection.active_endpoint = Some((id, start));
+                            }
+                            return Task::none();
+                        }
+                    }
                     // Double-clicking a text label edits its wording.
                     if double {
                         if let Some(t) = self
@@ -6133,8 +6144,8 @@ impl App {
         }
     }
 
-    /// `showSelectedAreaProperties`: the dialog for the first selected area,
-    /// or the original's notice when the selection has no area.
+    /// Open the area inspector. For a mixed selection, retain the area-only
+    /// dialog so area properties can be edited while keeping other items selected.
     fn open_area_properties(&mut self) -> Task<Message> {
         let Some(poly) = self
             .drawing
@@ -6146,8 +6157,17 @@ impl App {
                 .toasts
                 .show("Use the inspector to change the selected item.".to_string());
         };
+        if self.selection.lines.is_empty()
+            && self.selection.symbols.is_empty()
+            && self.selection.chains.is_empty()
+            && !self.has_text_selection()
+        {
+            self.sync_inspector_area_draft(false);
+            return self.update_inner(Message::Ui(ui::Msg::OpenInspector(true)));
+        }
         let props = area_props::AreaProperties::from_area(poly);
-        let codes: Vec<String> = sketch_core::geometry::area_codes::default_area_codes()
+        let codes: Vec<String> = self
+            .area_codes
             .iter()
             .map(|c| format!("{} - {}", c.code, c.name))
             .collect();
@@ -6260,38 +6280,22 @@ impl App {
         self.drag_banked = false;
     }
 
-    /// Which endpoint handle of wall `id` the pointer is on, if any (9px in
-    /// desktop density, 24px radius / 48px target in Touch density).
-    fn endpoint_handle(
+    fn vertex_handle(
         &self,
-        id: i64,
         world: sketch_core::geometry::Pt,
-    ) -> Option<(bool, view_state::World)> {
-        let line = self.drawing.lines.iter().find(|l| l.id == id)?;
-        let touch_handles = matches!(self.ui.density, ui::tokens::Density::Touch);
-        let px = if touch_handles { 24.0 } else { 9.0 };
-        let tol = px / (sketch_core::geometry::PIXELS_PER_FOOT * self.view.zoom).max(0.0001);
-        let ds = (world.x - line.start.x).hypot(world.y - line.start.y);
-        let de = (world.x - line.end.x).hypot(world.y - line.end.y);
-        if ds <= tol {
-            Some((
-                true,
-                view_state::World {
-                    x: line.start.x,
-                    y: line.start.y,
-                },
-            ))
-        } else if de <= tol {
-            Some((
-                false,
-                view_state::World {
-                    x: line.end.x,
-                    y: line.end.y,
-                },
-            ))
-        } else {
-            None
-        }
+    ) -> Option<(handles::VertexHandle, sketch_core::geometry::Pt)> {
+        let touch = matches!(self.ui.density, ui::tokens::Density::Touch);
+        let radius = selection::tolerance(self.view.zoom, if touch { 24.0 } else { 9.0 });
+        handles::selected_vertices(
+            &self.drawing,
+            &self.selection,
+            self.view.filters,
+            &self.gates_cache,
+        )
+        .map(|(handle, at)| (handle, at, sketch_core::geometry::distance(world, at)))
+        .filter(|(_, _, distance)| *distance <= radius)
+        .min_by(|a, b| a.2.total_cmp(&b.2))
+        .map(|(handle, at, _)| (handle, at))
     }
 
     /// `pushUndo(label)`: bank the model before an action.
@@ -7831,12 +7835,8 @@ impl App {
             .polygons
             .iter()
             .find(|p| self.selection.polys.contains(&p.id))?;
-        let color = |value: &Option<String>, fallback: u32| {
-            value
-                .as_deref()
-                .and_then(crate::render::parse_hex)
-                .unwrap_or(theme::hex(fallback))
-        };
+        let definition = render::area_definition(&self.area_codes, poly);
+        let fill = render::area_fill(poly, definition);
         Some(ui::inspector::AreaTools {
             pattern: match area_props::shown_pattern(poly) {
                 "none" => "None",
@@ -7845,7 +7845,7 @@ impl App {
                 "dots" => "Dots",
                 _ => "Solid",
             },
-            fill: color(&poly.fill_color, 0x4299e1),
+            fill: iced::Color { a: 1.0, ..fill },
             line_style: match area_props::shown_line_style(poly) {
                 "dashed" => "Dashed",
                 "dotted" => "Dotted",
@@ -7858,7 +7858,7 @@ impl App {
                 6 => "6 px",
                 _ => "1 px",
             },
-            line_color: color(&poly.line_color, 0x3182ce),
+            line_color: render::area_outline(poly, definition).unwrap_or(theme::hex(0x2B6CB0)),
         })
     }
 
@@ -7875,7 +7875,6 @@ impl App {
             && self.has_text_selection()
         {
             return Some(ui::inspector::EditToolsData {
-                length_text: String::new(),
                 endpoint_label: "Text",
                 color: theme::hex(0x2B6CB0),
                 text: self.text_tools().map(|mut t| {
@@ -7894,7 +7893,6 @@ impl App {
         // can host the symbol flip/opening-width buttons.
         if self.selection.lines.is_empty() && !self.selection.symbols.is_empty() {
             return Some(ui::inspector::EditToolsData {
-                length_text: String::new(),
                 endpoint_label: "Symbol",
                 color: theme::hex(0x2B6CB0),
                 text: None,
@@ -7904,7 +7902,6 @@ impl App {
         let Some(line) = self.drawing.first_selected_line(&self.selection) else {
             // An area-only selection: just the area group.
             return area.map(|area| ui::inspector::EditToolsData {
-                length_text: String::new(),
                 endpoint_label: "",
                 color: theme::hex(0x2B6CB0),
                 text: None,
@@ -7917,19 +7914,18 @@ impl App {
             .filter(|(id, _)| *id == line.id)
             .map(|(_, start)| start)
             .unwrap_or(false);
-        let length = sketch_core::geometry::distance(line.start, line.end);
+        let boundary_colors = render::area_boundary_colors(
+            &self.drawing,
+            &self.area_codes,
+            &self.gates_cache,
+        );
         Some(ui::inspector::EditToolsData {
-            length_text: format!("{length:.2}"),
             endpoint_label: if at_start {
                 "Length · Start handle"
             } else {
                 "Length · End handle"
             },
-            color: line
-                .color
-                .as_deref()
-                .and_then(crate::render::parse_hex)
-                .unwrap_or(theme::hex(0x2B6CB0)),
+            color: render::wall_ink(&self.drawing, line, boundary_colors.get(&line.id).copied()),
             text: None,
             area,
         })

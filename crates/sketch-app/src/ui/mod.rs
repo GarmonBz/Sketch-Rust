@@ -108,8 +108,6 @@ pub enum Msg {
     ToggleSelectedDimensions,
     SetAreaSubtractTarget(Option<i64>),
     SelectWall(i64),
-    /// Show page `n` of the inspector.
-    InspectorTab(u8),
     ChainSideFlip,
     ChainOffsetStep(f64),
     ChainToggleOverall,
@@ -143,8 +141,6 @@ pub struct UiState {
     pub type_filter: String,
     pub inspector_open: bool,
     pub inspector_image_adjust: bool,
-    /// Which page of the inspector is showing.
-    pub inspector_tab: u8,
     pub inspector_area_id: Option<i64>,
     pub touch_seen: bool,
     pub menu_open: bool,
@@ -192,7 +188,6 @@ impl Default for UiState {
             type_filter: String::new(),
             inspector_open: false,
             inspector_image_adjust: false,
-            inspector_tab: 0,
             inspector_area_id: None,
             touch_seen: false,
             menu_open: false,

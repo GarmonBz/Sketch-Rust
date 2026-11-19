@@ -393,17 +393,48 @@ pub fn move_line_endpoint(
         return false;
     };
     let old = if start { line.start } else { line.end };
-    if (next.x - old.x).hypot(next.y - old.y) < 1e-8 {
+    if !move_joined_vertex(d, old, next) {
+        return false;
+    }
+    sel.active_endpoint = Some((line_id, start));
+    true
+}
+
+pub fn move_area_corner(d: &mut Drawing, area_id: i64, vertex: usize, next: Pt) -> bool {
+    let Some(old) = d
+        .polygons
+        .iter()
+        .find(|p| p.id == area_id)
+        .and_then(|p| p.points.get(vertex))
+        .copied()
+    else {
+        return false;
+    };
+    move_joined_vertex(d, old, next)
+}
+
+pub(crate) fn move_joined_vertex(d: &mut Drawing, old: Pt, next: Pt) -> bool {
+    if !next.x.is_finite()
+        || !next.y.is_finite()
+        || (next.x - old.x).hypot(next.y - old.y) < 1e-8
+    {
         return false;
     }
     let matches = |p: Pt| (p.x - old.x).hypot(p.y - old.y) < 1e-5;
 
     for line in &mut d.lines {
-        if matches(line.start) {
+        let at_start = matches(line.start);
+        let at_end = matches(line.end);
+        if at_start {
             line.start = next;
         }
-        if matches(line.end) {
+        if at_end {
             line.end = next;
+        }
+        // A bowed wall keeps its angle when its chord changes.
+        if (at_start || at_end) && line.bow_angle.abs() > 0.001 {
+            let chord = (line.end.x - line.start.x).hypot(line.end.y - line.start.y);
+            line.arc_height = chord / 2.0 * (line.bow_angle * std::f64::consts::PI / 720.0).tan();
         }
     }
     for poly in &mut d.polygons {
@@ -413,15 +444,7 @@ pub fn move_line_endpoint(
             }
         }
     }
-    sel.active_endpoint = Some((line_id, start));
-
-    // A bowed wall keeps its angle: the arc height follows the new chord.
-    if let Some(line) = d.lines.iter_mut().find(|l| l.id == line_id) {
-        if line.bow_angle.abs() > 0.001 {
-            let chord = (line.end.x - line.start.x).hypot(line.end.y - line.start.y);
-            line.arc_height = chord / 2.0 * (line.bow_angle * std::f64::consts::PI / 720.0).tan();
-        }
-    }
+    crate::placed_symbol::refresh_hosted_symbols(&mut d.symbols, &HashSet::new(), &d.lines);
     true
 }
 

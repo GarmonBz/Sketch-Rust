@@ -18,9 +18,8 @@ fix this file.
   also be found by search (Ctrl K).
 - **Colour carries meaning.** Area colours come from area types. Icon colours say what
   kind of action a control does. Amber is reserved for live measurement.
-- **Nothing a user fills in scrolls on a desktop screen.** At 1920 x 1080 and up, no form
-  or settings dialog scrolls. Only lists of the user's own data may scroll, inside their
-  own box.
+- **Forms fit on a desktop screen.** At 1920 x 1080 and up, forms and settings dialogs fit
+  the window. The inspector and lists of the user's own data scroll as needed.
 - **One layout per screen** that adapts from a 372 px phone to a 4K monitor. No fixed
   pixel positions in `crates/sketch-app/src/ui/`.
 - **Plain words.** Buttons say what happens ("Close area", "Delete type"). Sentence case
@@ -56,10 +55,9 @@ strength) and dimension text in `#F0F4F8`.
 Tokens live in `ui/tokens.rs` and read the palettes in `theme.rs`. The Dark values are
 pinned by `tokens::tests::dark_theme_uses_the_cad_palette`.
 
-On the drawing, in every theme, a selected area gets a faint purple (`#A855F7`) wash at
-7% opacity, so the area type's own fill stays visible, and a 2 px purple outline. Where
-walls bound the area they draw on top of that outline, so on most areas only the wash
-shows.
+On the drawing, a selected area gets a 7% purple (`#A855F7`) wash and a dashed purple
+outline above its walls. Selected walls are outlined in purple. Drag the handles at wall
+endpoints or area corners to reshape the selection.
 
 Area colours are data and come from each area type. Each floor of living area keeps its
 own default colour (First `#2B6CB0`, Second `#0987A0`, Third `#B83280`, Fourth
@@ -203,10 +201,11 @@ find areas that need a type, detect closed areas, label defaults, auto-subtract)
 
 ### Inspector
 
-Right panel, shown only while something is selected. Each kind of selection is split into
-short pages so the panel does not scroll. An area has Area, Math, Look and Edit; a wall
-has Wall and Edit. Text labels, symbols, chain dimensions, trace images and mixed
-selections have their own pages. Action buttons pair a tinted icon with a label.
+Right panel with one scrollable view for the active selection or trace image. Object
+properties and edit actions appear together in labeled sections. The wall length field
+accepts decimal feet, inches with a unit marker, and feet-and-inches notation. Move a
+trace image on the canvas from its inspector alongside size, rotation, and intensity.
+The Area Properties command opens the inspector when only areas are selected.
 
 ### Insert drawer
 
@@ -223,8 +222,9 @@ keeps the drawer open after placing.
 ### Drawing controls
 
 Floating groups on the drawing: zoom (minus, percent with a slider and 1:N scale field,
-plus, Fit), snapping and display (Grid, Snap with pitch, Show filters, Dimensions
-outside / inside / hidden), and North. In Touch density, Pad and Laser buttons join them.
+plus, magnifier for zooming to a dragged rectangle, Fit), snapping and display
+(Grid, Snap with pitch, Show filters, Dimensions outside / inside / hidden), and North.
+In Touch density, Pad and Laser buttons join them.
 
 ### Length strip
 

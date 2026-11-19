@@ -217,6 +217,39 @@ fn parse_distance(s: &str) -> Option<f64> {
     parse_float(trimmed)
 }
 
+/// Parse the Inspector's wall length field into decimal feet.
+pub fn parse_wall_length(text: &str) -> Option<f64> {
+    fn strip_inches(part: &str) -> Option<&str> {
+        part.strip_suffix(['"', '″', '”'])
+            .or_else(|| part.strip_suffix("inches"))
+            .or_else(|| part.strip_suffix("in"))
+    }
+
+    let text = text.trim().to_ascii_lowercase();
+    let length = if let Some((feet, inches)) = text.split_once(['\'', '′', '’']) {
+        let feet = feet.trim().parse::<f64>().ok()?;
+        let inches = inches.trim();
+        if inches.is_empty() {
+            feet
+        } else {
+            let inches = strip_inches(inches)
+                .unwrap_or(inches)
+                .trim()
+                .parse::<f64>()
+                .ok()?;
+            if feet < 0.0 || inches < 0.0 {
+                return None;
+            }
+            feet + inches / 12.0
+        }
+    } else if let Some(inches) = strip_inches(&text) {
+        inches.trim().parse::<f64>().ok()? / 12.0
+    } else {
+        text.parse::<f64>().ok()?
+    };
+    (length.is_finite() && length > 0.0).then_some(length)
+}
+
 fn num(s: &str) -> Option<f64> {
     if s.is_empty()
         || !s
@@ -427,24 +460,16 @@ impl Drawing {
     pub fn set_selected_line_length(
         &mut self,
         selection: &crate::selection::Selection,
-        text: &str,
+        next_length: f64,
     ) -> bool {
-        let Some(line) = self
-            .lines
-            .iter()
-            .find(|line| selection.is_line_selected(line.id))
-            .cloned()
-        else {
-            return false;
-        };
-        let Ok(next_length) = text.trim().parse::<f64>() else {
+        let Some(line) = self.first_selected_line(selection) else {
             return false;
         };
         if !next_length.is_finite() || next_length <= 0.0 {
             return false;
         }
         let current = distance(line.start, line.end);
-        if current < 1e-8 {
+        if !current.is_finite() || current < 1e-8 || next_length == current {
             return false;
         }
         let at_start = selection
@@ -461,23 +486,7 @@ impl Drawing {
             fixed.x + (moving.x - fixed.x) / current * next_length,
             fixed.y + (moving.y - fixed.y) / current * next_length,
         );
-        if let Some(slot) = self.lines.iter_mut().find(|l| l.id == line.id) {
-            if at_start {
-                slot.start = next;
-            } else {
-                slot.end = next;
-            }
-        }
-        // Area vertices sitting on the moved endpoint follow, as they do for
-        // a dragged endpoint.
-        for poly in self.polygons.iter_mut() {
-            for vertex in poly.points.iter_mut() {
-                if sketch_core::joins::points_equal(*vertex, moving, 1e-5) {
-                    *vertex = next;
-                }
-            }
-        }
-        true
+        crate::transform::move_joined_vertex(self, moving, next)
     }
 
     /// `setSelectedLineAppearance({ lineStyle })` / `{ color }`.
@@ -2241,7 +2250,7 @@ mod edit_tools_tests {
     fn the_start_handle_moves_when_it_is_the_active_one() {
         // Original: start -> (-21, 3), end stays at (-1, 3).
         let mut d = wall();
-        assert!(d.set_selected_line_length(&selected(true), "20"));
+        assert!(d.set_selected_line_length(&selected(true), 20.0));
         assert_eq!(d.lines[0].start, Pt::new(-21.0, 3.0));
         assert_eq!(d.lines[0].end, Pt::new(-1.0, 3.0));
     }
@@ -2249,7 +2258,7 @@ mod edit_tools_tests {
     #[test]
     fn the_end_handle_moves_when_it_is_the_active_one() {
         let mut d = wall();
-        assert!(d.set_selected_line_length(&selected(false), "20"));
+        assert!(d.set_selected_line_length(&selected(false), 20.0));
         assert_eq!(d.lines[0].start, Pt::new(-11.0, 3.0));
         assert_eq!(d.lines[0].end, Pt::new(9.0, 3.0));
     }
@@ -2257,10 +2266,19 @@ mod edit_tools_tests {
     #[test]
     fn a_bad_length_is_rejected() {
         let mut d = wall();
-        assert!(!d.set_selected_line_length(&selected(true), "0"));
-        assert!(!d.set_selected_line_length(&selected(true), "-5"));
-        assert!(!d.set_selected_line_length(&selected(true), "abc"));
+        for input in ["0", "-5", "abc", "12.3.4", "12 in extra", "3' -2", "NaN", "inf"] {
+            assert_eq!(parse_wall_length(input), None, "{input}");
+        }
+        assert!(!d.set_selected_line_length(&selected(true), 0.0));
         assert_eq!(d.lines[0].start, Pt::new(-11.0, 3.0));
+    }
+
+    #[test]
+    fn wall_length_accepts_decimal_feet_and_inches() {
+        for input in ["10.5", "126\"", "126 in", "126 INCHES", "10' 6\"", "10′ 6″", "10'6"] {
+            assert_eq!(parse_wall_length(input), Some(10.5), "{input}");
+        }
+        assert_eq!(parse_wall_length("6.5\""), Some(6.5 / 12.0));
     }
 
     #[test]

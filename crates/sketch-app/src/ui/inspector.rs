@@ -5,8 +5,8 @@
 
 use iced::widget::scrollable::{Direction, Scrollbar};
 use iced::widget::{
-    button, checkbox, column, container, pick_list, row, scrollable as make_scrollable, slider,
-    text, Column, Space,
+    button, checkbox, column, container, keyed_column, pick_list, row,
+    scrollable as make_scrollable, slider, text, Column, Space,
 };
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
 use sketch_core::geometry::distance;
@@ -30,7 +30,6 @@ use crate::{App, Message};
 
 /// Contextual selection data shown by the Inspector.
 pub struct EditToolsData {
-    pub length_text: String,
     pub endpoint_label: &'static str,
     pub color: Color,
     pub text: Option<TextTools>,
@@ -133,70 +132,39 @@ pub fn panel<'a>(app: &'a App, d: Density, overlay: bool) -> Element<'a, Message
         ));
     }
 
-    // Each selection kind is split into short pages so the whole inspector
-    // fits its panel; the tabs under the title switch between them.
-    let mut pages: Vec<(&'static str, Element<'a, Message>)> = Vec::new();
-    if kind_count > 1 {
-        pages.push(("Selection", multi_kind_section(app, d)));
-        if trace_active {
-            pages.push(("Image", trace_image_section(app, d)));
-        }
+    let subject = if kind_count > 1 {
+        multi_kind_section(app, d)
     } else if has_wall {
-        pages.push(("Wall", wall_section(app, d)));
-        pages.push(("Edit", common_actions_section(app, false, d)));
+        wall_section(app, d)
     } else if has_area {
-        pages = area_pages(app, d);
+        area_section(app, d)
     } else if has_text {
-        pages.push(("Label", text_section(app, d)));
-        pages.push(("Edit", common_actions_section(app, false, d)));
+        text_section(app, d)
     } else if has_symbol {
-        pages.push(("Symbol", symbol_section(app, d)));
-        pages.push(("Edit", common_actions_section(app, false, d)));
+        symbol_section(app, d)
     } else if has_chain {
-        pages.push(("Chain", chain_section(app, d)));
+        chain_section(app, d)
     } else if trace_active {
-        pages.push(("Image", trace_image_section(app, d)));
+        trace_image_section(app, d)
     } else if !app.selection.is_empty() {
-        pages.push(("Selection", multi_kind_section(app, d)));
+        multi_kind_section(app, d)
     } else {
-        pages.push((
-            "",
-            text("Select a wall, area, label, symbol, or chain dimension.")
-                .font(BARLOW)
-                .size(TEXT_12)
-                .color(tokens::muted())
-                .into(),
-        ));
+        text("Select a wall, area, label, symbol, or chain dimension.")
+            .font(BARLOW)
+            .size(TEXT_12)
+            .color(tokens::muted())
+            .into()
+    };
+    let mut sections = column![subject].spacing(SPACE_2);
+    if kind_count == 1 && (has_wall || has_text || has_symbol) {
+        sections = sections.push(kit::divider()).push(common_actions_section(d));
+    }
+    if kind_count != 0 && trace_active {
+        sections = column![trace_image_section(app, d), kit::divider(), sections].spacing(SPACE_2);
     }
 
-    let active = (app.ui.inspector_tab as usize).min(pages.len().saturating_sub(1));
-    let tabs: Option<Element<'a, Message>> = (pages.len() > 1).then(|| {
-        kit::segmented(
-            pages
-                .iter()
-                .enumerate()
-                .map(|(i, (label, _))| Segment {
-                    label,
-                    selected: i == active,
-                    focused: false,
-                    on_press: Some(Message::Ui(UiMsg::InspectorTab(i as u8))),
-                })
-                .collect(),
-            d,
-        )
-    });
-    let sections: Vec<Element<'a, Message>> = pages
-        .into_iter()
-        .enumerate()
-        .filter(|(i, _)| *i == active)
-        .map(|(_, (_, page))| page)
-        .collect();
-
-    // The pages are sized to fit; the scroll area only engages when the
-    // window is too short to show a page at all.
     let scroll = make_scrollable(
-        Column::with_children(sections)
-            .spacing(SPACE_2)
+        sections
             .padding(Padding {
                 top: 0.0,
                 right: SPACE_2 + 2.0,
@@ -209,13 +177,24 @@ pub fn panel<'a>(app: &'a App, d: Density, overlay: bool) -> Element<'a, Message
     .width(Length::Fill)
     .height(Length::Fill);
 
-    let mut body = column![header].spacing(SPACE_2);
-    body = match tabs {
-        Some(tabs) => body.push(tabs),
-        None => body.push(kit::divider()),
-    };
-    let body = body
-        .push(scroll)
+    // Start at the top when switching to a different object.
+    let selection = &app.selection;
+    let subject_ids = [
+        &selection.lines,
+        &selection.polys,
+        &selection.texts,
+        &selection.area_labels,
+        &selection.area_sizes,
+        &selection.symbols,
+        &selection.chains,
+        &selection.dimensions,
+    ]
+    .map(|ids| ids.iter().min().copied());
+    let inspector_content = keyed_column([((subject_ids, trace_active), scroll.into())])
+        .height(Length::Fill)
+        .width(Length::Fill);
+    let body = column![header, kit::divider(), inspector_content]
+        .spacing(SPACE_2)
         .width(Length::Fill)
         .height(Length::Fill);
 
@@ -337,10 +316,7 @@ fn wall_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
     let current_style = line
         .and_then(|l| l.line_style.as_deref())
         .unwrap_or("solid");
-    let wall_color = line
-        .and_then(|l| l.color.as_deref())
-        .and_then(crate::render::parse_hex)
-        .unwrap_or_else(tokens::accent);
+    let wall_color = edit.as_ref().map_or_else(tokens::accent, |values| values.color);
 
     let curve_height_mode = app.view.curve_mode == CurveMode::Height;
     let bow_readout = line
@@ -477,6 +453,7 @@ fn wall_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
         kit::group_header("DIMENSIONS", None),
         label_caption(handle_note),
         length_row,
+        label_caption(r#"Decimal feet (10.5) or inches (126")"#),
         dim_row,
         kit::divider(),
         kit::group_header("APPEARANCE", None),
@@ -498,21 +475,18 @@ fn wall_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
 // Area section
 // ---------------------------------------------------------------------------
 
-fn area_pages<'a>(app: &'a App, d: Density) -> Vec<(&'static str, Element<'a, Message>)> {
+fn area_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
     let Some(poly) = app
         .drawing
         .polygons
         .iter()
         .find(|p| app.selection.polys.contains(&p.id))
     else {
-        return vec![(
-            "",
-            text("Select an area.")
-                .font(BARLOW)
-                .size(TEXT_12)
-                .color(tokens::muted())
-                .into(),
-        )];
+        return text("Select an area.")
+            .font(BARLOW)
+            .size(TEXT_12)
+            .color(tokens::muted())
+            .into();
     };
 
     let area_tools = app
@@ -933,63 +907,47 @@ fn area_pages<'a>(app: &'a App, d: Density) -> Vec<(&'static str, Element<'a, Me
         );
     }
 
-    let page = |c: Column<'a, Message>| -> Element<'a, Message> {
-        c.spacing(SPACE_2).width(Length::Fill).into()
-    };
-    vec![
-        (
-            "Area",
-            page(column![
-                label_caption("Name"),
-                name_row,
-                label_caption("Type"),
-                type_row,
-                column![
-                    label_caption("Counts toward"),
-                    text(counts_toward)
-                        .font(BARLOW_MEDIUM)
-                        .size(TEXT_12)
-                        .color(tokens::text()),
-                ]
-                .spacing(2),
-                kit::divider(),
-                stats,
-            ]),
-        ),
-        (
-            "Math",
-            page(column![
-                label_caption("Factor"),
-                factor_row,
-                sign_seg,
-                label_caption("Auto-subtract"),
-                auto_sub_pick,
-                label_caption("Deduct from"),
-                deduct_pick,
-                label_caption("Measure to"),
-                measure_pick,
-            ]),
-        ),
-        (
-            "Look",
-            page(column![
-                appearance,
-                kit::divider(),
-                label_caption("Show on the label"),
-                post_grid,
-                suffix_row,
-            ]),
-        ),
-        (
-            "Edit",
-            page(column![
-                actions,
-                kit::divider(),
-                label_caption("Walls"),
-                walls_block,
-            ]),
-        ),
+    column![
+        label_caption("Name"),
+        name_row,
+        label_caption("Type"),
+        type_row,
+        column![
+            label_caption("Counts toward"),
+            text(counts_toward)
+                .font(BARLOW_MEDIUM)
+                .size(TEXT_12)
+                .color(tokens::text()),
+        ]
+        .spacing(2),
+        stats,
+        kit::divider(),
+        kit::group_header("EDIT", None),
+        actions,
+        kit::divider(),
+        kit::group_header("CALCULATION", None),
+        label_caption("Factor"),
+        factor_row,
+        sign_seg,
+        label_caption("Auto-subtract"),
+        auto_sub_pick,
+        label_caption("Deduct from"),
+        deduct_pick,
+        label_caption("Measure to"),
+        measure_pick,
+        kit::divider(),
+        kit::group_header("APPEARANCE", None),
+        appearance,
+        label_caption("Show on the label"),
+        post_grid,
+        suffix_row,
+        kit::divider(),
+        kit::group_header("WALLS", None),
+        walls_block,
     ]
+    .spacing(SPACE_2)
+    .width(Length::Fill)
+    .into()
 }
 
 // ---------------------------------------------------------------------------
@@ -1285,6 +1243,13 @@ fn trace_image_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
         ]
         .spacing(SPACE_1)
         .width(Length::Fill),
+        action_btn(
+            "arrows-out-cardinal",
+            if bg.edit_mode { "Done moving" } else { "Move on canvas" },
+            bg.edit_mode,
+            Some(Message::PhotoEditModeToggle),
+            d,
+        ),
         row![
             action_btn(
                 "ruler",
@@ -1364,15 +1329,7 @@ fn trace_image_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
         ),
         row![
             action_btn("map-trifold", "Map options", false, Some(Message::GeoOpen), d),
-            kit::text_button(
-                if bg.edit_mode { "Done editing" } else { "Close" },
-                Some(if bg.edit_mode {
-                    Message::PhotoEditModeToggle
-                } else {
-                    Message::Ui(UiMsg::CloseOverlays)
-                }),
-                d,
-            ),
+            kit::text_button("Close", Some(Message::Ui(UiMsg::CloseOverlays)), d),
         ]
         .spacing(SPACE_1)
         .width(Length::Fill),
@@ -1463,49 +1420,46 @@ fn multi_kind_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
         scale_row,
         label_caption("Nudge"),
         nudge_row,
-        common_actions_section(app, true, d),
+        kit::divider(),
+        common_actions_section(d),
     ]
     .spacing(SPACE_2)
     .width(Length::Fill)
     .into()
 }
 
-fn common_actions_section<'a>(_app: &'a App, include_header: bool, d: Density) -> Element<'a, Message> {
-    let mut col = Column::new().spacing(SPACE_1).width(Length::Fill);
-    if include_header {
-        col = col.push(kit::group_header("COMMON", None));
-    }
-    col = col
-        .push(
-            row![
-                action_btn("scissors", "Cut", false, Some(Message::Cut), d),
-                action_btn("copy", "Copy", false, Some(Message::Copy), d),
-                danger_btn("Delete", Message::Delete, d),
-            ]
-            .spacing(SPACE_1)
-            .width(Length::Fill),
-        )
-        .push(
-            row![
-                action_btn(
-                    "arrow-line-up",
-                    "Bring to front",
-                    false,
-                    Some(Message::LayerBringToFront),
-                    d,
-                ),
-                action_btn(
-                    "arrow-line-down",
-                    "Send to back",
-                    false,
-                    Some(Message::LayerSendToBack),
-                    d,
-                ),
-            ]
-            .spacing(SPACE_1)
-            .width(Length::Fill),
-        );
-    col.into()
+fn common_actions_section<'a>(d: Density) -> Element<'a, Message> {
+    column![
+        kit::group_header("EDIT", None),
+        row![
+            action_btn("scissors", "Cut", false, Some(Message::Cut), d),
+            action_btn("copy", "Copy", false, Some(Message::Copy), d),
+            danger_btn("Delete", Message::Delete, d),
+        ]
+        .spacing(SPACE_1)
+        .width(Length::Fill),
+        row![
+            action_btn(
+                "arrow-line-up",
+                "Bring to front",
+                false,
+                Some(Message::LayerBringToFront),
+                d,
+            ),
+            action_btn(
+                "arrow-line-down",
+                "Send to back",
+                false,
+                Some(Message::LayerSendToBack),
+                d,
+            ),
+        ]
+        .spacing(SPACE_1)
+        .width(Length::Fill),
+    ]
+    .spacing(SPACE_1)
+    .width(Length::Fill)
+    .into()
 }
 
 // ---------------------------------------------------------------------------

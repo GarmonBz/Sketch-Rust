@@ -1,8 +1,13 @@
-Sketch Rust 0.2.4 - Windows x64 cutout test build
+Sketch Rust 0.2.5 - Windows x64
 
-Door and window wall gaps now use the symbol library alignment.
-An opening follows its symbol to a new wall or closes when detached.
+Area outlines and fills use their assigned area colors. A magnifier beside
+Fit zooms to a dragged rectangle. Selected walls and areas show draggable
+endpoints and corners. The inspector combines properties and editing
+controls, and wall length accepts decimal feet or inches.
 
+0.2.4 fixes door and window wall gaps so they use the symbol library
+alignment. An opening follows its symbol to a new wall or closes when
+detached.
 
 0.2.3 tidies the symbol library. Categories have plain names (Doors &
 windows, Kitchen, Bath & plumbing, Utilities and so on), and the CADdillo

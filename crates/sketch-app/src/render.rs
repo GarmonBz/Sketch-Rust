@@ -5,12 +5,14 @@
 //! with the light-theme overrides (`applyOptions` is never called by the
 //! original, so the Options colours do not reach these).
 
+use std::collections::HashMap;
+
 use iced::alignment::Vertical;
 use iced::widget::canvas::{path::Arc, Frame, LineCap, LineDash, LineJoin, Path, Stroke, Text};
 use iced::widget::text::{Alignment, LineHeight, Shaping};
 use iced::{Color, Font, Pixels, Point, Radians, Rectangle, Size, Vector};
-use sketch_core::geometry::{distance, GeometryEngine, Pt, MAX_BOW_ANGLE, PIXELS_PER_FOOT};
-use sketch_core::model::{SketchLine, WallType};
+use sketch_core::geometry::{distance, AreaCode, GeometryEngine, Pt, MAX_BOW_ANGLE, PIXELS_PER_FOOT};
+use sketch_core::model::{Polygon, SketchLine, WallType};
 
 use crate::drawing::{js_round, DrawCtx, Drawing};
 use crate::theme::{ARIAL, CONSOLAS, CONSOLAS_BOLD};
@@ -82,6 +84,35 @@ fn wall_color(options: &crate::options::Options, ext: bool) -> Color {
     } else {
         parse_hex(&options.interior_color).unwrap_or(WALL_INT)
     }
+}
+
+pub(crate) fn wall_ink(d: &Drawing, line: &SketchLine, area_color: Option<Color>) -> Color {
+    let stored = line.color.as_deref().and_then(parse_css_color);
+    let ext = line.kind == WallType::Exterior;
+    let stamped_default = if ext { WALL_EXT } else { WALL_INT };
+    // Sketch files stamp default colours on new walls. A custom wall colour
+    // still takes precedence when the wall belongs to a coloured area.
+    stored
+        .filter(|color| *color != stamped_default)
+        .or(area_color)
+        .unwrap_or_else(|| wall_color(&d.options, ext))
+}
+
+pub(crate) fn area_boundary_colors(
+    d: &Drawing,
+    codes: &[AreaCode],
+    gates: &crate::layers::LayerGates,
+) -> HashMap<i64, Color> {
+    let mut colors = HashMap::new();
+    for poly in d.polygons.iter().filter(|poly| gates.shows(poly.id)) {
+        let Some(color) = area_outline(poly, area_definition(codes, poly)) else {
+            continue;
+        };
+        for line_id in poly.edges.iter().filter_map(|edge| edge.line_id) {
+            colors.entry(line_id).or_insert(color);
+        }
+    }
+    colors
 }
 
 /// `colors.wallPreview = options.witnessCurveColor || …`.
@@ -382,7 +413,17 @@ fn draw_curved_solid(
         }
         p.close();
     });
-    frame.fill(&path, color);
+    fill_wall_shape(frame, &path, color, scene.selection.is_line_selected(line.id));
+}
+
+fn fill_wall_shape(frame: &mut Frame, path: &Path, color: Color, selected: bool) {
+    if selected {
+        frame.stroke(
+            path,
+            Stroke::default().with_color(SELECT_LINE).with_width(3.0),
+        );
+    }
+    frame.fill(path, color);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -564,6 +605,8 @@ fn dimension_font(opts: &crate::options::Options) -> Font {
 /// `drawLines(layerId)` — unselected walls, no wall solids (off by default).
 fn draw_lines(frame: &mut Frame, scene: &Scene) {
     let d = scene.drawing;
+    let boundary_colors = area_boundary_colors(d, scene.area_codes, scene.gates);
+    let ink = |line: &SketchLine| wall_ink(d, line, boundary_colors.get(&line.id).copied());
     // Chain coverage: walls a dimension chain covers skip their own labels
     // (canvas-engine.js:1660's `!this.chainCoverage?.has(line.id)`).
     let covered = if d.dimension_chains.is_empty() {
@@ -600,11 +643,7 @@ fn draw_lines(frame: &mut Frame, scene: &Scene) {
                 if !scene.filters[if ext { 1 } else { 2 }] || d.is_active(line.id) {
                     continue;
                 }
-                let color = line
-                    .color
-                    .as_deref()
-                    .and_then(parse_hex)
-                    .unwrap_or(wall_color(&scene.drawing.options, ext));
+                let color = ink(line);
                 for piece in &solid.pieces {
                     let pts: Vec<Point> = piece.iter().map(|p| scene.screen(*p)).collect();
                     let path = Path::new(|p| {
@@ -616,7 +655,12 @@ fn draw_lines(frame: &mut Frame, scene: &Scene) {
                             p.close();
                         }
                     });
-                    frame.fill(&path, color);
+                    fill_wall_shape(
+                        frame,
+                        &path,
+                        color,
+                        scene.selection.is_line_selected(line.id),
+                    );
                 }
             }
             // Bowed walls: an annular sector instead of a quad (hosted
@@ -638,12 +682,7 @@ fn draw_lines(frame: &mut Frame, scene: &Scene) {
                 if !scene.filters[if ext { 1 } else { 2 }] || d.is_active(line.id) {
                     continue;
                 }
-                let color = line
-                    .color
-                    .as_deref()
-                    .and_then(parse_hex)
-                    .unwrap_or(wall_color(&scene.drawing.options, ext));
-                draw_curved_solid(frame, scene, line, thickness, color);
+                draw_curved_solid(frame, scene, line, thickness, ink(line));
             }
         }
     }
@@ -666,25 +705,14 @@ fn draw_lines(frame: &mut Frame, scene: &Scene) {
             WALL_ACTIVE
         } else if curve_target {
             preview_color(&scene.drawing.options)
-        } else if selected {
-            SELECT_LINE
         } else {
-            line.color
-                .as_deref()
-                .and_then(parse_hex)
-                .unwrap_or(wall_color(&scene.drawing.options, ext))
+            ink(line)
         };
         let base_width = line
             .line_thickness
             .filter(|w| *w != 0.0)
             .map(|w| w as f32)
             .unwrap_or(wall_width(line.kind));
-        // `lineWidth = isSelected ? Math.max(5, baseWidth + 1) : baseWidth`.
-        let width = if selected {
-            (base_width + 1.0).max(5.0)
-        } else {
-            base_width
-        };
         let dash: &[f32] = match line.line_style.as_deref() {
             Some("dashed") => &[9.0, 6.0],
             Some("dotted") => &[2.0, 5.0],
@@ -726,15 +754,19 @@ fn draw_lines(frame: &mut Frame, scene: &Scene) {
             }
         });
         if !solid_handled {
-            frame.stroke(
-                &path,
-                Stroke {
-                    line_cap: LineCap::Round,
-                    line_join: LineJoin::Round,
-                    line_dash: dashed(dash),
-                    ..Stroke::default().with_color(color).with_width(width)
-                },
-            );
+            let stroke = Stroke {
+                line_cap: LineCap::Round,
+                line_join: LineJoin::Round,
+                line_dash: dashed(dash),
+                ..Stroke::default()
+            };
+            if selected {
+                frame.stroke(
+                    &path,
+                    stroke.with_color(SELECT_LINE).with_width(base_width + 4.0),
+                );
+            }
+            frame.stroke(&path, stroke.with_color(color).with_width(base_width));
         }
         if selected {
             // The curve handle: a green square on the wall's arc (12 px in Touch density).
@@ -747,16 +779,6 @@ fn draw_lines(frame: &mut Frame, scene: &Scene) {
                 &Path::rectangle(top_left, size),
                 Stroke::default().with_color(hex(0xECFDF5)).with_width(1.0),
             );
-            if scene.touch_handles && scene.select_mode {
-                for ep in [start, end] {
-                    let dot = Path::circle(ep, 6.0);
-                    frame.fill(&dot, crate::theme::ICON_BLUE);
-                    frame.stroke(
-                        &dot,
-                        Stroke::default().with_color(Color::WHITE).with_width(1.5),
-                    );
-                }
-            }
         }
         if !is_curve_drag {
             draw_line_dimension(frame, scene, line, color, &covered, active);
@@ -1458,6 +1480,70 @@ pub(crate) fn parse_css_color(s: &str) -> Option<Color> {
     (p.len() == 4).then(|| Color::from_rgba(p[0] / 255.0, p[1] / 255.0, p[2] / 255.0, p[3]))
 }
 
+pub(crate) fn area_definition<'a>(codes: &'a [AreaCode], poly: &Polygon) -> Option<&'a AreaCode> {
+    if poly.kind.is_empty() || poly.kind == "UND" {
+        return None;
+    }
+    codes.iter().find(|code| code.code == poly.kind)
+}
+
+pub(crate) fn area_outline(poly: &Polygon, definition: Option<&AreaCode>) -> Option<Color> {
+    poly.line_color
+        .as_deref()
+        .and_then(parse_css_color)
+        .or_else(|| definition.and_then(|code| parse_css_color(&code.color)))
+}
+
+pub(crate) fn area_fill(poly: &Polygon, definition: Option<&AreaCode>) -> Color {
+    let fill = poly.fill_color
+        .as_deref()
+        .and_then(parse_css_color)
+        .or_else(|| {
+            definition.and_then(|code| {
+                parse_css_color(&code.fill_color).or_else(|| parse_css_color(&code.fill))
+            })
+        })
+        .unwrap_or_else(|| Color {
+            a: POLY_FILL.a,
+            ..area_outline(poly, definition).unwrap_or(POLY_FILL)
+        });
+    let opacity = poly
+        .fill_opacity
+        .or_else(|| definition.map(|code| code.fill_opacity));
+    if let Some(opacity) = opacity {
+        Color {
+            a: (opacity / 100.0).clamp(0.0, 1.0) as f32,
+            ..fill
+        }
+    } else if definition.is_none() && fill.a == 1.0 {
+        Color { a: POLY_FILL.a, ..fill }
+    } else {
+        fill
+    }
+}
+
+fn area_ring(scene: &Scene, poly: &Polygon) -> Vec<Point> {
+    scene
+        .drawing
+        .engine()
+        .flatten_ring(&poly.points, &poly.edges, 0.05)
+        .into_iter()
+        .map(|point| scene.screen(point))
+        .collect()
+}
+
+fn ring_path(ring: &[Point]) -> Path {
+    Path::new(|path| {
+        if let Some((first, rest)) = ring.split_first() {
+            path.move_to(*first);
+            for point in rest {
+                path.line_to(*point);
+            }
+            path.close();
+        }
+    })
+}
+
 /// The ring's segments the hatch lines of one family cross: for each line
 /// `a*x + b*y = k` (k on a 10px grid, fixed to the canvas as in the
 /// original), the stretches of it inside the polygon (even-odd).
@@ -1519,58 +1605,27 @@ fn draw_areas(frame: &mut Frame, scene: &Scene) {
             continue;
         }
         let selected = scene.selection.is_poly_selected(poly.id);
-        let defined = poly.kind != "UND";
-        if !selected && !defined {
+        let defined = !poly.kind.is_empty() && poly.kind != "UND";
+        let painted = defined || poly.fill_color.is_some() || poly.fill_pattern.is_some();
+        if !selected && !painted && poly.line_color.is_none() {
             continue;
         }
-        let def = scene.area_codes.iter().find(|c| c.code == poly.kind);
+        let def = area_definition(scene.area_codes, poly);
         let pattern = poly
             .fill_pattern
-            .clone()
-            .filter(|p| !p.is_empty())
-            .or_else(|| def.map(|c| c.fill_style.clone()))
-            .unwrap_or_else(|| "solid".into());
-        let outline = poly
-            .line_color
             .as_deref()
-            .and_then(parse_css_color)
-            .or_else(|| def.and_then(|c| parse_css_color(&c.color)))
-            .unwrap_or(POLY_OUTLINE);
+            .filter(|p| !p.is_empty())
+            .or_else(|| def.map(|c| c.fill_style.as_str()))
+            .unwrap_or("solid");
+        let outline = area_outline(poly, def).unwrap_or(POLY_OUTLINE);
         // The ring on screen, curved edges flattened.
-        let ring: Vec<Point> = d
-            .engine()
-            .flatten_ring(&poly.points, &poly.edges, 0.05)
-            .iter()
-            .map(|p| scene.screen(*p))
-            .collect();
+        let ring = area_ring(scene, poly);
         if ring.len() < 3 {
             continue;
         }
-        let path = Path::new(|p| {
-            p.move_to(ring[0]);
-            for pt in &ring[1..] {
-                p.line_to(*pt);
-            }
-            p.close();
-        });
-        if defined && pattern != "none" {
-            let base = poly
-                .fill_color
-                .as_deref()
-                .filter(|c| !c.is_empty())
-                .or_else(|| def.map(|c| c.fill_color.as_str()).filter(|c| !c.is_empty()))
-                .and_then(parse_css_color);
-            let opacity = poly.fill_opacity.or_else(|| def.map(|c| c.fill_opacity));
-            let fill = match (base, opacity) {
-                (Some(c), Some(o)) => Color {
-                    a: (o / 100.0).clamp(0.0, 1.0) as f32,
-                    ..c
-                },
-                (Some(c), None) => c,
-                // `colors.fillGLA`.
-                (None, _) => POLY_FILL,
-            };
-            frame.fill(&path, fill);
+        let path = ring_path(&ring);
+        if painted && pattern != "none" {
+            frame.fill(&path, area_fill(poly, def));
             if pattern != "solid" {
                 let ink = Color { a: 0.42, ..outline };
                 let stroke = Stroke::default().with_color(ink).with_width(1.0);
@@ -1617,8 +1672,6 @@ fn draw_areas(frame: &mut Frame, scene: &Scene) {
                 Color::from_rgba(168.0 / 255.0, 85.0 / 255.0, 247.0 / 255.0, 0.07),
             );
         }
-        // `lineWidth = isSelected ? max(2, lineThickness || 1) : lineThickness || 1`
-        // and the dash from `lineStyle`.
         let thickness = poly.line_thickness.filter(|t| *t != 0.0).unwrap_or(1.0) as f32;
         let dash: &[f32] = match poly.line_style.as_deref() {
             Some("dashed") => &[9.0, 6.0],
@@ -1630,17 +1683,56 @@ fn draw_areas(frame: &mut Frame, scene: &Scene) {
             Stroke {
                 line_dash: dashed(dash),
                 ..Stroke::default()
-                    .with_color(if selected { SELECT_LINE } else { outline })
-                    .with_width(if selected {
-                        thickness.max(2.0)
-                    } else {
-                        thickness
-                    })
+                    .with_color(outline)
+                    .with_width(thickness)
             },
         );
         if defined {
             draw_area_labels(frame, scene, poly);
         }
+    }
+}
+
+fn draw_selected_geometry(frame: &mut Frame, scene: &Scene) {
+    // Draw the selection outline above the walls so it remains visible.
+    let outline = Stroke {
+        line_dash: dashed(&[7.0, 4.0]),
+        ..Stroke::default().with_color(SELECT_LINE).with_width(2.0)
+    };
+    for poly in &scene.drawing.polygons {
+        if scene.selection.is_poly_selected(poly.id) && scene.gates.shows(poly.id) {
+            frame.stroke(&ring_path(&area_ring(scene, poly)), outline);
+        }
+    }
+    if !scene.select_mode {
+        return;
+    }
+
+    let radius = if scene.touch_handles { 6.0 } else { 4.5 };
+    for (handle, at) in crate::handles::selected_vertices(
+        scene.drawing,
+        scene.selection,
+        scene.filters,
+        scene.gates,
+    ) {
+        let point = scene.screen(at);
+        let mark = match handle {
+            crate::handles::VertexHandle::WallEnd { .. } => Path::circle(point, radius),
+            crate::handles::VertexHandle::AreaCorner { .. } => Path::rectangle(
+                Point::new(point.x - radius, point.y - radius),
+                Size::new(2.0 * radius, 2.0 * radius),
+            ),
+        };
+        let fill = match handle {
+            crate::handles::VertexHandle::WallEnd { id, start }
+                if scene.selection.active_endpoint == Some((id, start)) => SELECT_LINE,
+            _ => Color::WHITE,
+        };
+        frame.fill(&mark, fill);
+        frame.stroke(
+            &mark,
+            Stroke::default().with_color(SELECT_LINE).with_width(2.0),
+        );
     }
 }
 
@@ -2286,6 +2378,7 @@ pub fn draw_scene_overlay(frame: &mut Frame, scene: &Scene, w: f32, h: f32) {
     }
     draw_chains(frame, scene);
     draw_measure(frame, scene);
+    draw_selected_geometry(frame, scene);
     draw_transform_handles(frame, scene);
     // The Set Scale / Orient Guide point markers draw on top
     // (`drawScalePoints`, canvas-engine.js:3138).

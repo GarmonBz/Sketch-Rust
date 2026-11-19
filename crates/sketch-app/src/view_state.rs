@@ -130,12 +130,11 @@ pub enum Drag {
         last_snap: (f64, f64),
         moved: bool,
     },
-    /// `type: 'line-endpoint'`.
-    Endpoint {
-        line_id: i64,
-        start: bool,
-        start_point: World,
-        moved: bool,
+    /// Move a selected wall endpoint or an area corner.
+    Vertex {
+        handle: crate::handles::VertexHandle,
+        origin: World,
+        grab: World,
     },
     /// `type: 'curve'` — bow a wall by dragging its midpoint handle (or any
     /// point of it in the Curve Wall tool).
@@ -477,15 +476,6 @@ impl View {
     }
 
     /// `dragState = { type: 'line-endpoint' }`.
-    pub fn drag_start_endpoint(&mut self, line_id: i64, start: bool, world: World) {
-        self.drag = Some(Drag::Endpoint {
-            line_id,
-            start,
-            start_point: world,
-            moved: false,
-        });
-    }
-
     /// The move delta to apply for this pointer position: whole grid steps
     /// from the grab point when snapping is on (so an on-grid sketch stays on
     /// the grid and lengths stay exact), otherwise the raw delta. Returns
@@ -530,7 +520,7 @@ impl View {
                 *last = world;
                 Some((dx, dy))
             }
-            Drag::Endpoint { .. } => None,
+            Drag::Vertex { .. } => None,
             Drag::Curve { .. } => None,
             Drag::RotateArea { .. } => None,
             Drag::RotateText { .. } => None,

@@ -43,7 +43,7 @@ pub fn bars_layer<'a>(app: &'a App) -> Element<'a, Message> {
     let corners_at_top = corners_at_top(app);
     let show_underlay = app.pages.len() > 1 || app.pages.underlay_label() != "Underlay: None";
 
-    let mk_zoom = || pill_surface(zoom_group(app, d));
+    let mk_zoom = || pill_surface(zoom_group(app, d, corners_at_top));
     let mk_snap = || pill_surface(snap_group(app, d));
     let north = pill_surface(north_chip(app, d));
     let underlay = show_underlay.then(|| pill_surface(underlay_chip(app, d)));
@@ -286,16 +286,30 @@ pub fn popover_layer<'a>(app: &'a App) -> Option<Element<'a, Message>> {
 // Trigger bars
 // ---------------------------------------------------------------------------
 
-fn zoom_group<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
+fn zoom_group<'a>(app: &'a App, d: Density, at_top: bool) -> Element<'a, Message> {
     let pct = format!("{}%", app.view.zoom_percent());
     let zoom_open = app.ui.controls_popover == Some(ControlsPopover::Zoom);
     let fit_open = app.ui.controls_popover == Some(ControlsPopover::Fit);
 
+    let zoom_fence = kit::tooltip(
+        compact_icon_btn(
+            "magnifying-glass",
+            app.view.mode == crate::view_state::Mode::ZoomFence,
+            Message::Status(StatusMsg::ZoomFence),
+            d,
+        ),
+        "Zoom to rectangle. Drag on the canvas.",
+        if at_top {
+            iced::widget::tooltip::Position::Bottom
+        } else {
+            iced::widget::tooltip::Position::Top
+        },
+    );
     let fit_btn = kit::long_press(
         mouse_area(chip_toggle(
             "Fit",
             Some("arrows-out"),
-            app.view.mode == crate::view_state::Mode::ZoomFence,
+            false,
             Message::Status(StatusMsg::CenterFit),
             d,
         ))
@@ -320,6 +334,7 @@ fn zoom_group<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
             d,
         ),
         compact_icon_btn("plus", false, Message::Status(StatusMsg::ZoomIn), d),
+        zoom_fence,
         fit_btn,
         fit_menu,
     ]

@@ -385,6 +385,49 @@ pub fn selected_area_box(
     })
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VertexHandle {
+    WallEnd { id: i64, start: bool },
+    AreaCorner { id: i64, vertex: usize },
+}
+
+/// Selected endpoints and corners shared by drawing and hit testing.
+pub fn selected_vertices<'a>(
+    d: &'a Drawing,
+    selection: &'a Selection,
+    filters: [bool; 6],
+    gates: &'a crate::layers::LayerGates,
+) -> impl Iterator<Item = (VertexHandle, Pt)> + 'a {
+    let ends = d.lines.iter().filter(move |line| {
+        let filter = if line.kind == sketch_core::model::WallType::Exterior {
+            1
+        } else {
+            2
+        };
+        filters[filter] && selection.is_line_selected(line.id) && gates.selectable(line.id)
+    });
+    let corners = d.polygons.iter().filter(move |poly| {
+        selection.is_poly_selected(poly.id) && gates.selectable(poly.id)
+    });
+    ends.flat_map(|line| {
+        [
+            (
+                VertexHandle::WallEnd { id: line.id, start: true },
+                line.start,
+            ),
+            (
+                VertexHandle::WallEnd { id: line.id, start: false },
+                line.end,
+            ),
+        ]
+    })
+    .chain(corners.flat_map(|poly| {
+        poly.points.iter().copied().enumerate().map(|(vertex, point)| {
+            (VertexHandle::AreaCorner { id: poly.id, vertex }, point)
+        })
+    }))
+}
+
 /// What a press on a rotation handle grabbed.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum HandleHit {
