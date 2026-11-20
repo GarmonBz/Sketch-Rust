@@ -1,5 +1,10 @@
 # Sketch Rust — STATUS ledger
 
+0.3.0 adds a resizable Layers area, a page switcher in the top bar, a
+right-click menu that closes on canvas click or Escape, type-following default
+area names, a smaller default area-type and symbol set, and Light/Blue/Dark
+ordering for both theme selectors.
+
 0.2.9 prevents the floating tool tray from overlapping Zoom, Grid, Snap,
 Show, and Dimensions. The shared dock reserves space for all twelve tools
 and both control groups; controls move to top rows when the canvas is too

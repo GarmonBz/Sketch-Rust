@@ -1,4 +1,11 @@
-Sketch Rust 0.2.9 - Windows x64
+Sketch Rust 0.3.0 - Windows x64
+
+0.3.0 gives Layers more room (drag the divider to resize), replaces the page
+tabs with a page switcher that fits the top bar, closes the right-click menu
+on a canvas click or Escape, and renames default area names when the type
+changes. GBA5-GBA10 are removed and Carport is CPT. Light, Blue, Dark is the
+order for both theme selectors. The Arrows, Doors, Windows and Miscellaneous
+symbol categories are removed from the default library.
 
 The tool tray and drawing controls now share a layout that prevents overlap.
 Zoom and Grid/Snap/Show/Dimensions move to separate top rows when there is
