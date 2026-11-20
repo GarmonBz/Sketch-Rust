@@ -2812,7 +2812,7 @@ fn undo_history_layer<'a>(
 
 fn kbd_pill<'a>(keys: &'static str) -> Element<'a, Message> {
     container(
-        text(keys)
+        text(crate::input::localize_shortcut(keys))
             .font(BSC_MEDIUM)
             .size(TEXT_11)
             .color(tokens::text()),
@@ -2935,7 +2935,7 @@ fn render_guide_block<'a>(block: &GuideBlock) -> Element<'a, Message> {
             ..Padding::ZERO
         })
         .into(),
-        GuideBlock::Para(p) => body_text(*p),
+        GuideBlock::Para(p) => body_text(crate::input::localize_shortcut(p)),
         GuideBlock::Points(pts) => {
             let mut col = column![].spacing(SPACE_1);
             for pt in *pts {
@@ -2945,7 +2945,7 @@ fn render_guide_block<'a>(block: &GuideBlock) -> Element<'a, Message> {
                             .font(BARLOW_SEMIBOLD)
                             .size(TEXT_13)
                             .color(tokens::accent()),
-                        text(*pt)
+                        text(crate::input::localize_shortcut(pt))
                             .font(BARLOW)
                             .size(TEXT_13)
                             .color(tokens::text())
@@ -2965,7 +2965,7 @@ fn render_guide_block<'a>(block: &GuideBlock) -> Element<'a, Message> {
                             .font(BSC_SEMIBOLD)
                             .size(TEXT_13)
                             .color(tokens::accent()),
-                        text(*step)
+                        text(crate::input::localize_shortcut(step))
                             .font(BARLOW)
                             .size(TEXT_13)
                             .color(tokens::text())
@@ -2979,7 +2979,7 @@ fn render_guide_block<'a>(block: &GuideBlock) -> Element<'a, Message> {
         GuideBlock::Note(n) => container(
             row![
                 mono("info", 15.0, tokens::accent()),
-                text(*n)
+                text(crate::input::localize_shortcut(n))
                     .font(BARLOW)
                     .size(TEXT_13)
                     .color(tokens::text())

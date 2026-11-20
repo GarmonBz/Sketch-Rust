@@ -52,13 +52,14 @@ for requirements and guidance for users of older previews.
 
 ## Build from source
 
-Requires the Rust toolchain (stable, MSVC target) and the Windows SDK (`rc.exe`).
+Requires the Rust toolchain (stable). On Windows, use the MSVC target and the Windows SDK (`rc.exe`).
 
 ```
 cargo build --release -p sketch-app
 cargo test --workspace
 ```
 
+- **macOS (Apple Silicon)** — see [docs/MACOS.md](docs/MACOS.md) for `cargo run` and `./tools/package-macos.sh`.
 - `tools\package.ps1 -NativePreview` builds the portable zip into `dist\`.
 - `tools\installer.ps1` builds the zip and then `dist\SketchRust-<version>-x64.msi`
   (source in `installer\`). Run it once with `-FetchWix` to download WiX (it needs a .NET

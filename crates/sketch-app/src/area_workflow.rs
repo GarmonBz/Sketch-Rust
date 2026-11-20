@@ -1042,7 +1042,7 @@ fn keyboard_select<'a>(
         .unwrap_or(Message::Noop);
     crate::event_tap::EventTap::new(content)
         .keyboard_action(id.to_string(), activate)
-        .focused_key(move |key, _| {
+        .focused_key(move |key, _physical, _mods| {
             use iced::keyboard::{key::Named, Key};
             let value = match key.as_ref() {
                 Key::Named(Named::ArrowDown | Named::ArrowRight) => forward.clone(),

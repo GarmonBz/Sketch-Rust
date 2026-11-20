@@ -53,9 +53,14 @@ impl iced::advanced::widget::operation::Focusable for KeyboardFocus {
     }
 }
 
-/// A shortcut handler: (key, modifiers) -> message, or None to ignore.
-type KeyHandler<'a, Message> =
-    Box<dyn Fn(&keyboard::Key, keyboard::Modifiers) -> Option<Message> + 'a>;
+/// A shortcut handler: (key, physical, modifiers) -> message, or None to ignore.
+///
+/// `physical` matches iced widgets (`text_editor` / `text_input`), which resolve
+/// Latin letters via [`keyboard::Key::to_latin`] so ⌘-chords still work when
+/// macOS omits `Key::Character`.
+type KeyHandler<'a, Message> = Box<
+    dyn Fn(&keyboard::Key, keyboard::key::Physical, keyboard::Modifiers) -> Option<Message> + 'a,
+>;
 
 impl<'a, Message, Theme, Renderer> EventTap<'a, Message, Theme, Renderer> {
     pub fn new(content: impl Into<Element<'a, Message, Theme, Renderer>>) -> Self {
@@ -125,7 +130,8 @@ impl<'a, Message, Theme, Renderer> EventTap<'a, Message, Theme, Renderer> {
     /// InputController.handleKeyDown ignores keys aimed at inputs).
     pub fn on_key(
         mut self,
-        f: impl Fn(&keyboard::Key, keyboard::Modifiers) -> Option<Message> + 'a,
+        f: impl Fn(&keyboard::Key, keyboard::key::Physical, keyboard::Modifiers) -> Option<Message>
+            + 'a,
     ) -> Self {
         self.on_key = Some(Box::new(f));
         self
@@ -134,7 +140,8 @@ impl<'a, Message, Theme, Renderer> EventTap<'a, Message, Theme, Renderer> {
     /// Key releases no widget captured (InputController.handleKeyUp).
     pub fn on_key_up(
         mut self,
-        f: impl Fn(&keyboard::Key, keyboard::Modifiers) -> Option<Message> + 'a,
+        f: impl Fn(&keyboard::Key, keyboard::key::Physical, keyboard::Modifiers) -> Option<Message>
+            + 'a,
     ) -> Self {
         self.on_key_up = Some(Box::new(f));
         self
@@ -153,7 +160,8 @@ impl<'a, Message, Theme, Renderer> EventTap<'a, Message, Theme, Renderer> {
     /// Modal navigation must be intercepted before focused fields consume it.
     pub fn capture_key(
         mut self,
-        f: impl Fn(&keyboard::Key, keyboard::Modifiers) -> Option<Message> + 'a,
+        f: impl Fn(&keyboard::Key, keyboard::key::Physical, keyboard::Modifiers) -> Option<Message>
+            + 'a,
     ) -> Self {
         self.capture_key = Some(Box::new(f));
         self
@@ -161,7 +169,8 @@ impl<'a, Message, Theme, Renderer> EventTap<'a, Message, Theme, Renderer> {
 
     pub fn focused_key(
         mut self,
-        f: impl Fn(&keyboard::Key, keyboard::Modifiers) -> Option<Message> + 'a,
+        f: impl Fn(&keyboard::Key, keyboard::key::Physical, keyboard::Modifiers) -> Option<Message>
+            + 'a,
     ) -> Self {
         self.focused_key = Some(Box::new(f));
         self
@@ -235,8 +244,18 @@ where
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
     ) {
-        if let Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) = event {
-            if let Some(message) = self.capture_key.as_ref().and_then(|f| f(key, *modifiers)) {
+        if let Event::Keyboard(keyboard::Event::KeyPressed {
+            key,
+            physical_key,
+            modifiers,
+            ..
+        }) = event
+        {
+            if let Some(message) = self
+                .capture_key
+                .as_ref()
+                .and_then(|f| f(key, *physical_key, *modifiers))
+            {
                 shell.publish(message);
                 shell.capture_event();
                 return;
@@ -251,9 +270,17 @@ where
                 state.0 = cursor.is_over(layout.bounds());
             }
             if state.0 {
-                if let Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) = event {
-                    if let Some(message) =
-                        self.focused_key.as_ref().and_then(|f| f(key, *modifiers))
+                if let Event::Keyboard(keyboard::Event::KeyPressed {
+                    key,
+                    physical_key,
+                    modifiers,
+                    ..
+                }) = event
+                {
+                    if let Some(message) = self
+                        .focused_key
+                        .as_ref()
+                        .and_then(|f| f(key, *physical_key, *modifiers))
                     {
                         shell.publish(message);
                         shell.capture_event();
@@ -360,20 +387,34 @@ where
             shell,
             viewport,
         );
-        if let (Some(f), Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. })) =
-            (&self.on_key, event)
+        if let (
+            Some(f),
+            Event::Keyboard(keyboard::Event::KeyPressed {
+                key,
+                physical_key,
+                modifiers,
+                ..
+            }),
+        ) = (&self.on_key, event)
         {
             if !shell.is_event_captured() {
-                if let Some(m) = f(key, *modifiers) {
+                if let Some(m) = f(key, *physical_key, *modifiers) {
                     shell.publish(m);
                 }
             }
         }
-        if let (Some(f), Event::Keyboard(keyboard::Event::KeyReleased { key, modifiers, .. })) =
-            (&self.on_key_up, event)
+        if let (
+            Some(f),
+            Event::Keyboard(keyboard::Event::KeyReleased {
+                key,
+                physical_key,
+                modifiers,
+                ..
+            }),
+        ) = (&self.on_key_up, event)
         {
             if !shell.is_event_captured() {
-                if let Some(m) = f(key, *modifiers) {
+                if let Some(m) = f(key, *physical_key, *modifiers) {
                     shell.publish(m);
                 }
             }
