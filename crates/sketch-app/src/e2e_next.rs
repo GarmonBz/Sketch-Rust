@@ -391,8 +391,12 @@ fn p4_pages_rename_search_undo_redo_and_export_work_at_all_sizes() {
 fn p5_tray_and_flyouts_enter_every_mode_and_follow_shortcuts_at_four_sizes() {
     let assert_tool = |steps: &[&str], extra: Vec<Message>, expected_mode: Mode, tool: TrayTool| {
         let mut h = harness_next_at(VIEWPORT);
-        if !steps.is_empty() {
-            h.script(steps);
+        for step in steps {
+            if let Err(failed) = h.step(step) {
+                let shot = h.screenshot_in("e2e-next", &format!("failed-tray-{tool:?}"));
+                panic!("instruction failed: {failed}; screenshot: {}", shot.display());
+            }
+            h.wait(15);
         }
         for msg in extra {
             h.send(msg);

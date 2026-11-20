@@ -1706,6 +1706,8 @@ pub fn icon_for(id: &str) -> Option<(&'static str, bool)> {
         // Insert
         "tool-pan" => ("arrows-out-cardinal", false),
         "tool-draw-interior" => ("square-split-vertical", false),
+        "tool-freeform" => ("pencil-simple", false),
+        "tool-erase" => ("eraser", false),
         "tool-room-shapes" => ("shapes", false),
         "shape-circle" => ("circle", false),
         // Image

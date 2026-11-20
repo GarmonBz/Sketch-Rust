@@ -170,7 +170,7 @@ impl TrayTool {
 pub fn floating_tray<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
     let mut strip = row![].spacing(4).align_y(Alignment::Center);
     for tool in TrayTool::ALL {
-        strip = strip.push(tray_tile(app, tool, d));
+        strip = strip.push(kit::isolate_operate(tray_tile(app, tool, d)));
     }
 
     let scroll = scrollable(strip).direction(scrollable::Direction::Horizontal(
@@ -192,7 +192,7 @@ pub fn floating_tray<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
 pub fn compact_bar<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
     let mut strip = row![].spacing(SPACE_1).align_y(Alignment::Center);
     for tool in TrayTool::ALL {
-        strip = strip.push(compact_pill(app, tool, d));
+        strip = strip.push(kit::isolate_operate(compact_pill(app, tool, d)));
     }
 
     let scroll = scrollable(strip)
