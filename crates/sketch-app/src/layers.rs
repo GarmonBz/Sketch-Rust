@@ -554,9 +554,18 @@ impl Layers {
 pub struct LayerGates {
     pub hidden: std::collections::HashSet<i64>,
     pub locked: std::collections::HashSet<i64>,
+    /// Paint rank of each wall and area: 0 paints first (the back), in the
+    /// order of the layers list (the first layer is the back, as in exports).
+    pub z: std::collections::HashMap<i64, usize>,
 }
 
 impl LayerGates {
+    /// Where the id paints in the stack (0 = the back); entities without a
+    /// recorded rank paint with the back.
+    pub fn z_of(&self, id: i64) -> usize {
+        self.z.get(&id).copied().unwrap_or(0)
+    }
+
     /// The id paints (its layer chain is visible).
     pub fn shows(&self, id: i64) -> bool {
         !self.hidden.contains(&id)

@@ -88,7 +88,7 @@ pub const TOPICS: &[Topic] = &[
             Points(&[
                 "Press P (or pick Select) and click a wall or area. The Inspector opens with Length, Line style, Thickness, Colour, and Remove.",
                 "Drag a corner to move it, or switch to Wall > Insert vertex (Insert) to add a corner along a wall.",
-                "Arrow keys nudge the selection; Delete removes it; Ctrl + Z undoes.",
+                "Arrow keys nudge the selection by the snap pitch (or 1 ft with snap off); Delete removes it; Ctrl + Z undoes.",
             ]),
         ],
     },

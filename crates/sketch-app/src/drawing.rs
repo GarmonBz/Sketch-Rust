@@ -855,7 +855,8 @@ impl Drawing {
     }
 
     /// `getDrawingTarget`: snap; while a chain is live, polar steps from the
-    /// anchor (5 degrees, whole grid lengths) unless an endpoint is near; an
+    /// anchor (the angle step setting, whole grid lengths; none when it is
+    /// Off) unless an endpoint is near; an
     /// endpoint within 16px always joins; the chain's start captures when it
     /// has 3+ points.
     pub fn drawing_target(&self, pt: Pt, ctx: DrawCtx) -> Pt {
@@ -865,8 +866,10 @@ impl Drawing {
             && ctx.kind.is_some()
             && self.structural_snap(pt, ctx).is_none()
         {
-            if let Some(last) = self.points.last() {
-                if let Some(polar) = self.geo.polar_snap(*last, pt, ctx.grid, 5.0) {
+            // The angle step is the user's setting; Off (0) leaves the angle free.
+            let angle_step = self.options.ortho_angle;
+            if let (Some(last), true) = (self.points.last(), angle_step > 0.0) {
+                if let Some(polar) = self.geo.polar_snap(*last, pt, ctx.grid, angle_step) {
                     target = polar;
                 }
             }
@@ -1712,6 +1715,39 @@ mod tests {
         d.pen_up();
         assert!(!d.is_active(1));
         assert_eq!(d.hud, Hud::default());
+    }
+
+    #[test]
+    fn the_angle_step_setting_decides_the_polar_snap() {
+        // A wall east from (-11,3), then the pointer swings to about 20 degrees
+        // up from the anchor at (-1,3). The snapped bearing follows the setting.
+        let bearing = |step: f64| {
+            let mut d = Drawing::default();
+            d.options.ortho_angle = step;
+            let c = ctx(WallType::Exterior);
+            for (x, y) in [(300.0, 300.0), (500.0, 300.0)] {
+                d.click(w(x, y), c);
+            }
+            d.hover(w(560.0, 255.0), c);
+            let last = *d.points.last().unwrap();
+            let target = d.drawing_target(w(560.0, 255.0), c);
+            let (dx, dy) = (target.x - last.x, target.y - last.y);
+            (dy.atan2(dx).to_degrees() * 100.0).round() / 100.0
+        };
+        let at_5 = bearing(5.0);
+        assert!((at_5 / 5.0 - (at_5 / 5.0).round()).abs() < 1e-6, "5 degree steps: {at_5}");
+        let at_45 = bearing(45.0);
+        assert!((at_45 / 45.0 - (at_45 / 45.0).round()).abs() < 1e-6, "45 degree steps: {at_45}");
+        let at_90 = bearing(90.0);
+        assert!((at_90 / 90.0 - (at_90 / 90.0).round()).abs() < 1e-6, "90 degree steps: {at_90}");
+        assert_ne!(at_5, at_45, "the setting changes the result");
+        // Off: the angle is whatever the pointer says, on the grid only.
+        let free = bearing(0.0);
+        assert!(
+            (free / 5.0 - (free / 5.0).round()).abs() > 1e-3
+                && (free / 45.0 - (free / 45.0).round()).abs() > 1e-3,
+            "Off must not snap the angle: {free}"
+        );
     }
 
     #[test]

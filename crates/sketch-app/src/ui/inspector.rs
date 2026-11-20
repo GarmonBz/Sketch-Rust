@@ -1053,6 +1053,15 @@ fn text_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
     .spacing(SPACE_1)
     .width(Length::Fill);
 
+    let apply_all_row = row![action_btn(
+        "text-aa",
+        "Apply to all labels",
+        false,
+        Some(Message::ApplyTextStyleToAll),
+        d,
+    )]
+    .width(Length::Fill);
+
     let color_row = row![
         text("Colour")
             .font(BARLOW_MEDIUM)
@@ -1093,6 +1102,7 @@ fn text_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
         size_row,
         style_row,
         color_row,
+        apply_all_row,
         label_caption("Rotate"),
         rotate_row,
     ]

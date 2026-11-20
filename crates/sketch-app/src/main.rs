@@ -329,6 +329,9 @@ pub enum Message {
     OpeningWider,
     /// Screen 8: narrow the selected openings.
     OpeningNarrower,
+    /// Copy the selected label's font, size, colour and bold / italic /
+    /// underline to every label of its kind (free text labels, or area labels).
+    ApplyTextStyleToAll,
     SetSelectedTextStyle(String, String),
     ToggleSelectedTextStyle(String),
     AdjustSelectedTextSize(i32),
@@ -4773,6 +4776,10 @@ impl App {
                 self.sync_canvas();
                 Task::none()
             }
+            Message::ApplyTextStyleToAll => {
+                self.apply_text_style_to_all();
+                Task::none()
+            }
             Message::SetSelectedTextStyle(k, v) => {
                 self.set_selected_text_style(&k, v);
                 Task::none()
@@ -5280,7 +5287,11 @@ impl App {
                         if !additive {
                             self.selection.clear();
                         }
-                        self.selection.texts.insert(id);
+                        if additive && self.selection.texts.contains(&id) {
+                            self.selection.texts.remove(&id);
+                        } else {
+                            self.selection.texts.insert(id);
+                        }
                         self.sync_edit_tools();
                         return Task::none();
                     }
@@ -5304,7 +5315,11 @@ impl App {
                         if !additive {
                             self.selection.clear();
                         }
-                        self.selection.symbols.insert(id);
+                        if additive && self.selection.symbols.contains(&id) {
+                            self.selection.symbols.remove(&id);
+                        } else {
+                            self.selection.symbols.insert(id);
+                        }
                     } else if let Some(id) = self.dimension_hit_at(world) {
                         // A measurement label: Ctrl / Select more toggles it.
                         if !additive {
@@ -5886,6 +5901,55 @@ impl App {
         self.sync_canvas();
     }
 
+    /// One `Text Style` step that gives every label of the selected kind the
+    /// style of the selected one: all free text labels, or all area labels.
+    fn apply_text_style_to_all(&mut self) {
+        if let Some(src) = self
+            .drawing
+            .texts
+            .iter()
+            .find(|t| self.selection.texts.contains(&t.id))
+            .cloned()
+        {
+            self.push_undo("Text Style");
+            for t in &mut self.drawing.texts {
+                t.font_family = src.font_family.clone();
+                t.font_size = src.font_size;
+                t.color = src.color.clone();
+                t.bold = src.bold;
+                t.italic = src.italic;
+                t.underline = src.underline;
+            }
+        } else if let Some(src) = self
+            .drawing
+            .polygons
+            .iter()
+            .find(|p| {
+                self.selection.area_labels.contains(&p.id)
+                    || self.selection.area_sizes.contains(&p.id)
+            })
+            .cloned()
+        {
+            // What the button shows for Bold: the label's first line is bold
+            // until set either way.
+            let bold = src.label_bold.unwrap_or(
+                self.drawing.options.auto_post_bold || self.selection.area_labels.contains(&src.id),
+            );
+            self.push_undo("Text Style");
+            for poly in &mut self.drawing.polygons {
+                poly.label_font_family = src.label_font_family.clone();
+                poly.label_font_size = src.label_font_size;
+                poly.label_color = src.label_color.clone();
+                poly.label_bold = Some(bold);
+                poly.label_italic = src.label_italic;
+                poly.label_underline = src.label_underline;
+            }
+        } else {
+            return;
+        }
+        self.sync_canvas();
+    }
+
     /// `toggleSelectedTextStyle(property)`: on unless everything selected
     /// already has it.
     fn toggle_selected_text_style(&mut self, key: &str) {
@@ -6207,6 +6271,7 @@ impl App {
             K::Nudge(dx, dy) => {
                 // `moveSelected(dx, dy)` then `finalizeSelectionMove`.
                 self.push_undo("Move");
+                let (dx, dy) = self.nudge_step(dx, dy);
                 self.move_selection(dx, dy);
                 let created = self.drawing.close_loops(self.view.zoom);
                 self.sync_canvas();
@@ -6622,12 +6687,16 @@ impl App {
     fn layer_gates(&self) -> crate::layers::LayerGates {
         let mut gates = crate::layers::LayerGates::default();
         let default_id = self.layers.default_layer_id();
+        // Layers paint in list order, the first at the back (as in exports).
+        let order = self.layers.flatten_layer_order();
+        let rank_of = |lid: &str| order.iter().position(|l| l.id == lid).unwrap_or(0);
         for line in &self.drawing.lines {
             let lid = line
                 .layer_id
                 .as_deref()
                 .filter(|id| self.layers.layer(id).is_some())
                 .unwrap_or(&default_id);
+            gates.z.insert(line.id, rank_of(lid));
             if !self.layers.layer_visible(lid) {
                 gates.hidden.insert(line.id);
             }
@@ -6641,6 +6710,7 @@ impl App {
                 .as_deref()
                 .filter(|id| self.layers.layer(id).is_some())
                 .unwrap_or(&default_id);
+            gates.z.insert(poly.id, rank_of(lid));
             if !self.layers.layer_visible(lid) {
                 gates.hidden.insert(poly.id);
             }
@@ -7008,6 +7078,23 @@ impl App {
             }
         }
         Task::none()
+    }
+
+    /// The arrow-key step in feet. With snap on, one press moves by the snap
+    /// pitch (Shift: ten pitches); with snap off it stays 1 ft (Shift: 0.1 ft).
+    /// `dx` and `dy` arrive as plus or minus 1.0, or 0.1 with Shift.
+    fn nudge_step(&self, dx: f64, dy: f64) -> (f64, f64) {
+        let Some(pitch) = self.view.edit_grid().filter(|p| *p > 0.0) else {
+            return (dx, dy);
+        };
+        let scale = |d: f64| {
+            if d.abs() >= 1.0 {
+                d.signum() * pitch
+            } else {
+                d.signum() * pitch * 10.0
+            }
+        };
+        (scale(dx), scale(dy))
     }
 
     /// `hasSelection()` (sketch-app.js:1682).

@@ -581,8 +581,8 @@ pub fn draw_clean(frame: &mut Frame, scene: &Scene, layers: &[crate::layers::Lay
             gates,
             ..scene.clone()
         };
-        draw_areas(frame, &layer);
-        draw_lines(frame, &layer);
+        draw_areas(frame, &layer, None);
+        draw_lines(frame, &layer, None);
         if scene.filters[4] {
             draw_texts(frame, &layer);
         }
@@ -603,8 +603,9 @@ fn dimension_font(opts: &crate::options::Options) -> Font {
 }
 
 /// `drawLines(layerId)` — unselected walls, no wall solids (off by default).
-fn draw_lines(frame: &mut Frame, scene: &Scene) {
+fn draw_lines(frame: &mut Frame, scene: &Scene, only_rank: Option<usize>) {
     let d = scene.drawing;
+    let in_rank = |id: i64| only_rank.is_none_or(|rank| scene.gates.z_of(id) == rank);
     let boundary_colors = area_boundary_colors(d, scene.area_codes, scene.gates);
     let ink = |line: &SketchLine| wall_ink(d, line, boundary_colors.get(&line.id).copied());
     // Chain coverage: walls a dimension chain covers skip their own labels
@@ -635,6 +636,9 @@ fn draw_lines(frame: &mut Frame, scene: &Scene) {
                 let Some(line) = d.lines.iter().find(|l| l.id == solid.line_id) else {
                     continue;
                 };
+                if !in_rank(line.id) {
+                    continue;
+                }
                 // A hidden layer's walls do not paint (canvas-engine.js:1527).
                 if !scene.gates.shows(line.id) {
                     continue;
@@ -667,7 +671,7 @@ fn draw_lines(frame: &mut Frame, scene: &Scene) {
             // openings are not cut in bowed walls, the original's v1 limit).
             for line in &d.lines {
                 let bowed = line.bow_angle != 0.0 && line.bow_angle.abs() > 0.5;
-                if !bowed || (line.kind == WallType::Interior) != interior_pass {
+                if !bowed || (line.kind == WallType::Interior) != interior_pass || !in_rank(line.id) {
                     continue;
                 }
                 if !scene.gates.shows(line.id) {
@@ -687,6 +691,9 @@ fn draw_lines(frame: &mut Frame, scene: &Scene) {
         }
     }
     for line in &d.lines {
+        if !in_rank(line.id) {
+            continue;
+        }
         let ext = line.kind == WallType::Exterior;
         if !scene.filters[if ext { 1 } else { 2 }] {
             continue;
@@ -1483,6 +1490,23 @@ pub(crate) fn automatic_text_ink() -> Color {
     }
 }
 
+/// A label colour chosen for another canvas, made readable on this one: black
+/// or near-black ink on the Dark and Blue canvases turns to the canvas's
+/// automatic (light) ink, and white or near-white ink on the Light canvas turns
+/// to its dark ink. Every other colour is left as the user set it.
+pub(crate) fn readable_on_canvas(color: Color) -> Color {
+    let luma = 0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b;
+    let light_canvas = crate::canvas_theme::current() == crate::canvas_theme::CanvasTheme::Light;
+    if (!light_canvas && luma < 0.25) || (light_canvas && luma > 0.85) {
+        Color {
+            a: color.a,
+            ..automatic_text_ink()
+        }
+    } else {
+        color
+    }
+}
+
 /// `rgba(r, g, b, a)` / `#rrggbb` -> a colour (the area-code table stores
 /// both forms).
 pub(crate) fn parse_css_color(s: &str) -> Option<Color> {
@@ -1611,7 +1635,7 @@ fn point_in_ring(ring: &[Point], x: f32, y: f32) -> bool {
 /// outline, and a selected area's highlight. UND areas stay plain wall
 /// linework until picked. Then the auto-post label and size
 /// (`getAreaLabelGroups`).
-fn draw_areas(frame: &mut Frame, scene: &Scene) {
+fn draw_areas(frame: &mut Frame, scene: &Scene, only_rank: Option<usize>) {
     if !scene.filters[0] {
         return;
     }
@@ -1619,6 +1643,9 @@ fn draw_areas(frame: &mut Frame, scene: &Scene) {
     let (vw, vh) = (frame.width(), frame.height());
     for poly in &d.polygons {
         if poly.points.len() < 3 || !scene.gates.shows(poly.id) {
+            continue;
+        }
+        if only_rank.is_some_and(|rank| scene.gates.z_of(poly.id) != rank) {
             continue;
         }
         let selected = scene.selection.is_poly_selected(poly.id);
@@ -1779,6 +1806,7 @@ fn draw_area_labels(frame: &mut Frame, scene: &Scene, poly: &sketch_core::model:
             .color
             .as_deref()
             .and_then(parse_css_color)
+            .map(readable_on_canvas)
             .unwrap_or_else(dim_label);
         let family = crate::handles::block_family(d, block);
         let italic = crate::handles::block_italic(d, block);
@@ -1846,7 +1874,9 @@ fn draw_texts(frame: &mut Frame, scene: &Scene) {
         let color = if automatic {
             automatic_text_ink()
         } else {
-            crate::render::parse_hex(&t.color).unwrap_or(automatic_text_ink())
+            readable_on_canvas(
+                crate::render::parse_hex(&t.color).unwrap_or(automatic_text_ink()),
+            )
         };
         let font = crate::theme::font_named(&t.font_family, t.bold, t.italic);
         // No text metrics inside a canvas draw: ~0.52em a glyph (0.57 bold).
@@ -2361,8 +2391,20 @@ pub fn draw_scene_base(frame: &mut Frame, scene: &Scene) {
     draw_bg_image(frame, scene);
     // `drawPolygons` (fills, outlines, the auto-post labels) is gated on the
     // Area fills filter and sits under the walls.
-    draw_areas(frame, scene);
-    draw_lines(frame, scene);
+    // Layer by layer, the back one first, so one layer's walls never cover
+    // the areas of a layer above it.
+    let mut ranks: Vec<usize> = scene.gates.z.values().copied().collect();
+    ranks.sort_unstable();
+    ranks.dedup();
+    if ranks.len() <= 1 {
+        draw_areas(frame, scene, None);
+        draw_lines(frame, scene, None);
+    } else {
+        for rank in ranks {
+            draw_areas(frame, scene, Some(rank));
+            draw_lines(frame, scene, Some(rank));
+        }
+    }
 }
 
 /// Keep live guides, previews and the pointer outside the floorplan cache.
@@ -2420,6 +2462,29 @@ pub fn draw_scene_overlay(frame: &mut Frame, scene: &Scene, w: f32, h: f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn black_label_ink_turns_light_on_dark_canvases_and_back() {
+        use crate::canvas_theme::{self, CanvasTheme};
+        let was = canvas_theme::current();
+        let black = Color::from_rgb(0.0, 0.0, 0.0);
+        let slate = crate::theme::hex(0x1f2937);
+        let red = crate::theme::hex(0xdc2626);
+        let white = Color::WHITE;
+        canvas_theme::set(CanvasTheme::Light);
+        assert_eq!(readable_on_canvas(black), black, "black stays on white");
+        assert_eq!(readable_on_canvas(red), red);
+        assert_ne!(readable_on_canvas(white), white, "white would vanish on white");
+        for theme in [CanvasTheme::Dark, CanvasTheme::Blue] {
+            canvas_theme::set(theme);
+            for dark in [black, slate] {
+                assert_eq!(readable_on_canvas(dark), automatic_text_ink(), "{theme:?}");
+            }
+            assert_eq!(readable_on_canvas(red), red, "a coloured label keeps its colour");
+            assert_eq!(readable_on_canvas(white), white);
+        }
+        canvas_theme::set(was);
+    }
 
     #[test]
     fn symbols_invert_on_dark_and_blue_canvases() {

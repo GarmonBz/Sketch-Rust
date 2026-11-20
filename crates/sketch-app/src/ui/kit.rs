@@ -257,6 +257,42 @@ pub fn icon_button<'a>(
     icon_button_with(icon_name, active, false, on_press, density)
 }
 
+/// A toggle drawn as one icon that is bright while `lit` and greyed out while
+/// not, with no highlight box: the eye and the lock of a layer row. It always
+/// has the same size, so the controls around it never move.
+pub fn lit_icon_button<'a>(
+    icon_name: &str,
+    lit: bool,
+    on_press: Option<Message>,
+    density: Density,
+) -> Element<'a, Message> {
+    let fg = if lit { tokens::text() } else { tokens::disabled() };
+    let size = density.min_target();
+    let spec = SurfaceSpec {
+        bg: Color::TRANSPARENT,
+        hover_bg: tokens::hover(),
+        pressed_bg: tokens::pressed(),
+        disabled_bg: Color::TRANSPARENT,
+        fg,
+        disabled_fg: tokens::disabled(),
+        border: None,
+        radius: RADIUS_CONTROL,
+    };
+    let mut btn = button(
+        container(icons::mono(icon_name, density.icon_size(), fg))
+            .width(Length::Fixed(size))
+            .height(Length::Fixed(size))
+            .align_x(Alignment::Center)
+            .align_y(Alignment::Center),
+    )
+    .padding(0)
+    .style(move |_, status| apply_surface_style(spec, false, status));
+    if let Some(msg) = on_press {
+        btn = btn.on_press(msg);
+    }
+    btn.into()
+}
+
 /// Monochrome icon button with `active` and keyboard `focused` states.
 pub fn icon_button_with<'a>(
     icon_name: &str,

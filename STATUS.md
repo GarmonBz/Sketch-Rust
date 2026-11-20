@@ -1,5 +1,12 @@
 # Sketch Rust — STATUS ledger
 
+0.3.5 layer-row eye, lock and menu always visible; Apply to all labels;
+readable label ink on dark canvases; Ctrl+click toggle; angle snap and arrow
+nudge follow the snap settings; layers paint in list order.
+
+0.3.4 shows the Open and Save dialogs from a separate thread to stop them
+hanging on "Working on it..." (seen in Downloads).
+
 0.3.3 adds a grab handle to each Areas and layers row, lets an explicit Bold
 choice override the first-line-bold default on area labels (renderer, inspector
 button and exports), removes Sketchie draft 0.1 support (0.2 only, which also

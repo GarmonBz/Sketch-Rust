@@ -848,22 +848,18 @@ fn layer_row<'a>(app: &'a App, r: &LayerRow, kind: RowKind, d: Density) -> Eleme
     ]
     .width(Length::Fill);
 
-    // The eye is always there; lock and the menu appear on hover, selection,
-    // a lock, an open menu, and always on touch screens (no hover there).
-    // (Narrow panels and touch rows have no room for all three at once, so a
-    // touch row keeps the eye and the menu, whose Lock entry does the rest.)
-    let show_lock = hovered || r.locked || menu_open;
-    let show_menu = touch || hovered || menu_open;
-    let mut tools = row![kit::icon_button(
-        if r.visible { "eye" } else { "eye-slash" },
-        !r.visible,
-        Some(Message::LayerToggleVisible(id.to_owned())),
-        d,
-    )]
-    .spacing(2)
-    .align_y(Alignment::Center);
-    if show_lock {
-        tools = tools.push(kit::icon_button(
+    // The eye, the lock and the menu are always there, in the same places, so
+    // hiding or locking is one click and nothing shifts when the pointer
+    // arrives. The eye and the lock are bright when on (shown, locked) and
+    // greyed out when off.
+    let tools = row![
+        kit::lit_icon_button(
+            "eye",
+            r.visible,
+            Some(Message::LayerToggleVisible(id.to_owned())),
+            d,
+        ),
+        kit::lit_icon_button(
             if r.locked {
                 "lock-simple"
             } else {
@@ -872,16 +868,16 @@ fn layer_row<'a>(app: &'a App, r: &LayerRow, kind: RowKind, d: Density) -> Eleme
             r.locked,
             Some(Message::LayerToggleLocked(id.to_owned())),
             d,
-        ));
-    }
-    if show_menu {
-        tools = tools.push(kit::icon_button(
+        ),
+        kit::icon_button(
             "dots-three",
             menu_open,
             Some(Message::LayerRowMenu(id.to_owned())),
             d,
-        ));
-    }
+        ),
+    ]
+    .spacing(0)
+    .align_y(Alignment::Center);
 
     // The grip: a narrow handle at the far left that starts the same drag the
     // row body does (a wider target on touch screens). It lights up with the

@@ -186,19 +186,44 @@ pub fn activation_stream(path: &std::path::PathBuf) -> impl iced::futures::Strea
 // has to replace this block (Android: the Storage Access Framework).
 // ---------------------------------------------------------------------------
 
+/// Runs a blocking native dialog on a thread of its own and waits for it.
+///
+/// Shown from the interface thread, Windows' file dialog shares that thread
+/// with the window's own message handling and can sit on "Working on it..."
+/// while it reads a folder (Downloads, in particular). On a fresh thread the
+/// dialog gets its own message loop and COM apartment, the way it has in a
+/// program that does nothing else.
+fn on_dialog_thread<T: Send + 'static>(show: impl FnOnce() -> Option<T> + Send + 'static) -> Option<T> {
+    std::thread::Builder::new()
+        .name("file-dialog".into())
+        .spawn(show)
+        .ok()?
+        .join()
+        .ok()
+        .flatten()
+}
+
 /// Ask for one existing file whose extension is in `extensions`.
 pub fn pick_file(filter: &str, extensions: &[&str]) -> Option<std::path::PathBuf> {
-    rfd::FileDialog::new()
-        .add_filter(filter, extensions)
-        .pick_file()
+    let filter = filter.to_owned();
+    let extensions: Vec<String> = extensions.iter().map(|e| (*e).to_owned()).collect();
+    on_dialog_thread(move || {
+        rfd::FileDialog::new()
+            .add_filter(filter, &extensions)
+            .pick_file()
+    })
 }
 
 /// Ask for one or more existing files.
 #[cfg_attr(test, allow(dead_code))]
 pub fn pick_files(filter: &str, extensions: &[&str]) -> Option<Vec<std::path::PathBuf>> {
-    rfd::FileDialog::new()
-        .add_filter(filter, extensions)
-        .pick_files()
+    let filter = filter.to_owned();
+    let extensions: Vec<String> = extensions.iter().map(|e| (*e).to_owned()).collect();
+    on_dialog_thread(move || {
+        rfd::FileDialog::new()
+            .add_filter(filter, &extensions)
+            .pick_files()
+    })
 }
 
 /// Ask where to save, offering `default_name`.
@@ -207,21 +232,33 @@ pub fn save_file(
     extensions: &[&str],
     default_name: impl Into<String>,
 ) -> Option<std::path::PathBuf> {
-    rfd::FileDialog::new()
-        .add_filter(filter, extensions)
-        .set_file_name(default_name)
-        .save_file()
+    let filter = filter.to_owned();
+    let extensions: Vec<String> = extensions.iter().map(|e| (*e).to_owned()).collect();
+    let default_name = default_name.into();
+    on_dialog_thread(move || {
+        rfd::FileDialog::new()
+            .add_filter(filter, &extensions)
+            .set_file_name(default_name)
+            .save_file()
+    })
 }
 
 /// Ask where to save, offering one `(name, extension)` filter per format in
 /// the order given.
 #[cfg_attr(test, allow(dead_code))]
 pub fn save_file_as(default_name: &str, filters: &[(&str, &str)]) -> Option<std::path::PathBuf> {
-    let mut dialog = rfd::FileDialog::new().set_file_name(default_name);
-    for (name, ext) in filters {
-        dialog = dialog.add_filter(*name, &[*ext]);
-    }
-    dialog.save_file()
+    let default_name = default_name.to_owned();
+    let filters: Vec<(String, String)> = filters
+        .iter()
+        .map(|(name, ext)| ((*name).to_owned(), (*ext).to_owned()))
+        .collect();
+    on_dialog_thread(move || {
+        let mut dialog = rfd::FileDialog::new().set_file_name(default_name);
+        for (name, ext) in &filters {
+            dialog = dialog.add_filter(name, &[ext.as_str()]);
+        }
+        dialog.save_file()
+    })
 }
 
 /// `pick_file` without blocking the interface thread.

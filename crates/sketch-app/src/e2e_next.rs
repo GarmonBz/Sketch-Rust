@@ -797,6 +797,107 @@ fn dragging_a_rows_grip_over_another_row_moves_it_there() {
     assert!(pos(&area) < pos("layer-1"), "{order:?}");
 }
 
+/// Two "Kitchen" labels placed on an empty sketch, and their positions on
+/// the canvas.
+macro_rules! two_labels {
+    ($h:ident) => {
+        let mut $h = harness_next_at(VIEWPORT);
+        for x in [500.0_f32, 760.0] {
+            $h.send(Message::Dock(crate::dock::DockMsg::TextPick("Kitchen".into())));
+            $h.script(&[&format!("click ({x:.1}, 430.0)")]);
+            $h.wait(450);
+        }
+    };
+}
+
+fn two_label_spots() -> [(f32, f32); 2] {
+    two_labels!(h);
+    let app = state(h);
+    assert_eq!(app.drawing.texts.len(), 2);
+    let spot = |i: usize| {
+        let t = &app.drawing.texts[i];
+        let (x, y) = app.view.to_screen(crate::view_state::World { x: t.x, y: t.y });
+        (x as f32, y as f32)
+    };
+    [spot(0), spot(1)]
+}
+
+#[test]
+fn ctrl_click_adds_and_removes_labels_from_the_selection() {
+    let [a, b] = two_label_spots();
+    two_labels!(h);
+    macro_rules! click {
+        ($h:ident, $at:expr, $ctrl:expr) => {
+            $h.send(Message::CanvasClick { x: $at.0, y: $at.1, double: false, ctrl: $ctrl });
+        };
+    }
+    click!(h, a, false);
+    click!(h, b, true);
+    let both = state(h).selection.texts.len();
+    assert_eq!(both, 2, "Ctrl+click adds the second label");
+
+    two_labels!(h);
+    click!(h, a, false);
+    click!(h, b, true);
+    click!(h, b, true);
+    let app = state(h);
+    assert_eq!(app.selection.texts.len(), 1, "Ctrl+click on a selected label removes it");
+
+    two_labels!(h);
+    click!(h, a, false);
+    click!(h, b, false);
+    assert_eq!(state(h).selection.texts.len(), 1, "a plain click replaces the selection");
+}
+
+#[test]
+fn apply_to_all_labels_gives_every_label_the_selected_ones_style() {
+    let [a, _] = two_label_spots();
+    two_labels!(h);
+    h.send(Message::CanvasClick { x: a.0, y: a.1, double: false, ctrl: false });
+    h.send(Message::ToggleSelectedTextStyle("bold".into()));
+    h.send(Message::AdjustSelectedTextSize(4));
+    h.send(Message::SetSelectedTextStyle("color".into(), "#dc2626".into()));
+    h.send(Message::ApplyTextStyleToAll);
+    let app = state(h);
+    assert_eq!(app.drawing.texts.len(), 2);
+    let first = app.drawing.texts[0].clone();
+    assert!(first.bold && first.font_size > 12.0, "the selected label was styled");
+    for t in &app.drawing.texts {
+        assert_eq!(t.bold, first.bold);
+        assert_eq!(t.font_size, first.font_size);
+        assert_eq!(t.color, first.color);
+        assert_eq!(t.italic, first.italic);
+    }
+}
+
+#[test]
+fn arrow_keys_nudge_by_the_snap_pitch() {
+    let moved = |pitch: Option<(&'static str, f64)>, snap: bool, shift_step: f64| {
+        let mut h = harness_next_at(VIEWPORT);
+        draw_closed_square(&mut h);
+        let before = {
+            let mut p = harness_next_at(VIEWPORT);
+            draw_closed_square(&mut p);
+            state(p).drawing.lines[0].start.x
+        };
+        if let Some((label, value)) = pitch {
+            h.send(Message::Status(StatusMsg::Pitch(crate::statusbar::PitchOption { label, value })));
+        }
+        if !snap {
+            h.send(Message::Status(StatusMsg::ToggleSnap));
+        }
+        h.send(Message::SelectAll);
+        h.send(Message::Key(KeyCmd::Nudge(shift_step, 0.0)));
+        state(h).drawing.lines[0].start.x - before
+    };
+    let inch = 1.0 / 12.0;
+    assert!((moved(Some(("1\"", inch)), true, 1.0) - inch).abs() < 1e-9, "one 1-inch pitch");
+    assert!((moved(Some(("1/2'", 0.5)), true, 1.0) - 0.5).abs() < 1e-9, "one half-foot pitch");
+    assert!((moved(Some(("1\"", inch)), true, -1.0) + inch).abs() < 1e-9, "left");
+    assert!((moved(Some(("1\"", inch)), true, 0.1) - 10.0 * inch).abs() < 1e-9, "Shift is ten pitches");
+    assert!((moved(None, false, 1.0) - 1.0).abs() < 1e-9, "snap off keeps the 1 ft step");
+}
+
 #[test]
 fn deleting_a_folder_keeps_the_areas_that_were_in_it() {
     let (area, folder, _) = tree_ids();

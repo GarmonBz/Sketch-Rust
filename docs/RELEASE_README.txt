@@ -1,4 +1,14 @@
-Sketch Rust 0.3.3 - Windows x64
+Sketch Rust 0.3.5 - Windows x64
+
+0.3.5 adds one-click eye, lock and menu on every layer row (the eye greys out
+when a layer is hidden), an Apply to all labels button, dark label text that
+turns light on Dark and Blue canvases, Ctrl+click toggling of labels and
+symbols, an angle snap that follows its setting, arrow keys that nudge by the
+snap pitch, and layers that paint in list order so walls no longer cover the
+areas of layers above them.
+
+0.3.4 opens the Open and Save dialogs on a thread of their own, so they no
+longer hang on "Working on it..." in the Downloads folder.
 
 0.3.3 adds a grab handle to every row of the Areas and layers list for dragging,
 makes Bold work on area labels (the name starts bold and the button turns it off
