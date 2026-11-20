@@ -554,6 +554,13 @@ impl Drawing {
             // `options.autoSubtractOverlapped === false` -> 'never'.
             auto_subtract: self.options.auto_subtract_overlapped,
         };
+        // An area opened by deleting a wall comes back as soon as walls are
+        // drawn again between the same points, whatever touches its sides.
+        let reclosed = crate::area_repair::restore_by_walls(
+            &mut self.lines,
+            &mut self.polygons,
+            &mut self.reopened_areas,
+        );
         // The core port follows JS: its counter is the last allocated ID.
         // Drawing stores the next unused ID; translate at this boundary so
         // the next wall cannot reuse an area ID allocated during closure.
@@ -572,6 +579,7 @@ impl Drawing {
             &mut self.reopened_areas,
         );
         created
+            + reclosed.len()
             + restored
                 .iter()
                 .filter(|id| already_created.contains(id))

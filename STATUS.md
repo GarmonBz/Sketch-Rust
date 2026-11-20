@@ -1,5 +1,8 @@
 # Sketch Rust — STATUS ledger
 
+0.3.6 re-closes an area opened by deleting a wall from its own record; the
+Areas list shows and deletes any layer or area; layer export removed.
+
 0.3.5 layer-row eye, lock and menu always visible; Apply to all labels;
 readable label ink on dark canvases; Ctrl+click toggle; angle snap and arrow
 nudge follow the snap settings; layers paint in list order.

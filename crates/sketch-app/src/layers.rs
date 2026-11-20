@@ -93,26 +93,6 @@ pub enum DragPos {
     Inside,
 }
 
-/// `getAreaLayersForCurrentPage`'s filter inputs (sketch-app.js:1211): the
-/// live page's polygon ids and the layers those polygons point at.
-#[derive(Debug, Clone, Default)]
-pub struct AreaLayerFilter {
-    pub poly_ids: std::collections::HashSet<String>,
-    pub layer_ids: std::collections::HashSet<String>,
-}
-
-impl AreaLayerFilter {
-    /// A layer shows when its `areaPolyId` names a live polygon on the page
-    /// and that polygon still points back at the layer.
-    pub fn keeps(&self, layer: &Layer) -> bool {
-        layer
-            .area_poly_id
-            .as_deref()
-            .is_some_and(|aid| self.poly_ids.contains(aid))
-            && self.layer_ids.contains(&layer.id)
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct Layers {
     pub items: Vec<Layer>,

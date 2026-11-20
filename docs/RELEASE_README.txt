@@ -1,4 +1,9 @@
-Sketch Rust 0.3.5 - Windows x64
+Sketch Rust 0.3.6 - Windows x64
+
+0.3.6 brings an area back when you redraw a wall you deleted from it, even next
+to neighbouring areas (it failed on areas whose walls other areas touch). The
+Areas list now shows every layer and can delete areas and layers from a row
+menu; single-layer export is removed from that menu.
 
 0.3.5 adds one-click eye, lock and menu on every layer row (the eye greys out
 when a layer is hidden), an Apply to all labels button, dark label text that

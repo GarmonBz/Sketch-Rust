@@ -899,6 +899,54 @@ fn arrow_keys_nudge_by_the_snap_pitch() {
 }
 
 #[test]
+fn the_areas_list_deletes_areas_and_layers_and_offers_no_layer_export() {
+    let (area, _, _) = tree_ids();
+    // The row menu: Delete area, and no Export any more.
+    tree_harness!(h);
+    h.send(Message::LayerRowMenu(area.clone()));
+    assert!(h.shows("Delete area"));
+    assert!(!h.shows("Export"), "single-layer export is gone");
+
+    // Delete area: the area, its walls and its layer all go.
+    tree_harness!(h);
+    h.send(Message::LayerDelete(area.clone()));
+    let app = state(h);
+    assert!(app.drawing.polygons.is_empty());
+    assert!(app.drawing.lines.is_empty(), "its walls go with it");
+    assert!(app.layers.layer(&area).is_none(), "and so does its layer");
+
+    // A plain layer goes too; the area on another layer is untouched.
+    tree_harness!(h);
+    h.send(Message::LayerDelete("layer-1".into()));
+    let app = state(h);
+    assert!(app.layers.layer("layer-1").is_none());
+    assert_eq!(app.drawing.polygons.len(), 1);
+
+    // The last plain layer is kept.
+    tree_harness!(h);
+    h.send(Message::LayerDelete(area.clone()));
+    h.send(Message::LayerDelete("layer-1".into()));
+    assert!(state(h).layers.layer("layer-1").is_some(), "keep at least one layer");
+}
+
+#[test]
+fn a_reopened_areas_leftover_layer_is_listed_and_can_be_deleted() {
+    let ((mx, my), _) = drawn_square_wall_point(VIEWPORT.width, VIEWPORT.height, 0.5);
+    let (area, _, _) = tree_ids();
+    tree_harness!(h);
+    h.send(Message::Key(KeyCmd::Select));
+    h.send(Message::CanvasClick { x: mx, y: my, double: false, ctrl: false });
+    h.send(Message::Delete);
+    h.send(Message::Dialog(DialogMsg::Ok));
+    // The area is open now; its layer still holds the three walls left.
+    h.send(Message::LayerDelete(area.clone()));
+    let app = state(h);
+    assert!(app.layers.layer(&area).is_none(), "the leftover layer is deleted");
+    assert!(app.drawing.lines.is_empty(), "with the walls on it");
+    assert!(app.drawing.reopened_areas.is_empty(), "and its open-area record");
+}
+
+#[test]
 fn deleting_a_folder_keeps_the_areas_that_were_in_it() {
     let (area, folder, _) = tree_ids();
     tree_harness!(h);
@@ -3828,3 +3876,45 @@ fn dark_palette_on_dark_drawing_background_screenshots() {
         assert!(h.screenshot_in("e2e-next", name).exists());
     }
 }
+
+#[test]
+fn deleting_a_wall_of_a_closed_area_and_redrawing_it_closes_the_area_again() {
+    let ((sx, sy), _) = drawn_square_wall_point(VIEWPORT.width, VIEWPORT.height, 0.0);
+    let ((ex, ey), _) = drawn_square_wall_point(VIEWPORT.width, VIEWPORT.height, 1.0);
+    let ((mx, my), _) = drawn_square_wall_point(VIEWPORT.width, VIEWPORT.height, 0.5);
+    let mut h = harness_next_at(VIEWPORT);
+    draw_closed_square(&mut h);
+    h.send(Message::Key(KeyCmd::Select));
+    h.send(Message::CanvasClick { x: mx, y: my, double: false, ctrl: false });
+    h.send(Message::Delete);
+    h.send(Message::Dialog(DialogMsg::Ok));
+    let app = state(h);
+    println!(
+        "after delete: lines={} polys={} reopened={}",
+        app.drawing.lines.len(),
+        app.drawing.polygons.len(),
+        app.drawing.reopened_areas.len()
+    );
+    assert_eq!(app.drawing.lines.len(), 3, "only the selected wall goes");
+
+    let mut h = harness_next_at(VIEWPORT);
+    draw_closed_square(&mut h);
+    h.send(Message::Key(KeyCmd::Select));
+    h.send(Message::CanvasClick { x: mx, y: my, double: false, ctrl: false });
+    h.send(Message::Delete);
+    h.send(Message::Dialog(DialogMsg::Ok));
+    h.send(Message::Key(KeyCmd::DrawExterior));
+    h.send(Message::CanvasClick { x: sx, y: sy, double: false, ctrl: false });
+    h.send(Message::CanvasClick { x: ex, y: ey, double: false, ctrl: false });
+    let app = state(h);
+    println!(
+        "after redraw: lines={} polys={} pen_down={} reopened={}",
+        app.drawing.lines.len(),
+        app.drawing.polygons.len(),
+        app.drawing.pen_down,
+        app.drawing.reopened_areas.len()
+    );
+    assert_eq!(app.drawing.lines.len(), 4);
+    assert_eq!(app.drawing.polygons.len(), 1, "the redrawn wall closes the area again");
+}
+

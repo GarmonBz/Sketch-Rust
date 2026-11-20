@@ -347,11 +347,9 @@ fn drawn_view<'a>(app: &'a App, model: &calcs::Calcs, d: Density) -> Element<'a,
     }
 
     let areas = area_rows_by_id(app, model);
-    let filter = app.area_layer_filter();
-    // Orphaned area layers (their polygon is gone) stay out of the list.
-    let tree = app
-        .layers
-        .visible_rows(|l| l.is_group || l.area_poly_id.is_none() || filter.keeps(l));
+    // Every layer is listed, so a layer left behind by a deleted area (or a
+    // reopened one) can be seen and deleted; those show as plain rows.
+    let tree = app.layers.visible_rows(|_| true);
     let has_folder = tree.iter().any(|r| r.is_group);
 
     if rows.is_empty() && areas.is_empty() && !has_folder {
@@ -1043,16 +1041,17 @@ fn inline_layer_menu<'a>(app: &'a App, r: &LayerRow, d: Density) -> Element<'a, 
                 ));
             }
         }
-        entries.push(MenuEntry::Separator);
-        entries.push(item("export", "Export", Message::LayerExport(id.clone())));
-    } else {
-        entries.push(MenuEntry::Separator);
-        entries.push(item(
-            "trash",
-            "Delete layer",
-            Message::LayerDelete(id.clone()),
-        ));
     }
+    entries.push(MenuEntry::Separator);
+    entries.push(item(
+        "trash",
+        if poly.is_some() {
+            "Delete area"
+        } else {
+            "Delete layer"
+        },
+        Message::LayerDelete(id.clone()),
+    ));
     entries.push(item("x", "Close menu", Message::LayerMenuClose));
 
     container(opaque(kit::popover(

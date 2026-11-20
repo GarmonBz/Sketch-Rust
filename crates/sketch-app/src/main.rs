@@ -222,8 +222,6 @@ pub enum Message {
     LayerMoveTo(String, Option<String>),
     /// A folder menu's Delete layer: the folder goes, its contents move up.
     LayerDelete(String),
-    /// `exportLayer` (S10-033): the layer + its entities as a .json file.
-    LayerExport(String),
     /// The context menu's layer ops (S10-037/038): autoAssignLayer with a
     /// named layer pushed to the stack's back/front.
     LayerSendToBack,
@@ -3839,13 +3837,8 @@ impl App {
             }
             Message::LayerDelete(id) => {
                 self.dock.layer_menu = None;
-                if self.layers.layer(&id).is_some_and(|l| l.is_group) {
-                    self.push_undo("Delete Layer");
-                    self.layers.ungroup(&id);
-                }
-                Task::none()
+                self.delete_layer_or_area(&id)
             }
-            Message::LayerExport(id) => self.export_layer(&id),
             Message::LayerSendToBack => self.auto_assign_layer("Send to Back", true),
             Message::LayerBringToFront => self.auto_assign_layer("Bring to Front", false),
             Message::TextLibraryManager(m) => {
@@ -6973,6 +6966,128 @@ impl App {
         Some(layer_id)
     }
 
+    /// The Areas list's Delete. A folder goes and what it held moves up; an
+    /// area goes with its walls and its layer; any other layer goes with
+    /// everything on it (one undo step), except the last layer standing.
+    fn delete_layer_or_area(&mut self, id: &str) -> Task<Message> {
+        let Some(layer) = self.layers.layer(id).cloned() else {
+            return Task::none();
+        };
+        if layer.is_group {
+            self.push_undo("Delete Layer");
+            self.layers.ungroup(id);
+            return Task::none();
+        }
+        let live_area = layer
+            .area_poly_id
+            .as_deref()
+            .and_then(|p| p.parse::<i64>().ok())
+            .filter(|p| self.drawing.polygons.iter().any(|q| q.id == *p));
+        if let Some(poly) = live_area {
+            self.push_undo("Delete Area");
+            let mut only = self.selection.clone();
+            only.clear();
+            only.polys.insert(poly);
+            clipboard::delete(&mut self.drawing, &only);
+            self.selection.clear();
+            self.remove_empty_area_layer(id);
+            self.sync_edit_tools();
+            self.sync_canvas();
+            return Task::none();
+        }
+        if self.layers.items.iter().filter(|l| !l.is_group).count() <= 1 {
+            return self
+                .toasts
+                .show("Keep at least one layer.".to_string());
+        }
+        self.push_undo("Delete Layer");
+        self.delete_layer_contents(id);
+        self.sync_edit_tools();
+        self.sync_canvas();
+        Task::none()
+    }
+
+    /// Removes a layer together with every wall, area, symbol and label on it.
+    fn delete_layer_contents(&mut self, id: &str) {
+        let branch: std::collections::HashSet<String> =
+            self.layers.descendant_layer_ids(id).into_iter().collect();
+        let default_id = self.layers.default_layer_id();
+        let known = |lid: &str| self.layers.layer(lid).is_some();
+        let resolve = |lid: Option<&str>| -> String {
+            lid.filter(|l| known(l))
+                .map(str::to_string)
+                .unwrap_or_else(|| default_id.clone())
+        };
+        // Symbols and labels keep the numeric layer id (0 is the default).
+        let numeric = |n: i64| -> String {
+            if n == 0 || !known(&n.to_string()) {
+                default_id.clone()
+            } else {
+                n.to_string()
+            }
+        };
+        let dead_lines: std::collections::HashSet<i64> = self
+            .drawing
+            .lines
+            .iter()
+            .filter(|l| branch.contains(&resolve(l.layer_id.as_deref())))
+            .map(|l| l.id)
+            .collect();
+        let dead_polys: std::collections::HashSet<i64> = self
+            .drawing
+            .polygons
+            .iter()
+            .filter(|p| branch.contains(&resolve(p.layer_id.as_deref())))
+            .map(|p| p.id)
+            .collect();
+        let dead_symbols: std::collections::HashSet<i64> = self
+            .drawing
+            .symbols
+            .iter()
+            .filter(|s| branch.contains(&numeric(s.layer_id)))
+            .map(|s| s.id)
+            .collect();
+        let dead_texts: std::collections::HashSet<i64> = self
+            .drawing
+            .texts
+            .iter()
+            .filter(|t| branch.contains(&numeric(t.layer_id)))
+            .map(|t| t.id)
+            .collect();
+        self.drawing.lines.retain(|l| !dead_lines.contains(&l.id));
+        self.drawing.polygons.retain(|p| !dead_polys.contains(&p.id));
+        self.drawing.symbols.retain(|s| !dead_symbols.contains(&s.id));
+        self.drawing.texts.retain(|t| !dead_texts.contains(&t.id));
+        let lines = &self.drawing.lines;
+        self.drawing
+            .dimension_chains
+            .retain(|c| lines.iter().any(|l| l.id == c.seed_line_id));
+        self.drawing
+            .reopened_areas
+            .retain(|r| !r.original.layer_id.as_deref().is_some_and(|l| branch.contains(l)));
+        self.selection.clear();
+        self.layers.remove(id);
+    }
+
+    /// Drops dedicated area layers whose area is gone and that hold nothing
+    /// (what deleting an area leaves behind).
+    fn prune_dead_area_layers(&mut self) {
+        let dead: Vec<String> = self
+            .layers
+            .items
+            .iter()
+            .filter(|l| {
+                l.area_poly_id.as_deref().is_some_and(|p| {
+                    !self.drawing.polygons.iter().any(|q| q.id.to_string() == p)
+                })
+            })
+            .map(|l| l.id.clone())
+            .collect();
+        for id in dead {
+            self.remove_empty_area_layer(&id);
+        }
+    }
+
     /// `removeEmptyAreaLayer(layerId)`: a dedicated area layer with nothing
     /// left on it disappears with its area. The original's guard order leaves
     /// a dangling parentId when a drained CHILD layer is removed; the port
@@ -7100,26 +7215,6 @@ impl App {
     /// `hasSelection()` (sketch-app.js:1682).
     fn has_selection(&self) -> bool {
         !self.selection.is_empty()
-    }
-
-    /// `getAreaLayersForCurrentPage`'s filter (sketch-app.js:1211): a layer
-    /// shows when its `areaPolyId` names a polygon on the live page AND that
-    /// polygon still points back at the layer. `ensure_area_layers` keeps
-    /// both directions true; a deleted area's orphaned layer stays in the
-    /// model (as in the original) but drops out of the tab.
-    fn area_layer_filter(&self) -> crate::layers::AreaLayerFilter {
-        let mut poly_ids = std::collections::HashSet::new();
-        let mut layer_ids = std::collections::HashSet::new();
-        for poly in &self.drawing.polygons {
-            poly_ids.insert(poly.id.to_string());
-            if let Some(lid) = &poly.layer_id {
-                layer_ids.insert(lid.clone());
-            }
-        }
-        crate::layers::AreaLayerFilter {
-            poly_ids,
-            layer_ids,
-        }
     }
 
     // ------------------------------------------------------------------
@@ -7724,38 +7819,6 @@ impl App {
             &|p: &sketch_core::model::Polygon| sel_polys.contains(&p.id),
             to_front,
         );
-    }
-
-    /// `exportLayer(layerId)` (sketch-app.js:1567, S10-033): the layer and,
-    /// for groups, its children together with every entity on them, as a
-    /// pretty-printed JSON file (importLayerFile's input shape).
-    fn export_layer(&mut self, id: &str) -> Task<Message> {
-        let Some(layer) = self.layers.layer(id).cloned() else {
-            return Task::none();
-        };
-        let data = self.export_layer_data(id);
-        // `${safeName}-layer.json` — [^\w\- ] stripped, blank falls back.
-        let safe: String = layer
-            .name
-            .chars()
-            .filter(|c| c.is_alphanumeric() || *c == '_' || *c == '-' || *c == ' ')
-            .collect::<String>()
-            .trim()
-            .to_string();
-        let safe = if safe.is_empty() {
-            "layer".to_string()
-        } else {
-            safe
-        };
-        if let Some(path) = crate::platform::save_file("Sketch layer", &["json"], format!("{safe}-layer.json"))
-        {
-            if let Ok(body) = serde_json::to_string_pretty(&data) {
-                let _ = std::fs::write(&path, body);
-                let note = format!("Exported layer \"{}\".", layer.name);
-                return self.toasts.show(note);
-            }
-        }
-        Task::none()
     }
 
     /// The Options dialog's messages. OK / Cancel / Restore / Save-as-Default
@@ -8483,6 +8546,7 @@ impl App {
             }
         }
         self.selection.clear();
+        self.prune_dead_area_layers();
         self.sync_edit_tools();
     }
 

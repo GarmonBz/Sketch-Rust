@@ -3,6 +3,7 @@ use crate::{layers, pages, App, Message};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 impl App {
+    #[allow(dead_code)]
     pub(crate) fn export_layer_data(&mut self, id: &str) -> Value {
         self.save_current_page();
         let branch = self.layers.descendant_layer_ids(id);
