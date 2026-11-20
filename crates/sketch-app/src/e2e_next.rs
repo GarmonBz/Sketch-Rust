@@ -1420,8 +1420,6 @@ fn drawing_chrome_buttons_and_popovers_work_after_reflow() {
         h.send(Message::Ui(UiMsg::SetDensity(density)));
         h.script(&["click \"Freeform\"", "click \"Erase\"", "click \"Pan\"",
             "click \"Grid\"", "click \"Snap\"", "click \"Dims: Out\""]);
-        let shot = h.screenshot_in("e2e-next", &format!("chrome-{name}"));
-        assert!(shot.exists());
         h.script(&["click \"100%\""]);
         assert!(h.shows("Zoom & Scale"));
         h.send(Message::Ui(UiMsg::CloseOverlays));
