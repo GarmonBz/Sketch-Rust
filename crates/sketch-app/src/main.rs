@@ -61,6 +61,8 @@ mod placed_text;
 mod platform;
 mod png_overlay;
 mod popup_menu;
+#[cfg(target_os = "macos")]
+mod print_macos;
 mod print;
 mod recent;
 mod reference_image;
@@ -70,6 +72,7 @@ mod room_shapes;
 mod select_menu;
 mod selection;
 mod shapes;
+mod shortcut_host;
 mod shortcuts;
 mod sketch_canvas;
 mod sketchy;
@@ -5679,7 +5682,9 @@ impl App {
             self.drawing.pen_up();
         }
         match self.view.set_mode(mode) {
-            Some(toast) => self.toasts.show(toast.into()),
+            Some(toast) => self
+                .toasts
+                .show(crate::shortcut_host::localize_shortcut(toast).into_owned()),
             None => Task::none(),
         }
     }
@@ -6002,6 +6007,9 @@ impl App {
             K::Save => return self.update(Message::SaveFile),
             K::Open => return self.update(Message::OpenFile),
             K::SaveAs => return self.update(Message::SaveFileAs),
+            K::Print => return self.update(Message::Print),
+            K::PrintPreview => return self.update(Message::PrintPreviewOpen),
+            K::CloseWindow => return self.update(Message::Close),
             K::NewSketch => return self.update(Message::New),
             K::Shortcuts => {
                 // F1 opens the sheet; F1/Escape close it (the original's
@@ -9691,7 +9699,9 @@ impl App {
         let sym_lib_mods = if self.ui.symbol_library.open {
             event::listen_with(|event, _status, _window| match &event {
                 Event::Keyboard(iced::keyboard::Event::ModifiersChanged(mods)) => {
-                    Some(Message::SymbolLibraryMods(mods.command()))
+                    Some(Message::SymbolLibraryMods(crate::shortcut_host::primary(
+                        *mods,
+                    )))
                 }
                 _ => None,
             })
@@ -9968,7 +9978,7 @@ impl App {
         } else {
             None
         };
-        tap = tap.capture_key(move |key, mods| {
+        tap = tap.capture_key(move |key, _physical, mods| {
             use iced::keyboard::{key::Named, Key};
             match key.as_ref() {
                 Key::Named(Named::Tab) if workflow_dialog => Some(Message::AreaWorkflow(
@@ -10040,7 +10050,7 @@ impl App {
             has_selection: !self.selection.is_empty(),
         };
         tap = tap
-            .on_key(move |key, mods| match key.as_ref() {
+            .on_key(move |key, physical, mods| match key.as_ref() {
                 iced::keyboard::Key::Named(iced::keyboard::key::Named::Tab)
                     if areas_keyboard && !dialog_open =>
                 {
@@ -10061,9 +10071,9 @@ impl App {
                 iced::keyboard::Key::Named(iced::keyboard::key::Named::Enter) if dialog_open => {
                     Some(Message::Dialog(dialog::DialogMsg::Ok))
                 }
-                _ => input::key_down(key, mods, ctx).map(Message::Key),
+                _ => input::key_down(key, physical, mods, ctx).map(Message::Key),
             })
-            .on_key_up(move |key, _| input::key_up(key, ctx).map(Message::Key));
+            .on_key_up(move |key, _physical, _| input::key_up(key, ctx).map(Message::Key));
         tap.into()
     }
 }
@@ -10186,7 +10196,7 @@ fn program(
         maximized: placement.is_some_and(|p| p.maximized),
         // `min_size` is in OS-logical px: undo the app's own scale.
         min_size: Some(Size::new(min_w * ui_scale, min_h * ui_scale)),
-        decorations: false,
+        decorations: cfg!(target_os = "macos"),
         exit_on_close_request: false,
         position: placement
             .and_then(|p| p.restore_position(ui_scale))

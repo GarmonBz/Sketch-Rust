@@ -74,12 +74,12 @@ pub fn top_bar<'a>(
         left = left
             .push(kit::tooltip(
                 kit::icon_button("folder-open", false, Some(Message::OpenFile), d),
-                "Open (Ctrl+O)",
+                crate::input::localize_shortcut("Open (Ctrl+O)"),
                 iced::widget::tooltip::Position::Bottom,
             ))
             .push(kit::tooltip(
                 kit::icon_button("floppy-disk", false, Some(Message::SaveFile), d),
-                "Save (F2)",
+                crate::input::localize_shortcut("Save (Ctrl+S)"),
                 iced::widget::tooltip::Position::Bottom,
             ));
     }
@@ -100,7 +100,9 @@ pub fn top_bar<'a>(
                     right = right.push(el);
                 }
             }
-            right = right.push(window_controls(app, false));
+            if shows_custom_window_controls() {
+                right = right.push(window_controls(app, false));
+            }
 
             let center = if let Some(session) = editing_symbol {
                 symbol_edit_strip(session, d, false)
@@ -147,7 +149,9 @@ pub fn top_bar<'a>(
                     right = right.push(el);
                 }
             }
-            right = right.push(window_controls(app, false));
+            if shows_custom_window_controls() {
+                right = right.push(window_controls(app, false));
+            }
 
             row![left, Space::new().width(Length::Fill), right]
                 .spacing(SPACE_2)
@@ -164,7 +168,9 @@ pub fn top_bar<'a>(
                     right = right.push(el);
                 }
             }
-            right = right.push(window_controls(app, true));
+            if shows_custom_window_controls() {
+                right = right.push(window_controls(app, true));
+            }
 
             row![left, Space::new().width(Length::Fill), right]
                 .spacing(SPACE_1)
@@ -579,7 +585,7 @@ fn undo_redo_controls<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
                 can_undo.then_some(Message::Undo),
                 d,
             ),
-            "Undo (Ctrl+Z)",
+            crate::input::localize_shortcut("Undo (Ctrl+Z)"),
             iced::widget::tooltip::Position::Bottom,
         ))
         .on_right_press(Message::UndoHistory),
@@ -629,7 +635,7 @@ fn undo_redo_controls<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
             can_redo.then_some(Message::Redo),
             d,
         ),
-        "Redo (Ctrl+Y)",
+        crate::input::localize_shortcut("Redo (Ctrl+Shift+Z)"),
         iced::widget::tooltip::Position::Bottom,
     );
 
@@ -648,7 +654,7 @@ fn search_trigger<'a>(class: SizeClass, d: Density) -> Element<'a, Message> {
                 Some(Message::Ui(UiMsg::ToggleMenu)),
                 d,
             ),
-            "Search commands (Ctrl+K)",
+            crate::input::localize_shortcut("Search commands (Ctrl+K)"),
             iced::widget::tooltip::Position::Bottom,
         );
     }
@@ -668,7 +674,7 @@ fn search_trigger<'a>(class: SizeClass, d: Density) -> Element<'a, Message> {
                     .color(tokens::muted())
                     .width(Length::Fill),
                 container(
-                    text("Ctrl K")
+                    text(crate::input::localize_shortcut("Ctrl+K"))
                         .font(BSC_MEDIUM)
                         .size(TEXT_11)
                         .color(tokens::muted()),
@@ -766,6 +772,11 @@ fn primary_actions<'a>(app: &'a App, class: SizeClass, d: Density) -> Vec<Elemen
             d,
         )]
     }
+}
+
+/// Whether the top bar draws min/max/close. macOS uses system decorations instead.
+pub(crate) fn shows_custom_window_controls() -> bool {
+    !cfg!(target_os = "macos")
 }
 
 fn window_controls<'a>(app: &'a App, compact: bool) -> Element<'a, Message> {
@@ -1090,4 +1101,17 @@ fn pages_nav_overlay<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
         mouse_area(positioned)
             .on_press(Message::PagesNav(NavMsg::Close)),
     )
+}
+
+#[cfg(test)]
+mod macos_chrome_tests {
+    #[test]
+    fn custom_window_controls_are_windows_only() {
+        // Document the product rule in code: Mac uses system traffic lights.
+        assert_eq!(
+            cfg!(target_os = "macos"),
+            !super::shows_custom_window_controls(),
+            "macOS must not show custom caption buttons; other targets must"
+        );
+    }
 }

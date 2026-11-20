@@ -30,6 +30,24 @@ resvg = "0.45.1"
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61.3", features = ["Data_Pdf", "Storage_Streams", "Win32_System_Com", "Win32_System_Ole", "Win32_System_Variant", "Win32_System_WinRT", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi", "Win32_UI_HiDpi", "Win32_Security"] }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+dispatch2 = "0.3"
+objc2-foundation = { version = "0.3", features = ["NSGeometry", "NSThread"] }
+objc2-app-kit = { version = "0.3", features = ["NSScreen", "NSWindow", "NSView", "NSApplication", "NSImage"] }
+objc2-core-graphics = { version = "0.3", features = ["CGDirectDisplay"] }
+objc2-pdf-kit = { version = "0.3", features = ["PDFDocument", "PDFPage", "objc2-app-kit"] }
+
+[package.metadata.bundle]
+name = "Sketch Rust"
+identifier = "com.propertyhackers.sketchrust"
+icon = ["../../assets/macos/AppIcon.icns"]
+category = "public.app-category.graphics-design"
+short_description = "Floor-plan sketching for appraisers"
+long_description = """
+Sketch Rust is a native floor-plan sketching program for appraisers.
+"""
+
 [dev-dependencies]
 # Headless end-to-end harness: runs the real program (incl. subscriptions)
 # with scripted mouse/keyboard input and headless screenshots — no window,

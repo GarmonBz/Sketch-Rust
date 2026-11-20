@@ -1,8 +1,59 @@
 //! InputController.handleKeyDown / handleKeyUp. Keys typed into a focused
 //! text box never reach this (the root EventTap only offers keys no widget
 //! captured — the original returns early for text-entry targets).
+//!
+//! App chords use iced’s platform primary modifier via
+//! [`crate::shortcut_host::primary`] (wraps [`Modifiers::command`] on native).
+//! Labels go through [`localize_shortcut`]. Fine-step / snap flags that mean
+//! the physical Control key still read `mods.control()` (drawing arrows, wheel
+//! / trackpad pinch).
 
-use iced::keyboard::{key::Named, Key, Modifiers};
+use iced::keyboard::key::{Code, Named, Physical};
+use iced::keyboard::{Key, Modifiers};
+
+use crate::shortcut_host::primary;
+
+pub use crate::shortcut_host::localize_shortcut;
+
+/// Latin letter for app chords — iced’s [`Key::to_latin`], with a physical
+/// QWERTY fallback when macOS omits `Key::Character` under ⌘.
+fn latin_letter(key: &Key, physical: Physical) -> Option<char> {
+    if let Some(c) = key.to_latin(physical) {
+        return Some(c.to_ascii_lowercase());
+    }
+    let Physical::Code(code) = physical else {
+        return None;
+    };
+    Some(match code {
+        Code::KeyA => 'a',
+        Code::KeyB => 'b',
+        Code::KeyC => 'c',
+        Code::KeyD => 'd',
+        Code::KeyE => 'e',
+        Code::KeyF => 'f',
+        Code::KeyG => 'g',
+        Code::KeyH => 'h',
+        Code::KeyI => 'i',
+        Code::KeyJ => 'j',
+        Code::KeyK => 'k',
+        Code::KeyL => 'l',
+        Code::KeyM => 'm',
+        Code::KeyN => 'n',
+        Code::KeyO => 'o',
+        Code::KeyP => 'p',
+        Code::KeyQ => 'q',
+        Code::KeyR => 'r',
+        Code::KeyS => 's',
+        Code::KeyT => 't',
+        Code::KeyU => 'u',
+        Code::KeyV => 'v',
+        Code::KeyW => 'w',
+        Code::KeyX => 'x',
+        Code::KeyY => 'y',
+        Code::KeyZ => 'z',
+        _ => return None,
+    })
+}
 
 /// A shortcut's effect.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -15,8 +66,14 @@ pub enum KeyCmd {
     Open,
     /// Ctrl+N / File > New — the new-sketch confirm.
     NewSketch,
-    /// F12 / Ctrl+F12 - `saveAs`.
+    /// F12 / Primary+F12 / Primary+Shift+S — `saveAs`.
     SaveAs,
+    /// Primary+P — File > Print.
+    Print,
+    /// Primary+Shift+P — File > Print preview.
+    PrintPreview,
+    /// Primary+W — File > Close window.
+    CloseWindow,
     /// F1 - the Keyboard Shortcuts cheat sheet (S12-015).
     Shortcuts,
     /// Ctrl+F1 - the email support (S12-071).
@@ -144,29 +201,56 @@ fn is_space(key: &Key) -> bool {
 }
 
 /// handleKeyDown, in its order of precedence.
-pub fn key_down(key: &Key, mods: Modifiers, ctx: KeyContext) -> Option<KeyCmd> {
+pub fn key_down(
+    key: &Key,
+    physical: Physical,
+    mods: Modifiers,
+    ctx: KeyContext,
+) -> Option<KeyCmd> {
     if ctx.dialog_open {
         return None;
     }
-    let plain = !mods.control() && !mods.alt();
+    let plain = !primary(mods) && !mods.control() && !mods.alt();
+    // Primary+letter chords (⌘ on macOS): resolve via physical key the way
+    // iced’s text widgets do, so Command+K still fires when Character is empty.
+    // Skip Named keys (F3, etc.) so a leftover physical code cannot steal them.
+    if primary(mods) && !matches!(key, Key::Named(_)) {
+        if let Some(c) = latin_letter(key, physical) {
+            match c {
+                'c' => return Some(KeyCmd::Copy),
+                'x' => return Some(KeyCmd::Cut),
+                'v' => return Some(KeyCmd::Paste),
+                'z' => {
+                    return Some(if mods.shift() {
+                        KeyCmd::Redo
+                    } else {
+                        KeyCmd::Undo
+                    })
+                }
+                'y' => return Some(KeyCmd::Redo),
+                'a' => return Some(KeyCmd::SelectAll),
+                's' if mods.shift() => return Some(KeyCmd::SaveAs),
+                's' => return Some(KeyCmd::Save),
+                'o' => return Some(KeyCmd::Open),
+                'n' => return Some(KeyCmd::NewSketch),
+                'p' if mods.shift() => return Some(KeyCmd::PrintPreview),
+                'p' => return Some(KeyCmd::Print),
+                'w' => return Some(KeyCmd::CloseWindow),
+                'k' => return Some(KeyCmd::CommandPalette),
+                'r' if mods.shift() && ctx.has_selection => {
+                    return Some(KeyCmd::RotateSelected(1.0))
+                }
+                _ => {}
+            }
+        }
+    }
     match key {
-        // Ctrl+F3: auto-close (checked before the bare F3 open).
-        Key::Named(Named::F3) if mods.control() => return Some(KeyCmd::AutoClose),
+        // Primary+F3: auto-close (checked before the bare F3 open).
+        Key::Named(Named::F3) if primary(mods) => return Some(KeyCmd::AutoClose),
         Key::Named(Named::F4) => return Some(KeyCmd::ShowAreas),
         Key::Named(Named::F5) => return Some(KeyCmd::DrawInterior),
         Key::Named(Named::Insert) => return Some(KeyCmd::InsertVertex),
         Key::Named(Named::Escape) => return Some(KeyCmd::Escape),
-        // Ctrl+C / Ctrl+X / Ctrl+V (S6-030..032), before the drawing buffer so
-        // they are never typed into it.
-        Key::Character(c) if mods.control() && c.as_str().eq_ignore_ascii_case("c") => {
-            return Some(KeyCmd::Copy)
-        }
-        Key::Character(c) if mods.control() && c.as_str().eq_ignore_ascii_case("x") => {
-            return Some(KeyCmd::Cut)
-        }
-        Key::Character(c) if mods.control() && c.as_str().eq_ignore_ascii_case("v") => {
-            return Some(KeyCmd::Paste)
-        }
         // Delete / Backspace remove the selection (S6-034) — but only when
         // something is selected: with an empty selection they fall through to
         // the drawing buffer's own backspace, as the original's
@@ -174,40 +258,13 @@ pub fn key_down(key: &Key, mods: Modifiers, ctx: KeyContext) -> Option<KeyCmd> {
         Key::Named(Named::Delete) | Key::Named(Named::Backspace) if ctx.has_selection => {
             return Some(KeyCmd::Delete)
         }
-        // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y (S6-040..042), before the buffer.
-        Key::Character(c) if mods.control() && c.as_str().eq_ignore_ascii_case("z") => {
-            return Some(if mods.shift() {
-                KeyCmd::Redo
-            } else {
-                KeyCmd::Undo
-            })
-        }
-        Key::Character(c) if mods.control() && c.as_str().eq_ignore_ascii_case("y") => {
-            return Some(KeyCmd::Redo)
-        }
-        // Ctrl+A: select all, before the buffer so it is not typed.
-        Key::Character(c) if mods.control() && c.as_str().eq_ignore_ascii_case("a") => {
-            return Some(KeyCmd::SelectAll)
-        }
-        // The file keyboard map: Ctrl+S / Ctrl+O / Ctrl+N and the F-key
-        // mirrors (input-controller.js:112-150). F1/Ctrl+F1 (the shortcuts
-        // dialog / email) stay unwired: the port has neither dialog yet.
-        Key::Character(c) if mods.control() && c.as_str().eq_ignore_ascii_case("s") => {
-            return Some(KeyCmd::Save)
-        }
-        Key::Character(c) if mods.control() && c.as_str().eq_ignore_ascii_case("o") => {
-            return Some(KeyCmd::Open)
-        }
-        Key::Character(c) if mods.control() && c.as_str().eq_ignore_ascii_case("n") => {
-            return Some(KeyCmd::NewSketch)
-        }
-        Key::Named(Named::F12) if mods.control() => return Some(KeyCmd::SaveAs),
+        Key::Named(Named::F12) if primary(mods) => return Some(KeyCmd::SaveAs),
         Key::Named(Named::F2) => return Some(KeyCmd::Save),
         Key::Named(Named::F3) => return Some(KeyCmd::Open),
         Key::Named(Named::F12) => return Some(KeyCmd::SaveAs),
-        // The cheat sheet (S12-015) / the email support (S12-071). Ctrl+F1
+        // Cheat sheet (S12-015) / email support (S12-071). Primary+F1
         // checks before the bare F1 (the original's order).
-        Key::Named(Named::F1) if mods.control() => return Some(KeyCmd::Email),
+        Key::Named(Named::F1) if primary(mods) => return Some(KeyCmd::Email),
         Key::Named(Named::F1) => return Some(KeyCmd::Shortcuts),
         _ => {}
     }
@@ -238,7 +295,7 @@ pub fn key_down(key: &Key, mods: Modifiers, ctx: KeyContext) -> Option<KeyCmd> {
                 "a" if plain => return Some(KeyCmd::AutoClose),
                 "b" if plain => return Some(KeyCmd::BayMirror),
                 "j" if plain => return Some(KeyCmd::JumpEndpoint),
-                "c" if !mods.control() => {
+                "c" if !primary(mods) => {
                     return Some(if mods.shift() {
                         KeyCmd::CenterFit
                     } else {
@@ -274,16 +331,9 @@ pub fn key_down(key: &Key, mods: Modifiers, ctx: KeyContext) -> Option<KeyCmd> {
             }
         }
     }
-    if mods.control() {
-        if let Key::Character(c) = key {
-            if c.to_lowercase() == "k" {
-                return Some(KeyCmd::CommandPalette);
-            }
-        }
-    }
     // The arrows move the selection in any non-drawing mode, so a wall
     // picked with the pointer, fence or lasso can always be nudged.
-    if !ctx.drawing && ctx.has_selection && !mods.control() && !mods.alt() {
+    if !ctx.drawing && ctx.has_selection && !primary(mods) && !mods.control() && !mods.alt() {
         let step = if mods.shift() { 0.1 } else { 1.0 };
         match key {
             Key::Named(Named::ArrowUp) => return Some(KeyCmd::Nudge(0.0, step)),
@@ -293,40 +343,39 @@ pub fn key_down(key: &Key, mods: Modifiers, ctx: KeyContext) -> Option<KeyCmd> {
             _ => {}
         }
     }
-    if let Key::Character(c) = key {
-        let c = c.to_lowercase();
-        match c.as_str() {
-            "g" if !mods.control() => return Some(KeyCmd::ToggleGrid),
-            "e" if plain => return Some(KeyCmd::DrawExterior),
-            "i" if plain => return Some(KeyCmd::DrawInterior),
-            "p" if plain && !ctx.drawing => return Some(KeyCmd::Select),
-            "s" if plain && !ctx.drawing => return Some(KeyCmd::ShowSymbols),
-            "t" if plain && !ctx.drawing => return Some(KeyCmd::ShowText),
-            // The selection transforms, then the whole-sketch ones, in the
-            // original's order (input-controller.js:250-280).
-            "r" if ctx.has_selection && mods.shift() && mods.control() => {
-                return Some(KeyCmd::RotateSelected(1.0))
-            }
-            "r" if ctx.has_selection && mods.shift() && !mods.control() => {
+    if let Some(c) = latin_letter(key, physical) {
+        match c {
+            'g' if !primary(mods) && !mods.control() => return Some(KeyCmd::ToggleGrid),
+            'e' if plain => return Some(KeyCmd::DrawExterior),
+            'i' if plain => return Some(KeyCmd::DrawInterior),
+            'p' if plain && !ctx.drawing => return Some(KeyCmd::Select),
+            's' if plain && !ctx.drawing => return Some(KeyCmd::ShowSymbols),
+            't' if plain && !ctx.drawing => return Some(KeyCmd::ShowText),
+            // Selection transforms, then whole-sketch ones (input-controller.js:250-280).
+            'r' if ctx.has_selection && mods.shift() && !primary(mods) => {
                 return Some(KeyCmd::RotateSelected(5.0))
             }
-            "h" if plain => return Some(KeyCmd::OrientH),
-            "v" if plain => return Some(KeyCmd::OrientV),
-            "+" if ctx.has_selection => return Some(KeyCmd::ScaleSelected(1.1)),
-            "-" if ctx.has_selection => return Some(KeyCmd::ScaleSelected(0.9)),
-            "f" if plain && !ctx.drawing => return Some(KeyCmd::FlipSketch(true)),
-            "m" if plain && !ctx.drawing => return Some(KeyCmd::FlipSketch(false)),
-            "l" if plain && !ctx.drawing => return Some(KeyCmd::RotateSketch(-90.0)),
-            "r" if plain && !ctx.drawing => return Some(KeyCmd::RotateSketch(90.0)),
-            // D only toggles the curve mode with an empty buffer.
-            "d" if plain && !ctx.buffer => return Some(KeyCmd::CurveMode),
-            "c" if !mods.control() && !ctx.drawing => {
+            'h' if plain => return Some(KeyCmd::OrientH),
+            'v' if plain => return Some(KeyCmd::OrientV),
+            'f' if plain && !ctx.drawing => return Some(KeyCmd::FlipSketch(true)),
+            'm' if plain && !ctx.drawing => return Some(KeyCmd::FlipSketch(false)),
+            'l' if plain && !ctx.drawing => return Some(KeyCmd::RotateSketch(-90.0)),
+            'r' if plain && !ctx.drawing => return Some(KeyCmd::RotateSketch(90.0)),
+            'd' if plain && !ctx.buffer => return Some(KeyCmd::CurveMode),
+            'c' if !primary(mods) && !ctx.drawing => {
                 return Some(if mods.shift() {
                     KeyCmd::CenterFit
                 } else {
                     KeyCmd::CenterSketch
                 })
             }
+            _ => {}
+        }
+    }
+    if let Key::Character(c) = key {
+        match c.as_str() {
+            "+" if ctx.has_selection => return Some(KeyCmd::ScaleSelected(1.1)),
+            "-" if ctx.has_selection => return Some(KeyCmd::ScaleSelected(0.9)),
             _ => {}
         }
     }
@@ -356,6 +405,11 @@ mod tests {
         Key::Character(c.into())
     }
 
+    fn down(key: &Key, mods: Modifiers, ctx: KeyContext) -> Option<KeyCmd> {
+        // Character path wins in to_latin; Code is unused for those cases.
+        key_down(key, Physical::Code(Code::KeyA), mods, ctx)
+    }
+
     #[test]
     fn mode_and_panel_keys_follow_handle_key_down() {
         let idle = KeyContext::default();
@@ -364,64 +418,65 @@ mod tests {
             ..KeyContext::default()
         };
         let none = Modifiers::empty();
-        assert_eq!(key_down(&ch("e"), none, idle), Some(KeyCmd::DrawExterior));
+        assert_eq!(down(&ch("e"), none, idle), Some(KeyCmd::DrawExterior));
         assert_eq!(
-            key_down(&ch("E"), Modifiers::SHIFT, idle),
+            down(&ch("E"), Modifiers::SHIFT, idle),
             Some(KeyCmd::DrawExterior)
         );
         assert_eq!(
-            key_down(&ch("i"), none, drawing),
+            down(&ch("i"), none, drawing),
             Some(KeyCmd::DrawInterior)
         );
         assert_eq!(
-            key_down(&Key::Named(Named::F5), none, idle),
+            down(&Key::Named(Named::F5), none, idle),
             Some(KeyCmd::DrawInterior)
         );
-        assert_eq!(key_down(&ch("g"), none, drawing), Some(KeyCmd::ToggleGrid));
-        assert_eq!(key_down(&ch("g"), Modifiers::CTRL, idle), None);
+        assert_eq!(down(&ch("g"), none, drawing), Some(KeyCmd::ToggleGrid));
+        assert_eq!(down(&ch("g"), Modifiers::CTRL, idle), None);
+        assert_eq!(down(&ch("g"), Modifiers::COMMAND, idle), None);
         // Not while drawing: P, S, T, C, Enter.
-        assert_eq!(key_down(&ch("p"), none, idle), Some(KeyCmd::Select));
-        assert_eq!(key_down(&ch("p"), none, drawing), None);
-        assert_eq!(key_down(&ch("s"), none, idle), Some(KeyCmd::ShowSymbols));
-        assert_eq!(key_down(&ch("t"), none, idle), Some(KeyCmd::ShowText));
-        assert_eq!(key_down(&ch("c"), none, idle), Some(KeyCmd::CenterSketch));
+        assert_eq!(down(&ch("p"), none, idle), Some(KeyCmd::Select));
+        assert_eq!(down(&ch("p"), none, drawing), None);
+        assert_eq!(down(&ch("s"), none, idle), Some(KeyCmd::ShowSymbols));
+        assert_eq!(down(&ch("t"), none, idle), Some(KeyCmd::ShowText));
+        assert_eq!(down(&ch("c"), none, idle), Some(KeyCmd::CenterSketch));
         assert_eq!(
-            key_down(&ch("C"), Modifiers::SHIFT, idle),
+            down(&ch("C"), Modifiers::SHIFT, idle),
             Some(KeyCmd::CenterFit)
         );
         // While drawing, C centres (the original's drawing block) and
         // Shift+C fits.
         assert_eq!(
-            key_down(&ch("c"), none, drawing),
+            down(&ch("c"), none, drawing),
             Some(KeyCmd::CenterSketch)
         );
         assert_eq!(
-            key_down(&ch("C"), Modifiers::SHIFT, drawing),
+            down(&ch("C"), Modifiers::SHIFT, drawing),
             Some(KeyCmd::CenterFit)
         );
         assert_eq!(
-            key_down(&Key::Named(Named::Enter), none, idle),
+            down(&Key::Named(Named::Enter), none, idle),
             Some(KeyCmd::DrawExterior)
         );
         // While drawing, Enter commits (pen down / wall / pen up).
         assert_eq!(
-            key_down(&Key::Named(Named::Enter), none, drawing),
+            down(&Key::Named(Named::Enter), none, drawing),
             Some(KeyCmd::Enter)
         );
         assert_eq!(
-            key_down(&Key::Named(Named::F4), none, idle),
+            down(&Key::Named(Named::F4), none, idle),
             Some(KeyCmd::ShowAreas)
         );
-        assert_eq!(key_down(&ch("d"), none, idle), Some(KeyCmd::CurveMode));
+        assert_eq!(down(&ch("d"), none, idle), Some(KeyCmd::CurveMode));
         assert_eq!(
-            key_down(&Key::Named(Named::Escape), none, drawing),
+            down(&Key::Named(Named::Escape), none, drawing),
             Some(KeyCmd::Escape)
         );
         assert_eq!(
-            key_down(&Key::Named(Named::Space), none, idle),
+            down(&Key::Named(Named::Space), none, idle),
             Some(KeyCmd::SpaceDown)
         );
-        assert_eq!(key_down(&ch(" "), none, idle), Some(KeyCmd::SpaceDown));
+        assert_eq!(down(&ch(" "), none, idle), Some(KeyCmd::SpaceDown));
         assert_eq!(
             key_up(&Key::Named(Named::Space), idle),
             Some(KeyCmd::SpaceUp)
@@ -429,39 +484,39 @@ mod tests {
         assert_eq!(key_up(&ch("e"), idle), None);
         // Drawing keys, in the original's order.
         assert_eq!(
-            key_down(&Key::Named(Named::Enter), none, drawing),
+            down(&Key::Named(Named::Enter), none, drawing),
             Some(KeyCmd::Enter)
         );
-        assert_eq!(key_down(&ch("a"), none, drawing), Some(KeyCmd::AutoClose));
-        assert_eq!(key_down(&ch("b"), none, drawing), Some(KeyCmd::BayMirror));
+        assert_eq!(down(&ch("a"), none, drawing), Some(KeyCmd::AutoClose));
+        assert_eq!(down(&ch("b"), none, drawing), Some(KeyCmd::BayMirror));
         assert_eq!(
-            key_down(&ch("j"), none, drawing),
+            down(&ch("j"), none, drawing),
             Some(KeyCmd::JumpEndpoint)
         );
         // The mode keys still win while drawing (the original's order).
         assert_eq!(
-            key_down(&ch("e"), none, drawing),
+            down(&ch("e"), none, drawing),
             Some(KeyCmd::DrawExterior)
         );
         assert_eq!(
-            key_down(&ch("i"), none, drawing),
+            down(&ch("i"), none, drawing),
             Some(KeyCmd::DrawInterior)
         );
-        assert_eq!(key_down(&ch("s"), none, drawing), None);
-        assert_eq!(key_down(&ch("5"), none, drawing), Some(KeyCmd::Buffer("5")));
-        assert_eq!(key_down(&ch("."), none, drawing), Some(KeyCmd::Buffer(".")));
-        assert_eq!(key_down(&ch("x"), none, drawing), Some(KeyCmd::Buffer("x")));
+        assert_eq!(down(&ch("s"), none, drawing), None);
+        assert_eq!(down(&ch("5"), none, drawing), Some(KeyCmd::Buffer("5")));
+        assert_eq!(down(&ch("."), none, drawing), Some(KeyCmd::Buffer(".")));
+        assert_eq!(down(&ch("x"), none, drawing), Some(KeyCmd::Buffer("x")));
         assert_eq!(
-            key_down(&ch("<"), Modifiers::SHIFT, drawing),
+            down(&ch("<"), Modifiers::SHIFT, drawing),
             Some(KeyCmd::Buffer("<"))
         );
-        assert_eq!(key_down(&ch(","), none, drawing), Some(KeyCmd::Buffer("<")));
+        assert_eq!(down(&ch(","), none, drawing), Some(KeyCmd::Buffer("<")));
         assert_eq!(
-            key_down(&Key::Named(Named::Tab), none, drawing),
+            down(&Key::Named(Named::Tab), none, drawing),
             Some(KeyCmd::DecimalPoint)
         );
         assert_eq!(
-            key_down(&Key::Named(Named::ArrowUp), none, drawing),
+            down(&Key::Named(Named::ArrowUp), none, drawing),
             Some(KeyCmd::Arrow {
                 dir: 0,
                 ctrl: false,
@@ -469,7 +524,7 @@ mod tests {
             })
         );
         assert_eq!(
-            key_down(&Key::Named(Named::PageUp), Modifiers::CTRL, drawing),
+            down(&Key::Named(Named::PageUp), Modifiers::CTRL, drawing),
             Some(KeyCmd::Arrow {
                 dir: 1,
                 ctrl: true,
@@ -477,7 +532,7 @@ mod tests {
             })
         );
         assert_eq!(
-            key_down(
+            down(
                 &Key::Named(Named::End),
                 Modifiers::CTRL | Modifiers::SHIFT,
                 drawing
@@ -489,7 +544,7 @@ mod tests {
             })
         );
         assert_eq!(
-            key_down(&Key::Named(Named::F3), Modifiers::CTRL, idle),
+            down(&Key::Named(Named::F3), Modifiers::COMMAND, idle),
             Some(KeyCmd::AutoClose)
         );
         // Backspace only claims the buffer when there is one.
@@ -499,21 +554,21 @@ mod tests {
             ..KeyContext::default()
         };
         assert_eq!(
-            key_down(&Key::Named(Named::Backspace), none, with_buffer),
+            down(&Key::Named(Named::Backspace), none, with_buffer),
             Some(KeyCmd::BufferBackspace)
         );
-        assert_eq!(key_down(&Key::Named(Named::Backspace), none, drawing), None);
+        assert_eq!(down(&Key::Named(Named::Backspace), none, drawing), None);
         // A dialog swallows everything.
         let dialog = KeyContext {
             dialog_open: true,
             ..KeyContext::default()
         };
-        assert_eq!(key_down(&ch("e"), none, dialog), None);
-        assert_eq!(key_down(&Key::Named(Named::Escape), none, dialog), None);
+        assert_eq!(down(&ch("e"), none, dialog), None);
+        assert_eq!(down(&Key::Named(Named::Escape), none, dialog), None);
     }
 }
 
-#[cfg(test)]
+    #[cfg(test)]
 mod clipboard_key_tests {
     use super::*;
     use iced::keyboard::key::Named;
@@ -527,12 +582,16 @@ mod clipboard_key_tests {
         }
     }
 
+    fn down(key: &Key, mods: Modifiers, ctx: KeyContext) -> Option<KeyCmd> {
+        key_down(key, Physical::Code(Code::KeyA), mods, ctx)
+    }
+
     #[test]
     fn delete_prefers_the_selection_over_the_buffer() {
         // The original: `if (hasSelection) { deleteSelected(); return; }`
         // before the buffer's own backspace.
         assert_eq!(
-            key_down(
+            down(
                 &Key::Named(Named::Delete),
                 Modifiers::default(),
                 ctx(true, true)
@@ -540,7 +599,7 @@ mod clipboard_key_tests {
             Some(KeyCmd::Delete)
         );
         assert_eq!(
-            key_down(
+            down(
                 &Key::Named(Named::Backspace),
                 Modifiers::default(),
                 ctx(true, true)
@@ -549,7 +608,7 @@ mod clipboard_key_tests {
         );
         // Nothing selected: the buffer keeps Backspace, as before.
         assert_eq!(
-            key_down(
+            down(
                 &Key::Named(Named::Backspace),
                 Modifiers::default(),
                 ctx(false, true)
@@ -567,9 +626,65 @@ mod clipboard_key_tests {
         ] {
             let key = Key::Character(ch.into());
             assert_eq!(
-                key_down(&key, Modifiers::CTRL, ctx(false, false)),
+                down(&key, Modifiers::COMMAND, ctx(false, false)),
                 Some(want)
             );
         }
+    }
+
+    #[test]
+    fn command_k_opens_the_command_palette_via_physical_key() {
+        // macOS often omits Key::Character under ⌘; iced widgets use physical.
+        assert_eq!(
+            key_down(
+                &Key::Unidentified,
+                Physical::Code(Code::KeyK),
+                Modifiers::COMMAND,
+                KeyContext::default(),
+            ),
+            Some(KeyCmd::CommandPalette)
+        );
+        assert_eq!(
+            down(&Key::Character("k".into()), Modifiers::COMMAND, KeyContext::default()),
+            Some(KeyCmd::CommandPalette)
+        );
+    }
+
+    #[test]
+    fn mac_style_file_chords_use_the_primary_modifier() {
+        let idle = KeyContext::default();
+        assert_eq!(
+            down(&Key::Character("s".into()), Modifiers::COMMAND, idle),
+            Some(KeyCmd::Save)
+        );
+        assert_eq!(
+            down(
+                &Key::Character("s".into()),
+                Modifiers::COMMAND | Modifiers::SHIFT,
+                idle
+            ),
+            Some(KeyCmd::SaveAs)
+        );
+        assert_eq!(
+            down(&Key::Character("p".into()), Modifiers::COMMAND, idle),
+            Some(KeyCmd::Print)
+        );
+        assert_eq!(
+            down(
+                &Key::Character("p".into()),
+                Modifiers::COMMAND | Modifiers::SHIFT,
+                idle
+            ),
+            Some(KeyCmd::PrintPreview)
+        );
+        assert_eq!(
+            down(&Key::Character("w".into()), Modifiers::COMMAND, idle),
+            Some(KeyCmd::CloseWindow)
+        );
+        // Bare P remains Select (not Print).
+        assert_eq!(
+            down(&Key::Character("p".into()), Modifiers::empty(), idle),
+            Some(KeyCmd::Select)
+        );
     }
 }

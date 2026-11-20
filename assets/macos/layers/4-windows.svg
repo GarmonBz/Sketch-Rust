@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <g fill="none" stroke="#FFFFFF" stroke-width="16" stroke-linecap="butt">
+    <!-- North window (double line) -->
+    <path d="M424 176 V200 M448 176 V200 M472 176 V200 M496 176 V200"/>
+    <!-- West window -->
+    <path d="M204 300 H228 M204 324 H228"/>
+    <!-- South window -->
+    <path d="M424 888 V912 M448 888 V912 M472 888 V912 M496 888 V912"/>
+    <!-- East lower window -->
+    <path d="M796 780 H820 M796 804 H820"/>
+  </g>
+</svg>

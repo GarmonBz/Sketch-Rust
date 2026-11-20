@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <g fill="none" stroke="#FFFFFF" stroke-width="40" stroke-linejoin="miter" stroke-miterlimit="8" stroke-linecap="square">
+    <!-- Interior edge of top bay (forms corridor into middle) -->
+    <path d="M404 292 V404 H508"/>
+    <!-- Middle bay west wall (S notch) -->
+    <path d="M616 508 V616"/>
+    <!-- Lower bay interior north edge fragments beside door -->
+    <path d="M404 808 V720"/>
+    <path d="M508 720 V808"/>
+  </g>
+</svg>
