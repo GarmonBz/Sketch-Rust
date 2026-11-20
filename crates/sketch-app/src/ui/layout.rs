@@ -31,6 +31,7 @@ pub struct DrawingChrome {
     pub zoom_width: f32,
     pub snap_width: f32,
     pub control_height: f32,
+    pub touch_footer: bool,
 }
 
 impl DrawingChrome {
@@ -58,11 +59,13 @@ impl DrawingChrome {
             zoom_width: CONTROL_LANE_W.min((available - 76.0 - CHROME_GAP).max(1.0)),
             snap_width: CONTROL_LANE_W.min(available),
             control_height: if density == Density::Touch { 38.0 } else { 32.0 },
+            touch_footer: density == Density::Touch && class != SizeClass::Compact,
         }
     }
 
     pub fn tray_clearance(self) -> f32 {
         CHROME_INSET + self.tray_height + CHROME_GAP
+            + if self.touch_footer { self.control_height + SPACE_2 } else { 0.0 }
     }
 
     pub fn top_popover_offset(self, row: usize) -> f32 {
@@ -298,6 +301,9 @@ mod tests {
         // a 280px ledger leaves 1358 logical pixels, too narrow for 12 tools.
         assert!(DrawingChrome::new(2048.0 / 1.25 - 280.0, SizeClass::Wide, d, tools).controls_at_top);
         assert!(DrawingChrome::new(2400.0, SizeClass::Wide, Density::Touch, tools).controls_at_top);
+        let touch = DrawingChrome::new(980.0, SizeClass::Wide, Density::Touch, tools);
+        assert!(touch.tray_clearance() >= CHROME_INSET + touch.tray_height
+            + touch.control_height + SPACE_2 + CHROME_GAP);
         // A future additional tool must also change the fit decision.
         assert!(DrawingChrome::new(threshold, SizeClass::Wide, d, tools + 1).controls_at_top);
     }
