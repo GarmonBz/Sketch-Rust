@@ -104,7 +104,7 @@ pub const TOPICS: &[Topic] = &[
             ]),
             Heading("Reading the numbers"),
             Points(&[
-                "The Drawn view in the Areas drawer lists each area with its size and net sf grouped under Living space or Non-living, plus live GLA and Non-GLA totals.",
+                "The Drawn view in the Areas drawer lists each area with its type and net sf, on the layer folder it belongs to, plus live GLA and Non-GLA totals. Use the eye to hide an area or a folder, the lock to protect it, drag a row to reorder it or move it into a folder, and the folder button to add a layer folder.",
                 "Tools > Area breakdown shows the rectangle and bow math behind every area.",
                 "Click Edit area types in the Types tab (or Menu > Areas > Area types) to customize codes, names, colours, multipliers, and calculation rules.",
             ]),

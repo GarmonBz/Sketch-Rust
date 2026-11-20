@@ -48,7 +48,7 @@ icon_table! {
         "washing-machine", "circle",
         // Layer rows + their context menu (screen 10's `.layer-row`). The
         // locked state renders `ph-lock-simple-fill` (updateLayersPanel).
-        "folder-simple", "lock-simple", "lock-simple-open", "export", "eye", "eye-slash",
+        "folder-simple", "folder-simple-plus", "lock-simple", "lock-simple-open", "export", "eye", "eye-slash",
         // Wall-shape menu (UIManager.showWallShapeMenu).
         "rectangle", "line-segment",
         // Next shell chrome & tool tray icons (Phosphor 2.1.1).
@@ -132,6 +132,7 @@ pub fn tint_of(name: &str) -> Option<crate::ui::tokens::IconTint> {
         "eraser" | "x-bold" | "trash" | "file-x" | "file-minus" | "eye-slash" | "bounding-box"
         | "hand-pointing" | "minus-circle" | "warning" | "power" | "fire-extinguisher" => Red,
         "plus-circle" | "file-plus" | "file" | "files" | "folder-open" | "folder-simple"
+        | "folder-simple-plus"
         | "floppy-disk" | "check-circle" | "export" | "arrow-square-in" | "arrow-square-out"
         | "printer" | "file-pdf" | "file-image" | "image" | "monitor" | "envelope-simple"
         | "arrow-up-right" => Green,

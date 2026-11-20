@@ -44,8 +44,11 @@ and save the report there.
 
 Keep the editable sketch in Sketchie or SKX. Use **File > Export as PNG** or
 **File > Export as PDF** for a report attachment where your form supports it,
-and enter the area totals in Appraise-It Pro. AXF files can be opened with
-the licensed Apex application.
+and enter the area totals in Appraise-It Pro. Legacy AXF sketches open here
+as a converted copy (areas, arc walls and labels; see
+[docs/AXF_IMPORT.md](docs/AXF_IMPORT.md)); Sketch Rust does not write AXF, so
+use the licensed Apex application for AXF workfiles you need to keep editing
+there.
 
 See the [Appraise-It Pro integration guide](docs/APPRAISE_IT_PRO_INTEGRATION.md)
 for requirements and guidance for users of older previews.

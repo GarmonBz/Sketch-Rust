@@ -215,6 +215,13 @@ pub enum Message {
     /// The row context menu (`showLayerContextMenu`).
     LayerRowMenu(String),
     LayerMenuClose,
+    /// The header's folder button: a new, empty folder at the top level.
+    LayerNewFolder,
+    /// A row menu's Move to layer: the layer id and its new folder (`None`
+    /// for the top level).
+    LayerMoveTo(String, Option<String>),
+    /// A folder menu's Delete layer: the folder goes, its contents move up.
+    LayerDelete(String),
     /// `exportLayer` (S10-033): the layer + its entities as a .json file.
     LayerExport(String),
     /// The context menu's layer ops (S10-037/038): autoAssignLayer with a
@@ -440,7 +447,9 @@ pub enum Message {
 /// The QAT's history button (`list-bullets`): 28x28, at x 20 + 28*3, y 1 —
 /// the undo-history popup anchors under it.
 /// `#file-open-input` / `#file-import-input` `accept=".skx,.apx,.json,.sketch"`.
-const SKETCH_OPEN_EXTENSIONS: &[&str] = &["skx", "apx", "json", "sketch", "sketchie", "sketchy"];
+const SKETCH_OPEN_EXTENSIONS: &[&str] = &[
+    "skx", "apx", "json", "sketch", "sketchie", "sketchy", "axf",
+];
 
 /// A sketch file named on the command line, opened once the window is up.
 static STARTUP_FILE: std::sync::Mutex<Option<std::path::PathBuf>> = std::sync::Mutex::new(None);
@@ -480,11 +489,9 @@ fn read_sketch_path(
     path: &std::path::Path,
 ) -> Result<(serde_json::Value, SketchFileFormat, bool), String> {
     use std::io::Read;
-    if path
-        .extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("axf"))
-    {
-        return Err("AXF files are no longer supported.".into());
+    if is_axf_path(path) {
+        let import = read_axf_path(path)?;
+        return Ok((import.model, SketchFileFormat::Json, false));
     }
     let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
     let mut bytes = Vec::new();
@@ -502,6 +509,27 @@ fn read_sketch_path(
     }
     file.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
     read_sketch_model(&bytes)
+}
+
+/// A legacy Apex `.axf` sketch: converted on open, never saved back.
+fn is_axf_path(path: &std::path::Path) -> bool {
+    path.extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("axf"))
+}
+
+/// Largest `.axf` read from disk (real sketches are a few KiB).
+const MAX_AXF_BYTES: u64 = 32 * 1024 * 1024;
+
+fn read_axf_path(path: &std::path::Path) -> Result<sketch_core::axf::AxfImport, String> {
+    let too_big = std::fs::metadata(path).is_ok_and(|m| m.len() > MAX_AXF_BYTES);
+    if too_big {
+        return Err("This AXF file is too large to open.".into());
+    }
+    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    sketch_core::axf::read(&bytes)
+        .map(|doc| doc.to_model(stem))
+        .map_err(|e| e.to_string())
 }
 
 fn read_sketch_model(bytes: &[u8]) -> Result<(serde_json::Value, SketchFileFormat, bool), String> {
@@ -759,6 +787,8 @@ pub struct App {
     /// Session-only destination; never embedded in portable sketch data.
     current_file: Option<CurrentFile>,
     sketchy_backing: Option<sketchy::Backing>,
+    /// Opened from a legacy `.axf`: the first Save offers `.sketchie`.
+    save_as_sketchie: bool,
     /// `state.subjectInfoAutoFilled`.
     subject_auto_filled: bool,
     /// `state.extendedData` (the suite sets it; carried verbatim here).
@@ -1075,6 +1105,7 @@ impl App {
                     file_name: "Untitled".to_string(),
                     current_file: None,
                     sketchy_backing: None,
+                    save_as_sketchie: false,
                     subject_auto_filled: false,
                     extended_data: String::new(),
                     settings_extra: std::collections::BTreeMap::new(),
@@ -2088,15 +2119,6 @@ impl App {
                     self.view.filter_open = false;
                     self.history.close();
                     self.ui.ledger_menu = !self.ui.ledger_menu;
-                    Task::none()
-                }
-                ui::Msg::ToggleLayersSection => {
-                    self.ui.ledger_menu = false;
-                    self.ui.layers_expanded = !self.ui.layers_expanded;
-                    Task::none()
-                }
-                ui::Msg::ResizeLayers(event) => {
-                    self.ui.ledger_split.set_ratio(event.ratio);
                     Task::none()
                 }
                 ui::Msg::TypeFilterChanged(s) => {
@@ -3356,6 +3378,7 @@ impl App {
                 self.pages = pages::Pages::default();
                 self.file_name = "Untitled".to_string();
                 self.current_file = None;
+                self.save_as_sketchie = false;
                 self.sketchy_backing = None;
                 self.subject_info = subject_info::SubjectInfo::default();
                 self.subject_auto_filled = false;
@@ -3768,13 +3791,55 @@ impl App {
                 Task::none()
             }
             Message::LayerRowMenu(id) => {
-                // The tree's contextmenu handler activates the row first.
-                self.layers.set_active(id.clone());
+                // The tree's contextmenu handler activates the row first; an
+                // area's layer or a folder is not a place new work lands.
+                if self
+                    .layers
+                    .layer(&id)
+                    .is_some_and(|l| !l.is_group && l.area_poly_id.is_none())
+                {
+                    self.layers.set_active(id.clone());
+                }
                 self.dock.layer_menu = Some(id);
                 Task::none()
             }
             Message::LayerMenuClose => {
                 self.dock.layer_menu = None;
+                Task::none()
+            }
+            Message::LayerNewFolder => {
+                self.push_undo("New Layer");
+                let id = format!("layer-{}", self.drawing.gen_id());
+                let name = self.layers.unique_layer_name("Layer");
+                self.layers.create_layer_raw(id.clone(), name.clone(), true);
+                self.dock.layer_menu = None;
+                // Straight into the name box, so the folder is named at once.
+                self.dock.layer_rename = Some((id, name));
+                Task::batch([
+                    iced::widget::operation::focus(dock::RENAME_ID),
+                    iced::widget::operation::select_all(dock::RENAME_ID),
+                ])
+            }
+            Message::LayerMoveTo(id, parent) => {
+                self.dock.layer_menu = None;
+                let current = self.layers.layer(&id).map(|l| l.parent_id.clone());
+                if current.is_none() || current == Some(parent.clone()) {
+                    return Task::none();
+                }
+                // Refused moves (into a plain layer, into itself) bank no undo.
+                if !self.layers.clone().move_into(&id, parent.as_deref()) {
+                    return Task::none();
+                }
+                self.push_undo("Move Layer");
+                self.layers.move_into(&id, parent.as_deref());
+                Task::none()
+            }
+            Message::LayerDelete(id) => {
+                self.dock.layer_menu = None;
+                if self.layers.layer(&id).is_some_and(|l| l.is_group) {
+                    self.push_undo("Delete Layer");
+                    self.layers.ungroup(&id);
+                }
                 Task::none()
             }
             Message::LayerExport(id) => self.export_layer(&id),
@@ -3850,6 +3915,9 @@ impl App {
             Message::CalcsExpandAll => {
                 self.ui.ledger_menu = false;
                 self.dock.calcs_collapsed.clear();
+                for layer in self.layers.items.iter_mut().filter(|l| l.is_group) {
+                    layer.collapsed = false;
+                }
                 Task::none()
             }
             Message::CalcsCollapseAll => {
@@ -3864,6 +3932,9 @@ impl App {
                     set.insert("UND".to_owned());
                 }
                 self.dock.calcs_collapsed = set;
+                for layer in self.layers.items.iter_mut().filter(|l| l.is_group) {
+                    layer.collapsed = true;
+                }
                 Task::none()
             }
             Message::New => self.open_dialog(dialog::Dialog::confirm(
@@ -6914,7 +6985,22 @@ impl App {
                 self.layers.move_layer(&drag, &target, pos);
             }
             _ => {
-                self.layers.set_active(drag);
+                // A press and release on one row is a click: a dedicated area
+                // layer selects its area (and opens its numbers), a folder
+                // folds, any other layer becomes the one that new work lands on.
+                let (area, is_group) = self
+                    .layers
+                    .layer(&drag)
+                    .map(|l| (l.area_poly_id.clone(), l.is_group))
+                    .unwrap_or((None, false));
+                match (area.and_then(|a| a.parse::<i64>().ok()), is_group) {
+                    (Some(poly), false) => return self.update(Message::CalcsArea(poly)),
+                    (None, true) => {
+                        let folded = self.layers.layer(&drag).is_some_and(|l| l.collapsed);
+                        self.layers.set_collapsed(&drag, !folded);
+                    }
+                    _ => self.layers.set_active(drag),
+                }
             }
         }
         Task::none()
@@ -8660,6 +8746,7 @@ impl App {
         self.pages = pages::Pages::default();
         self.file_name = "Untitled".to_string();
         self.current_file = None;
+        self.save_as_sketchie = false;
         self.sketchy_backing = None;
         let _ = self.set_mode(view_state::Mode::Select);
         self.sync_edit_tools();
@@ -8915,9 +9002,6 @@ impl App {
         if let (Some(map), Some(w)) = (sidebar.as_object_mut(), self.ui.ledger_width) {
             map.insert("ledgerWidth".to_owned(), serde_json::json!(w));
         }
-        if let Some(map) = sidebar.as_object_mut() {
-            map.insert("layersSplit".to_owned(), serde_json::json!(self.ui.ledger_split.ratio()));
-        }
         let settings = serde_json::json!({
             "defineFirst": self.drawing.options.define_first,
             "dimensionsEnabled": self.view.dimensions,
@@ -9094,6 +9178,9 @@ impl App {
             Ok(path) => path,
             Err(e) => return self.toasts.show(format!("Could not open sketch: {e}")),
         };
+        if is_axf_path(&path) {
+            return self.open_axf_path(&path);
+        }
         let (model, format, omitted) = match read_sketch_path(&path) {
             Ok(read) => read,
             Err(e) => return self.toasts.show(e),
@@ -9125,6 +9212,30 @@ impl App {
         task
     }
 
+    /// Open a legacy `.axf` as a new, unsaved sketch: the file is converted,
+    /// never written back, and the first Save asks for a `.sketchie` name.
+    fn open_axf_path(&mut self, path: &std::path::Path) -> Task<Message> {
+        let import = match read_axf_path(path) {
+            Ok(import) => import,
+            Err(e) => return self.toasts.show(e),
+        };
+        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+        let _ = self.apply_model(&import.model, stem);
+        self.save_as_sketchie = true;
+        self.view.center_and_fit(self.sketch_view_bounds());
+        let mut message = format!(
+            "Opened {} as a new sketch with {} area{}. Save As to keep it as .sketchie.",
+            path.file_name().and_then(|s| s.to_str()).unwrap_or("AXF"),
+            import.area_count,
+            if import.area_count == 1 { "" } else { "s" },
+        );
+        for note in &import.notes {
+            message.push(' ');
+            message.push_str(note);
+        }
+        self.toasts.show(message)
+    }
+
     /// Save overwrites the bound file. First save and Save As choose a path.
     /// Commit the new target only after a successful atomic write.
     fn save_to_file(&mut self, save_as: bool) -> Task<Message> {
@@ -9137,12 +9248,14 @@ impl App {
                 .current_file
                 .as_ref()
                 .is_some_and(|file| file.format.is_sketchy())
-                || (self.current_file.is_none() && self.sketchy_backing.is_some());
+                || (self.current_file.is_none() && self.sketchy_backing.is_some())
+                || self.save_as_sketchie;
             let ext = if prefer_sketchy {
-                let store = self
-                    .current_file
-                    .as_ref()
-                    .is_some_and(|file| file.format == SketchFileFormat::SketchyStore);
+                let store = self.save_as_sketchie
+                    || self
+                        .current_file
+                        .as_ref()
+                        .is_some_and(|file| file.format == SketchFileFormat::SketchyStore);
                 match (
                     self.sketchy_backing.as_ref().and_then(sketchy::Backing::version),
                     store,
@@ -9287,6 +9400,7 @@ impl App {
             .to_owned();
         let json_fallback = target.format == SketchFileFormat::Json;
         self.current_file = Some(target);
+        self.save_as_sketchie = false;
         self.file_name = name;
         self.autosave_clean();
         self.record_recent(&recent_name, &model.to_string());
@@ -9314,6 +9428,7 @@ impl App {
         }
         // Recovery and old cache-only recent entries have no trusted file path.
         self.current_file = None;
+        self.save_as_sketchie = false;
         self.sketchy_backing = sketchy::Backing::from_model(&data);
         if let Some(custom) = data.pointer("/settings/customSymbols").and_then(|v| {
             serde_json::from_value::<
@@ -9442,7 +9557,6 @@ impl App {
     /// applySaveModel's settings block. Keys this port owns update their
     /// state owners; the others land in `settings_extra` verbatim.
     fn apply_settings(&mut self, settings: Option<&serde_json::Value>) {
-        self.ui.ledger_split = ui::ledger::LedgerSplit::default();
         let Some(s) = settings else {
             // An older sketch with no saved settings must not inherit solids.
             self.drawing.options = crate::options::Options::default();
@@ -9550,9 +9664,6 @@ impl App {
                 .get("ledgerWidth")
                 .and_then(|v| v.as_f64())
                 .map(|w| ui::ledger::clamp_width(w as f32, self.window_size.width));
-            if let Some(ratio) = sb.get("layersSplit").and_then(|v| v.as_f64()) {
-                self.ui.ledger_split.set_ratio(ratio as f32);
-            }
         }
         if let Some(labels) = s.get("textLibraryLabels") {
             self.dock.text_labels = labels
@@ -10394,13 +10505,13 @@ mod tests {
     use sketch_core::symbols::WallSnap;
 
     #[test]
-    fn axf_paths_are_rejected_before_reading() {
-        let path = std::path::Path::new("previous-sketch.AXF");
-        assert!(!is_sketch_file(path));
-        assert_eq!(
-            read_sketch_path(path).unwrap_err(),
-            "AXF files are no longer supported."
-        );
+    fn axf_paths_are_openable_and_converted_not_bound() {
+        assert!(is_sketch_file(std::path::Path::new("previous-sketch.AXF")));
+        assert!(is_axf_path(std::path::Path::new("a/b.axf")));
+        assert!(!is_axf_path(std::path::Path::new("a/b.skx")));
+        // A missing or non-AXF file is an error, never a panic.
+        let missing = std::path::Path::new("definitely-missing-sketch.axf");
+        assert!(read_sketch_path(missing).is_err());
     }
 
     fn direct_save_fixture() -> (App, std::path::PathBuf) {

@@ -2,6 +2,7 @@
 //! export, and sketch file kernel for Sketch Rust.
 
 pub mod area_calc;
+pub mod axf;
 pub mod breakdown;
 pub mod cad_import;
 pub mod disto;

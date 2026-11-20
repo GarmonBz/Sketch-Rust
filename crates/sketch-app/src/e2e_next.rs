@@ -639,67 +639,6 @@ fn first_closed_area_is_centred_in_the_view_across_sizes() {
 }
 
 #[test]
-fn layers_split_resizes_with_the_mouse_and_keeps_totals_visible() {
-    use crate::e2e_support::scroll_areas;
-    for (label, size, density) in [
-        ("desktop", iced::Size::new(1536.0, 914.0), Density::Comfortable),
-        ("short", iced::Size::new(1280.0, 560.0), Density::Comfortable),
-        ("touch", iced::Size::new(1280.0, 800.0), Density::Touch),
-    ] {
-        let prepare = || {
-            let mut h = harness_next_at(size);
-            h.send(Message::Ui(UiMsg::SetDensity(density)));
-            draw_closed_square(&mut h);
-            h
-        };
-        let baseline = state(prepare());
-        let areas = scroll_areas(&baseline, size);
-        // Ids come through Debug-formatted, so match on the name inside.
-        let find = |id: &str| {
-            areas
-                .iter()
-                .find(|s| s.id.as_deref().is_some_and(|got| got.contains(id)))
-                .unwrap()
-                .bounds
-        };
-        let upper = find("ledger-areas");
-        let lower = find("ledger-layers");
-        if label == "desktop" {
-            assert!(
-                lower.height > 240.0,
-                "Layers should get more than its old 140px cap (got {:.0}px of {:.0}px list)",
-                lower.height,
-                upper.height + lower.height
-            );
-        }
-        let grab_y = upper.y + upper.height + 4.0;
-        let x = upper.center_x();
-        let mut h = prepare();
-        h.script(&[
-            &format!("press ({x}, {grab_y})"),
-            &format!("move ({x}, {})", grab_y - 60.0),
-            &format!("release ({x}, {})", grab_y - 60.0),
-        ]);
-        assert!(h.shows("Gross living area"));
-        assert!(h.shows("Show the math"));
-        let shot = h.screenshot_in("e2e-next", &format!("layers-split-{label}"));
-        assert!(shot.exists());
-        let app = state(h);
-        assert!(app.ui.ledger_split.ratio() < baseline.ui.ledger_split.ratio(),
-            "dragging upward must expand Layers at {label}");
-        let resized = scroll_areas(&app, size);
-        let new_layers = resized
-            .iter()
-            .find(|s| s.id.as_deref().is_some_and(|got| got.contains("ledger-layers")))
-            .unwrap()
-            .bounds;
-        assert!(new_layers.height > lower.height + 25.0, "Layers did not grow at {label}");
-        assert!(new_layers.y + new_layers.height < size.height - 100.0,
-            "Layers must leave room for totals at {label}");
-    }
-}
-
-#[test]
 fn canvas_context_menu_closes_on_an_outside_press_and_on_escape() {
     let r = {
         let mut peek = harness_next_at(VIEWPORT);
@@ -723,27 +662,138 @@ fn canvas_context_menu_closes_on_an_outside_press_and_on_escape() {
     assert!(state(h).context.open.is_none());
 }
 
+/// A closed square plus one new folder named "Layer": the combined tree's
+/// starting point for the tests below.
+macro_rules! tree_harness {
+    ($h:ident) => {
+        let mut $h = harness_next_at(VIEWPORT);
+        draw_closed_square(&mut $h);
+        $h.send(Message::LayerNewFolder);
+        $h.send(Message::LayerRenameCommit);
+    };
+}
+
+/// (the area's layer id, the folder's id, the polygon id) of the tree above.
+fn tree_ids() -> (String, String, i64) {
+    tree_harness!(p);
+    let app = state(p);
+    let area = app
+        .layers
+        .items
+        .iter()
+        .find(|l| l.area_poly_id.is_some())
+        .expect("the area has a layer");
+    let folder = app.layers.items.iter().find(|l| l.is_group).expect("the new folder");
+    (area.id.clone(), folder.id.clone(), app.drawing.polygons[0].id)
+}
+
 #[test]
-fn layers_split_is_saved_restored_and_survives_collapse() {
-    let mut h = harness_next_at(VIEWPORT);
-    draw_closed_square(&mut h);
-    h.script(&["click \"LAYERS (1)\"", "click \"LAYERS (1)\""]);
-    let mut app = state(h);
-    app.ui.ledger_split.set_ratio(0.35);
-    let model = app.build_save_model();
-    assert!((model["settings"]["sidebar"]["layersSplit"].as_f64().unwrap() - 0.35).abs() < 0.001);
-    app.ui.ledger_split.set_ratio(0.75);
-    app.apply_settings(model.get("settings"));
-    assert!((app.ui.ledger_split.ratio() - 0.35).abs() < 0.001);
-    app.apply_settings(Some(&serde_json::json!({"sidebar": {"layersSplit": 4.0}})));
-    assert_eq!(app.ui.ledger_split.ratio(), 0.85);
-    app.apply_settings(Some(&serde_json::json!({"sidebar": {}})));
-    assert_eq!(app.ui.ledger_split.ratio(), 0.45);
-    app.ui.ledger_split.set_ratio(f32::NAN);
-    assert_eq!(app.ui.ledger_split.ratio(), 0.45);
-    app.ui.ledger_split.set_ratio(0.3);
-    app.apply_settings(None);
-    assert_eq!(app.ui.ledger_split.ratio(), 0.45);
+fn areas_and_layers_show_as_one_tree_with_a_folder_button() {
+    tree_harness!(h);
+    // The area row: its name, and its type and size on a second line.
+    assert!(h.shows("Undefined Area"));
+    assert!(h.shows("Needs a type · 100.0 sf"));
+    // The folder row, and the plain layer that holds loose work.
+    assert!(h.shows("Layer"));
+    assert!(h.shows("Layer 1"));
+    // There is no second Layers list or tab any more.
+    assert!(!h.shows("LAYERS (1)"));
+    let app = state(h);
+    let folder = app.layers.items.iter().find(|l| l.is_group).unwrap();
+    assert_eq!(folder.name, "Layer");
+    assert!(folder.parent_id.is_none());
+}
+
+#[test]
+fn clicking_an_area_row_selects_the_area_and_leaves_the_active_layer_alone() {
+    let (_, _, poly) = tree_ids();
+    tree_harness!(h);
+    let before = {
+        let mut p = harness_next_at(VIEWPORT);
+        draw_closed_square(&mut p);
+        state(p).layers.active.clone()
+    };
+    h.script(&["click \"Needs a type · 100.0 sf\""]);
+    assert!(h.shows("Base area"), "the click opens the area's numbers");
+    let app = state(h);
+    assert!(app.selection.polys.contains(&poly));
+    assert_eq!(app.layers.active, before);
+}
+
+#[test]
+fn a_folders_eye_hides_the_areas_inside_it() {
+    let (area, folder, poly) = tree_ids();
+    tree_harness!(h);
+    h.send(Message::LayerMoveTo(area.clone(), Some(folder.clone())));
+    h.send(Message::LayerToggleVisible(folder.clone()));
+    let app = state(h);
+    assert_eq!(app.layers.layer(&area).unwrap().parent_id.as_deref(), Some(folder.as_str()));
+    assert!(app.layer_gates().hidden.contains(&poly), "the area is hidden with its folder");
+}
+
+#[test]
+fn move_to_layer_reparents_and_top_level_brings_it_back() {
+    let (area, folder, _) = tree_ids();
+    tree_harness!(h);
+    h.send(Message::LayerRowMenu(area.clone()));
+    assert!(h.shows("Move to layer"));
+    h.send(Message::LayerMoveTo(area.clone(), Some(folder.clone())));
+    h.send(Message::LayerRowMenu(area.clone()));
+    assert!(h.shows("Top level"));
+    h.send(Message::LayerMoveTo(area.clone(), None));
+    let app = state(h);
+    assert!(app.layers.layer(&area).unwrap().parent_id.is_none());
+    // The row menu never made the area layer the active one.
+    assert_ne!(app.layers.active, area);
+}
+
+#[test]
+fn dragging_a_row_reorders_it_or_drops_it_into_a_folder() {
+    use crate::layers::DragPos;
+    let (area, folder, _) = tree_ids();
+    tree_harness!(h);
+    // Into the folder.
+    h.send(Message::LayerPress(area.clone()));
+    h.send(Message::LayerZoneHover(folder.clone(), DragPos::Inside));
+    h.send(Message::LayerDrop(folder.clone(), DragPos::Inside));
+    // Then above the first plain layer, which also takes it out again.
+    h.send(Message::LayerPress(area.clone()));
+    h.send(Message::LayerZoneHover("layer-1".into(), DragPos::Before));
+    h.send(Message::LayerDrop("layer-1".into(), DragPos::Before));
+    let app = state(h);
+    assert!(app.layers.layer(&area).unwrap().parent_id.is_none());
+    let order: Vec<&str> = app
+        .layers
+        .flatten_layer_order()
+        .iter()
+        .map(|l| l.id.as_str())
+        .collect();
+    let pos = |id: &str| order.iter().position(|x| *x == id).unwrap();
+    assert!(pos(&area) < pos("layer-1"), "{order:?}");
+}
+
+#[test]
+fn deleting_a_folder_keeps_the_areas_that_were_in_it() {
+    let (area, folder, _) = tree_ids();
+    tree_harness!(h);
+    h.send(Message::LayerMoveTo(area.clone(), Some(folder.clone())));
+    h.send(Message::LayerDelete(folder.clone()));
+    let app = state(h);
+    assert!(app.layers.layer(&folder).is_none());
+    assert!(app.layers.layer(&area).unwrap().parent_id.is_none());
+}
+
+#[test]
+fn areas_and_layers_tree_screenshots() {
+    let (area, folder, _) = tree_ids();
+    for (label, density) in [("comfortable", Density::Comfortable), ("touch", Density::Touch)] {
+        tree_harness!(h);
+        h.send(Message::Ui(UiMsg::SetDensity(density)));
+        h.send(Message::LayerMoveTo(area.clone(), Some(folder.clone())));
+        h.script(&["click \"Needs a type · 100.0 sf\""]);
+        let shot = h.screenshot_in("e2e-next", &format!("areas-layers-tree-{label}"));
+        assert!(shot.exists());
+    }
 }
 
 #[test]
@@ -787,8 +837,8 @@ fn p6_ledger_drawn_types_layers_totals_and_resize_across_sizes() {
             h_app.script(&["click \"Areas\""]);
         }
         assert!(
-            h_app.shows("Needs a type"),
-            "UND warning section missing at {label}"
+            h_app.shows("Needs a type · 100.0 sf"),
+            "undefined area row missing at {label}"
         );
 
         // Find undefined areas toggle.
@@ -829,8 +879,8 @@ fn p6_ledger_drawn_types_layers_totals_and_resize_across_sizes() {
         );
         h_app.script(&["click \"Drawn\""]);
         assert!(
-            h_app.shows("Living space"),
-            "Living space group missing after defining GLA1 at {label}"
+            h_app.shows("GLA1 · 100.0 sf"),
+            "typed area row missing after defining GLA1 at {label}"
         );
         assert!(
             h_app.shows("100.0 sf"),
@@ -857,14 +907,11 @@ fn p6_ledger_drawn_types_layers_totals_and_resize_across_sizes() {
             "GLA1".into(),
         )));
         assert!(
-            h_app.shows("Needs a type"),
+            h_app.shows("Needs a type · 100.0 sf"),
             "Deleting GLA1 should revert area to Needs a type at {label}"
         );
 
-        // Layer tree: rename and hide the area layer cleanly.
-        if !matches!(class, SizeClass::Wide) {
-            h_app.script(&["click \"Layers\""]);
-        }
+        // Layer tree: hide the area layer cleanly.
         let layer_id = {
             let mut tmp = harness_next_at(iced::Size::new(w, h));
             draw_closed_square(&mut tmp);
@@ -876,16 +923,6 @@ fn p6_ledger_drawn_types_layers_totals_and_resize_across_sizes() {
                 .map(|l| l.id.clone())
                 .expect("area layer should exist")
         };
-        h_app.send(Message::LayerStartRename(layer_id.clone()));
-        h_app.send(Message::LayerRename(
-            layer_id.clone(),
-            "Main Floor Layer".into(),
-        ));
-        h_app.send(Message::LayerRenameCommit);
-        assert!(
-            h_app.shows("Main Floor Layer"),
-            "Renamed layer should appear at {label}"
-        );
         h_app.send(Message::LayerToggleVisible(layer_id.clone()));
         let app = state(h_app);
         assert!(
@@ -917,7 +954,7 @@ fn p6_ledger_drawn_types_layers_totals_and_resize_across_sizes() {
         h.send(Message::DockDragRelease);
         h.send(Message::Ui(UiMsg::TypeFilterChanged(String::new())));
         h.script(&["click \"Drawn\""]);
-        assert!(h.shows("Garage / carport"));
+        assert!(h.shows("GAR · 100.0 sf"));
         assert!(h.shows("Garage"));
 
         // Dragging Wide ledger resize handle updates ledger_width and canvas_rect().

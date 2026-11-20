@@ -1,4 +1,14 @@
-Sketch Rust 0.3.1 - Windows x64
+Sketch Rust 0.3.2 - Windows x64
+
+0.3.2 combines Areas and Layers into one list. Each area shows its name with
+its type and size underneath, folders group areas and layers, and every row has
+an eye to hide it and a lock. Drag any row up or down, or into a folder; the
+row menu moves an area to another layer. The new-folder button sits beside the
+menu. The separate Layers list and its divider are gone.
+
+0.3.2 also opens legacy .axf sketches as a converted new sketch (areas, arc
+walls and room labels; doors and fixtures are not imported yet). Save As keeps
+the copy as .sketchie; the .axf file is never changed.
 
 0.3.1 adds Door Garage 216, an 18 ft double garage door, to Doors & windows in
 place of the old Door - Garage-Dbl. A selected symbol's box and handles now sit

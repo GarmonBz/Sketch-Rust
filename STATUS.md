@@ -1,5 +1,18 @@
 # Sketch Rust — STATUS ledger
 
+0.3.2 also opens legacy `.axf` sketches. The file is unpacked (raw deflate),
+its areas, arc walls and room labels are mapped into a new untitled sketch
+(area codes, names and factors from the file), and Save As writes `.sketchie`.
+Each boundary is re-measured and checked against the area the file recorded.
+Doors/fixtures, dimension strings, the subject header and metric files are not
+imported. See [docs/AXF_IMPORT.md](docs/AXF_IMPORT.md). This replaces the
+"AXF files are no longer supported" refusal; no Apex SDK, writer or host
+integration comes back with it.
+
+0.3.2 merges the Areas and Layers lists into one tree: area rows with the type
+and size on a second line, layer folders, eye and lock on each row, drag to
+reorder or move into a folder, and Move to layer in the row menu.
+
 0.3.1 adds the Door Garage 216 symbol (replacing Door - Garage-Dbl), fixes the
 offset selection box and handles on symbols whose origin is not at their
 centre, and draws symbols inverted on Dark and Blue canvases.

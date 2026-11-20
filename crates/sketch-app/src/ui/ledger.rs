@@ -5,15 +5,16 @@
 use std::collections::HashMap;
 
 use iced::widget::scrollable::{Direction, Scrollbar};
+use iced::widget::text::Wrapping;
 use iced::widget::{
-    button, column, container, mouse_area, opaque, pane_grid, row, scrollable as make_scrollable,
-    stack, text, text_input, Column, Space,
+    button, column, container, mouse_area, opaque, row, scrollable as make_scrollable, stack, text,
+    text_input, Column, Space,
 };
 use iced::{alignment, mouse, Alignment, Background, Border, Color, Element, Length, Padding};
 use sketch_core::geometry::{distance, AreaCode};
 
 use crate::area_workflow::{self, Msg as WorkflowMsg};
-use crate::dock::{self, palette_group_label, DragItem};
+use crate::dock::{self, DragItem};
 use crate::icons;
 use crate::layers::{DragPos, Row as LayerRow};
 use crate::ui::fonts::{BARLOW, BARLOW_MEDIUM, BARLOW_SEMIBOLD, BSC_MEDIUM, BSC_SEMIBOLD};
@@ -31,57 +32,11 @@ pub const MIN_W: f32 = 220.0;
 pub const MAX_W: f32 = 400.0;
 pub const CANVAS_MIN_W: f32 = 220.0;
 
-/// The lower (Layers) pane starts with 55% of the list space, instead of a
-/// 140px cap; the divider between the two lists drags from there.
-const DEFAULT_LIST_SPLIT: f32 = 0.45;
-
-#[derive(Debug, Clone, Copy)]
-pub enum LedgerPane {
-    Areas,
-    Layers,
-}
-
-#[derive(Debug)]
-pub struct LedgerSplit {
-    panes: pane_grid::State<LedgerPane>,
-    split: pane_grid::Split,
-}
-
-impl Default for LedgerSplit {
-    fn default() -> Self {
-        let (mut panes, areas) = pane_grid::State::new(LedgerPane::Areas);
-        let (_, split) = panes
-            .split(pane_grid::Axis::Horizontal, areas, LedgerPane::Layers)
-            .expect("split the two ledger lists");
-        panes.resize(split, DEFAULT_LIST_SPLIT);
-        Self { panes, split }
-    }
-}
-
-impl LedgerSplit {
-    pub fn ratio(&self) -> f32 {
-        match self.panes.layout() {
-            pane_grid::Node::Split { ratio, .. } => *ratio,
-            _ => DEFAULT_LIST_SPLIT,
-        }
-    }
-
-    pub fn set_ratio(&mut self, ratio: f32) {
-        let ratio = if ratio.is_finite() {
-            ratio.clamp(0.15, 0.85)
-        } else {
-            DEFAULT_LIST_SPLIT
-        };
-        self.panes.resize(self.split, ratio);
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LedgerView {
     #[default]
     Drawn,
     Types,
-    Layers,
 }
 
 /// Clamps dragged ledger width to `[MIN_W, MAX_W]` while preserving `CANVAS_MIN_W`.
@@ -130,44 +85,15 @@ pub fn panel<'a>(
     }
 
     let calcs_model = calcs::build(&app.drawing.polygons, &app.computed);
-    let view = match class {
-        SizeClass::Wide if app.ui.ledger_view == LedgerView::Layers => LedgerView::Drawn,
-        _ => app.ui.ledger_view,
-    };
+    let view = app.ui.ledger_view;
 
     let header = panel_header(app, class, view, d, overlay);
-    let main_list = || -> Element<'a, Message> {
-        match view {
-            LedgerView::Drawn => drawn_view(app, &calcs_model, d),
-            LedgerView::Types => types_view(app, d),
-            LedgerView::Layers => layers_view(app, d),
-        }
+    let lists: Element<'a, Message> = match view {
+        LedgerView::Drawn => drawn_view(app, &calcs_model, d),
+        LedgerView::Types => types_view(app, d),
     };
 
-    let lists: Element<'a, Message> = if class == SizeClass::Wide && app.ui.layers_expanded {
-        pane_grid(&app.ui.ledger_split.panes, |_, pane, _| {
-            pane_grid::Content::new(match pane {
-                LedgerPane::Areas => main_list(),
-                LedgerPane::Layers => wide_layers_section(app, d),
-            })
-        })
-        .spacing(SPACE_2)
-        .min_size(80.0)
-        .on_resize(if d == Density::Touch { 20.0 } else { 10.0 }, |event| {
-            Message::Ui(UiMsg::ResizeLayers(event))
-        })
-        .style(|theme| {
-            let mut style = pane_grid::default(theme);
-            style.hovered_split.color = tokens::accent();
-            style.picked_split.color = tokens::accent();
-            style
-        })
-        .into()
-    } else {
-        main_list()
-    };
-
-    let mut content = column![
+    let content = column![
         header,
         container(lists).width(Length::Fill).height(Length::Fill)
     ]
@@ -175,11 +101,7 @@ pub fn panel<'a>(
     .width(Length::Fill)
     .height(Length::Fill);
 
-    if class == SizeClass::Wide && !app.ui.layers_expanded {
-        content = content.push(wide_layers_section(app, d));
-    }
-
-    content = content.push(totals_foot(app, &calcs_model, class, d));
+    let content = content.push(totals_foot(app, &calcs_model, class, d));
 
     framed_panel(app, d, overlay, content.into())
 }
@@ -230,6 +152,11 @@ fn panel_header<'a>(
             .size(TEXT_14)
             .color(tokens::text()),
         Space::new().width(Length::Fill),
+        kit::tooltip(
+            kit::icon_button("folder-simple-plus", false, Some(Message::LayerNewFolder), d),
+            "New layer folder",
+            iced::widget::tooltip::Position::Bottom,
+        ),
         kit::icon_button(
             "dots-three",
             app.ui.ledger_menu,
@@ -249,7 +176,7 @@ fn panel_header<'a>(
         ));
     }
 
-    let mut segments = vec![
+    let segments = vec![
         kit::Segment {
             label: "Drawn",
             selected: active_view == LedgerView::Drawn,
@@ -263,14 +190,7 @@ fn panel_header<'a>(
             on_press: Some(Message::Ui(UiMsg::SetLedgerView(LedgerView::Types))),
         },
     ];
-    if !matches!(class, SizeClass::Wide) {
-        segments.push(kit::Segment {
-            label: "Layers",
-            selected: active_view == LedgerView::Layers,
-            focused: false,
-            on_press: Some(Message::Ui(UiMsg::SetLedgerView(LedgerView::Layers))),
-        });
-    }
+    let _ = class;
 
     column![title_row, kit::segmented(segments, d)]
         .spacing(SPACE_2)
@@ -285,7 +205,7 @@ pub fn layer<'a>(app: &'a App) -> Option<Element<'a, Message>> {
     }
     let d = app.ui.density;
     let class = SizeClass::of(app.window_size.width);
-    let mut entries = vec![
+    let entries = vec![
         MenuEntry::Item {
             icon: Some("arrows-out"),
             label: "Expand all",
@@ -328,18 +248,6 @@ pub fn layer<'a>(app: &'a App) -> Option<Element<'a, Message>> {
             on_press: Some(Message::AreaWorkflow(WorkflowMsg::Advanced(true))),
         },
     ];
-    if matches!(class, SizeClass::Wide) {
-        entries.push(MenuEntry::Separator);
-        entries.push(MenuEntry::Item {
-            icon: Some("square-split-vertical"),
-            label: "Show layers section",
-            shortcut: None,
-            checked: app.ui.layers_expanded,
-            focused: false,
-            on_press: Some(Message::Ui(UiMsg::ToggleLayersSection)),
-        });
-    }
-
     let card = kit::popover(kit::menu(entries, 240.0, d), RADIUS_DIALOG);
     let top_pad = d.bar_h()
         + if matches!(class, SizeClass::Wide) {
@@ -371,121 +279,85 @@ pub fn layer<'a>(app: &'a App) -> Option<Element<'a, Message>> {
 }
 
 // ---------------------------------------------------------------------------
-// Drawn view
+// Areas and layers: one tree
 // ---------------------------------------------------------------------------
 
-struct DrawnGroup {
-    key: String,
-    label: String,
-    total: f64,
-    codes: Vec<String>,
-    items: Vec<(calcs::AreaRow, Color)>,
+/// Every drawn area's numbers by polygon id: the typed ones from the calcs
+/// model, plus the ones that still need a type.
+fn area_rows_by_id(app: &App, model: &calcs::Calcs) -> HashMap<i64, calcs::AreaRow> {
+    let mut by_id = HashMap::new();
+    for group in &model.groups {
+        for area in &group.areas {
+            by_id.insert(area.id, area.clone());
+        }
+    }
+    for poly in app
+        .drawing
+        .polygons
+        .iter()
+        .filter(|p| p.kind == "UND" || p.kind.is_empty())
+    {
+        let title = if poly.name.is_empty() {
+            "Undefined Area"
+        } else {
+            poly.name.as_str()
+        };
+        by_id.insert(
+            poly.id,
+            calcs::AreaRow {
+                id: poly.id,
+                name: title.to_owned(),
+                base_area: poly.gross,
+                factor: poly.factor,
+                total: poly.gross * poly.factor,
+                subtracted: app.computed.get(&poly.id).map(|c| c.subtracted),
+                net_area: poly.area,
+                perimeter: app.computed.get(&poly.id).map_or(0.0, |c| c.perimeter),
+            },
+        );
+    }
+    by_id
 }
 
-fn drawn_view<'a>(app: &'a App, calcs_model: &calcs::Calcs, d: Density) -> Element<'a, Message> {
+/// What a tree row stands for, with the text it shows already formed.
+enum RowKind {
+    /// A folder and the total of the areas inside it.
+    Folder(f64),
+    /// A closed area's own layer.
+    Area {
+        poly: i64,
+        name: String,
+        /// "CODE · 412.0 sf", on a second line so a long name has room.
+        detail: String,
+        swatch: Color,
+        flagged: bool,
+    },
+    /// Any other layer: loose walls, symbols and labels.
+    Other,
+}
+
+/// The Areas tab: folders, area layers and other layers in one list, each
+/// with its eye and lock, in the order they paint. Drag a row to reorder it
+/// or to move it into a folder.
+fn drawn_view<'a>(app: &'a App, model: &calcs::Calcs, d: Density) -> Element<'a, Message> {
     let mut rows: Vec<Element<'a, Message>> = Vec::new();
 
     if app.drawing.pen_down && !app.drawing.points.is_empty() {
         rows.push(drawing_in_progress_row(app));
     }
 
-    let und_polys: Vec<_> = app
-        .drawing
-        .polygons
-        .iter()
-        .filter(|p| p.kind == "UND" || p.kind.is_empty())
-        .collect();
-    if !und_polys.is_empty() {
-        let und_color = area_color(&app.area_codes, "UND");
-        let und_total: f64 = und_polys.iter().map(|p| p.gross).sum();
-        let und_collapsed = app.dock.calcs_collapsed.contains("UND");
-        rows.push(group_toggle_row(
-            "Needs a type",
-            &format!("{} · {:.1} sf", und_polys.len(), und_total),
-            und_collapsed,
-            true,
-            Message::CalcsGroup("UND".to_owned()),
-            d,
-        ));
-        if !und_collapsed {
-            for poly in und_polys {
-                let title = if poly.name.is_empty() {
-                    "Undefined Area"
-                } else {
-                    poly.name.as_str()
-                };
-                let area_row = calcs::AreaRow {
-                    id: poly.id,
-                    name: title.to_owned(),
-                    base_area: poly.gross,
-                    factor: poly.factor,
-                    total: poly.gross * poly.factor,
-                    subtracted: app.computed.get(&poly.id).map(|c| c.subtracted),
-                    net_area: poly.area,
-                    perimeter: app.computed.get(&poly.id).map_or(0.0, |c| c.perimeter),
-                };
-                rows.push(drawn_area_block(app, &area_row, und_color, true, d));
-            }
-        }
-    }
+    let areas = area_rows_by_id(app, model);
+    let filter = app.area_layer_filter();
+    // Orphaned area layers (their polygon is gone) stay out of the list.
+    let tree = app
+        .layers
+        .visible_rows(|l| l.is_group || l.area_poly_id.is_none() || filter.keeps(l));
+    let has_folder = tree.iter().any(|r| r.is_group);
 
-    let mut groups: Vec<DrawnGroup> = Vec::new();
-    let mut group_index: HashMap<String, usize> = HashMap::new();
-    for cg in &calcs_model.groups {
-        let meta = app.area_codes.iter().find(|c| c.code == cg.code);
-        let group_key = meta
-            .map(|c| c.group.clone())
-            .filter(|g| !g.is_empty())
-            .unwrap_or_else(|| cg.code.clone());
-        let label = match palette_group_label(&group_key) {
-            "" => group_key.clone(),
-            known => known.to_owned(),
-        };
-        let swatch = meta.map(code_color_rgb).unwrap_or_else(tokens::accent);
-        let idx = *group_index.entry(group_key.clone()).or_insert_with(|| {
-            groups.push(DrawnGroup {
-                key: group_key,
-                label,
-                total: 0.0,
-                codes: Vec::new(),
-                items: Vec::new(),
-            });
-            groups.len() - 1
-        });
-        groups[idx].total += cg.total;
-        groups[idx].codes.push(cg.code.clone());
-        for area in &cg.areas {
-            groups[idx].items.push((area.clone(), swatch));
-        }
-    }
-
-    for grp in groups {
-        let collapsed = app.dock.calcs_collapsed.contains(&grp.key)
-            || (!grp.codes.is_empty()
-                && grp
-                    .codes
-                    .iter()
-                    .all(|c| app.dock.calcs_collapsed.contains(c)));
-        rows.push(group_toggle_row(
-            &grp.label,
-            &format!("{:.1} sf", grp.total),
-            collapsed,
-            false,
-            Message::CalcsGroup(grp.key),
-            d,
-        ));
-        if collapsed {
-            continue;
-        }
-        for (area, swatch) in &grp.items {
-            rows.push(drawn_area_block(app, area, *swatch, false, d));
-        }
-    }
-
-    if rows.is_empty() {
+    if rows.is_empty() && areas.is_empty() && !has_folder {
         return container(
             column![
-                text(calcs_model.empty_note())
+                text(model.empty_note())
                     .font(BARLOW_MEDIUM)
                     .size(TEXT_13)
                     .color(tokens::muted()),
@@ -502,14 +374,86 @@ fn drawn_view<'a>(app: &'a App, calcs_model: &calcs::Calcs, d: Density) -> Eleme
         .into();
     }
 
-    make_scrollable(Column::with_children(rows).spacing(4).width(Length::Fill))
+    let folder_total = |id: &str| -> f64 {
+        app.layers
+            .descendant_layer_ids(id)
+            .iter()
+            .filter_map(|lid| app.layers.layer(lid))
+            .filter_map(|l| l.area_poly_id.as_deref()?.parse::<i64>().ok())
+            .filter_map(|poly| areas.get(&poly))
+            .map(|a| a.net_area)
+            .sum()
+    };
+
+    let mut placed: std::collections::HashSet<i64> = std::collections::HashSet::new();
+    let mut active_menu: Option<LayerRow> = None;
+    for r in &tree {
+        if app.dock.layer_menu.as_deref() == Some(r.id.as_str()) {
+            active_menu = Some(r.clone());
+        }
+        let area = r
+            .area_poly_id
+            .as_deref()
+            .filter(|_| !r.is_group)
+            .and_then(|p| p.parse::<i64>().ok())
+            .and_then(|p| areas.get(&p).map(|a| (p, a)));
+        match (r.is_group, area) {
+            (true, _) => rows.push(layer_row(app, r, RowKind::Folder(folder_total(&r.id)), d)),
+            (false, Some((poly, a))) => {
+                placed.insert(poly);
+                let code = area_code_of(app, poly);
+                let flagged = code == "UND";
+                let shown = if flagged { "Needs a type" } else { code.as_str() };
+                let kind = RowKind::Area {
+                    poly,
+                    name: a.name.clone(),
+                    detail: format!("{shown} · {:.1} sf", a.net_area),
+                    swatch: area_color(&app.area_codes, &code),
+                    flagged,
+                };
+                rows.push(layer_row(app, r, kind, d));
+                if app.dock.calcs_expanded.contains(&poly) {
+                    rows.push(area_details(app, a, r.depth));
+                }
+            }
+            (false, None) => rows.push(layer_row(app, r, RowKind::Other, d)),
+        }
+    }
+
+    // An area whose layer is out of step still shows, without layer tools.
+    for poly in &app.drawing.polygons {
+        if let (false, Some(a)) = (placed.contains(&poly.id), areas.get(&poly.id)) {
+            let code = area_code_of(app, poly.id);
+            rows.push(loose_area_row(app, a, &code, d));
+        }
+    }
+
+    let sc = make_scrollable(Column::with_children(rows).spacing(2).width(Length::Fill))
         .id("ledger-areas")
         .direction(Direction::Vertical(
             Scrollbar::new().width(5).scroller_width(5),
         ))
         .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+        .height(Length::Fill);
+    if let Some(menu_row) = active_menu {
+        stack![sc, inline_layer_menu(app, &menu_row, d)]
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
+    } else {
+        sc.into()
+    }
+}
+
+/// The type code of a polygon; an empty one counts as undefined.
+fn area_code_of(app: &App, poly: i64) -> String {
+    app.drawing
+        .polygons
+        .iter()
+        .find(|p| p.id == poly)
+        .map(|p| p.kind.clone())
+        .filter(|k| !k.is_empty())
+        .unwrap_or_else(|| "UND".to_owned())
 }
 
 fn drawing_in_progress_row<'a>(app: &'a App) -> Element<'a, Message> {
@@ -616,105 +560,94 @@ fn group_toggle_row<'a>(
     .into()
 }
 
-fn drawn_area_block<'a>(
+fn swatch_box<'a>(swatch: Color) -> Element<'a, Message> {
+    container(Space::new())
+        .width(Length::Fixed(12.0))
+        .height(Length::Fixed(12.0))
+        .style(move |_| container::Style {
+            background: Some(Background::Color(swatch)),
+            border: Border {
+                color: tokens::rule(),
+                width: 1.0,
+                radius: 2.0.into(),
+            },
+            ..container::Style::default()
+        })
+        .into()
+}
+
+/// A polygon with no live layer of its own: a plain row that selects it.
+fn loose_area_row<'a>(
     app: &'a App,
     area: &calcs::AreaRow,
-    swatch: Color,
-    flagged: bool,
+    code: &str,
     d: Density,
 ) -> Element<'a, Message> {
+    let flagged = code == "UND";
     let selected = app.selection.polys.contains(&area.id);
-    let expanded = app.dock.calcs_expanded.contains(&area.id);
-    let value = format!("{:.1} sf", area.net_area);
-    let title_color = if flagged {
-        tokens::flag()
-    } else {
-        tokens::text()
-    };
-    let value_color = if flagged {
-        tokens::flag()
-    } else {
-        tokens::muted()
-    };
-    let caret = if expanded {
-        "caret-down"
-    } else {
-        "caret-right"
-    };
-
-    let row_content = row![
-        container(Space::new())
-            .width(Length::Fixed(10.0))
-            .height(Length::Fixed(10.0))
-            .style(move |_| container::Style {
-                background: Some(Background::Color(swatch)),
-                border: Border {
-                    color: tokens::rule(),
-                    width: 1.0,
-                    radius: 2.0.into(),
-                },
-                ..container::Style::default()
-            }),
-        text(area.name.clone())
-            .font(if selected {
-                BARLOW_SEMIBOLD
-            } else {
-                BARLOW_MEDIUM
-            })
-            .size(TEXT_13)
-            .color(title_color)
-            .width(Length::Fill),
-        text(value)
-            .font(BSC_MEDIUM)
-            .size(TEXT_13)
-            .color(value_color),
-        icons::mono(caret, 12.0, tokens::muted()),
+    let swatch = area_color(&app.area_codes, code);
+    let body = row![
+        swatch_box(swatch),
+        column![
+            text(area.name.clone())
+                .font(BARLOW_MEDIUM)
+                .size(TEXT_13)
+                .color(if flagged { tokens::flag() } else { tokens::text() }),
+            text(format!(
+                "{} · {:.1} sf",
+                if flagged { "Needs a type" } else { code },
+                area.net_area
+            ))
+                .font(BSC_MEDIUM)
+                .size(TEXT_11)
+                .color(if flagged { tokens::flag() } else { tokens::muted() }),
+        ]
+        .spacing(1)
+        .width(Length::Fill),
     ]
     .spacing(SPACE_2)
     .align_y(Alignment::Center);
-
-    let bg = if selected {
-        tokens::accent_soft()
-    } else {
-        Color::TRANSPARENT
-    };
-    let row_btn = button(
-        container(row_content)
-            .height(Length::Fixed(d.row_h()))
-            .padding([0, 8])
-            .align_y(Alignment::Center)
-            .width(Length::Fill),
+    let open = Message::AreaWorkflow(WorkflowMsg::Open(area.id));
+    kit::long_press(
+        mouse_area(
+            button(
+                container(body)
+                    .height(Length::Fixed(area_row_h(d)))
+                    .padding([0, 8])
+                    .align_y(Alignment::Center)
+                    .width(Length::Fill),
+            )
+            .padding(0)
+            .width(Length::Fill)
+            .on_press(Message::CalcsArea(area.id))
+            .style(move |_, status| button::Style {
+                background: Some(Background::Color(match status {
+                    button::Status::Hovered => tokens::hover(),
+                    _ if selected => tokens::accent_soft(),
+                    _ => Color::TRANSPARENT,
+                })),
+                border: Border {
+                    radius: RADIUS_CONTROL.into(),
+                    ..Border::default()
+                },
+                ..button::Style::default()
+            }),
+        )
+        .on_right_press(open.clone()),
+        open,
     )
-    .padding(0)
-    .width(Length::Fill)
-    .on_press(Message::CalcsArea(area.id))
-    .style(move |_, status| button::Style {
-        background: Some(Background::Color(match status {
-            button::Status::Hovered => tokens::hover(),
-            button::Status::Pressed => tokens::pressed(),
-            _ => bg,
-        })),
-        border: Border {
-            color: if selected {
-                tokens::accent()
-            } else {
-                Color::TRANSPARENT
-            },
-            width: if selected { 1.0 } else { 0.0 },
-            radius: RADIUS_CONTROL.into(),
-        },
-        ..button::Style::default()
-    });
-    let open_area_msg = Message::AreaWorkflow(WorkflowMsg::Open(area.id));
-    let header = kit::long_press(
-        mouse_area(row_btn).on_right_press(open_area_msg.clone()),
-        open_area_msg,
-    );
+}
 
-    if !expanded {
-        return header;
+fn area_row_h(d: Density) -> f32 {
+    if matches!(d, Density::Touch) {
+        56.0
+    } else {
+        48.0
     }
+}
 
+/// The expanded numbers under an area row (Base area ... Perimeter).
+fn area_details<'a>(app: &'a App, area: &calcs::AreaRow, depth: usize) -> Element<'a, Message> {
     let sub = area.subtracted.unwrap_or(0.0);
     let sub_text = if sub > 0.0 {
         format!("-{sub:.1} sf")
@@ -723,7 +656,7 @@ fn drawn_area_block<'a>(
     };
     // One decimal for areas and lengths everywhere (rows, inspector, plan
     // labels, totals); only the factor, a multiplier, keeps two.
-    let details = container(
+    container(
         column![
             detail_line("Base area", format!("{:.1} sf", area.base_area), false),
             detail_line("Factor", format!("{:.2}", area.factor), false),
@@ -743,7 +676,7 @@ fn drawn_area_block<'a>(
         top: 6.0,
         right: 10.0,
         bottom: 6.0,
-        left: 20.0,
+        left: 20.0 + depth as f32 * 14.0,
     })
     .style(|_| container::Style {
         background: Some(Background::Color(tokens::field())),
@@ -753,12 +686,362 @@ fn drawn_area_block<'a>(
             radius: RADIUS_CONTROL.into(),
         },
         ..container::Style::default()
-    });
+    })
+    .into()
+}
 
-    column![header, details]
-        .spacing(SPACE_1)
+fn layer_row<'a>(app: &'a App, r: &LayerRow, kind: RowKind, d: Density) -> Element<'a, Message> {
+    let id = r.id.as_str();
+    let is_folder = matches!(kind, RowKind::Folder(_));
+    let dragging = app.dock.layer_drag.as_deref() == Some(id);
+    let drop_mark: Option<DragPos> = if dragging {
+        None
+    } else {
+        app.dock
+            .layer_over
+            .as_ref()
+            .filter(|(target, _)| target != id && app.dock.layer_drag.is_some())
+            // Only a folder takes a row inside it; elsewhere it lands after.
+            .map(|(_, p)| match p {
+                DragPos::Inside if !is_folder => DragPos::After,
+                other => *other,
+            })
+    };
+
+    let hovered = app.dock.layer_hover.as_deref() == Some(id);
+    let menu_open = app.dock.layer_menu.as_deref() == Some(id);
+    let renaming = app
+        .dock
+        .layer_rename
+        .as_ref()
+        .filter(|(target, _)| target == id)
+        .map(|(_, buf)| buf.clone());
+
+    let touch = matches!(d, Density::Touch);
+    let row_h: f32 = match kind {
+        RowKind::Area { .. } => area_row_h(d),
+        _ if touch => 38.0,
+        _ => 30.0,
+    };
+    let mid_h = (row_h - 12.0).max(16.0);
+    let selected = match &kind {
+        RowKind::Area { poly, .. } => app.selection.polys.contains(poly),
+        RowKind::Other => r.active,
+        RowKind::Folder(_) => false,
+    };
+    let dim = !r.visible || r.locked;
+    let fg = if dragging {
+        tokens::disabled()
+    } else if dim {
+        tokens::muted()
+    } else {
+        tokens::text()
+    };
+    let name_font = if selected { BARLOW_SEMIBOLD } else { BARLOW_MEDIUM };
+
+    let head: Element<'a, Message> = if is_folder {
+        let caret = if r.collapsed {
+            "caret-right"
+        } else {
+            "caret-down"
+        };
+        kit::icon_button(
+            caret,
+            false,
+            Some(Message::LayerToggleCollapsed(id.to_owned())),
+            d,
+        )
+    } else {
+        Space::new().width(Length::Fixed(16.0)).into()
+    };
+
+    let lead: Element<'a, Message> = match &kind {
+        RowKind::Folder(_) => icons::mono("folder-simple", 14.0, tokens::accent()).into(),
+        RowKind::Area { swatch, .. } => swatch_box(*swatch),
+        RowKind::Other => icons::mono("shapes", 14.0, tokens::muted()).into(),
+    };
+
+    let mid_content: Element<'a, Message> = if let Some(buf) = renaming {
+        let id_owned = id.to_owned();
+        container(
+            text_input("", buf.as_str())
+                .id(dock::RENAME_ID)
+                .size(TEXT_12)
+                .font(BARLOW)
+                .padding([2, 6])
+                .width(Length::Fill)
+                .on_input(move |s| Message::LayerRename(id_owned.clone(), s))
+                .on_submit(Message::LayerRenameCommit),
+        )
         .width(Length::Fill)
+        .align_y(Alignment::Center)
         .into()
+    } else {
+        match kind {
+            RowKind::Area {
+                name,
+                detail,
+                flagged,
+                ..
+            } => column![
+                text(name)
+                    .font(name_font)
+                    .size(TEXT_13)
+                    .wrapping(Wrapping::None)
+                    .color(if flagged { tokens::flag() } else { fg }),
+                text(detail)
+                    .font(BSC_MEDIUM)
+                    .size(TEXT_11)
+                    .wrapping(Wrapping::None)
+                    .color(if flagged { tokens::flag() } else { tokens::muted() }),
+            ]
+            .spacing(1)
+            .width(Length::Fill)
+            .into(),
+            RowKind::Folder(total) => row![
+                text(r.name.clone())
+                    .font(BARLOW_SEMIBOLD)
+                    .size(TEXT_13)
+                    .wrapping(Wrapping::None)
+                    .color(fg)
+                    .width(Length::Fill),
+                text(format!("{total:.1} sf"))
+                    .font(BSC_MEDIUM)
+                    .size(TEXT_12)
+                    .wrapping(Wrapping::None)
+                    .color(tokens::muted()),
+            ]
+            .spacing(SPACE_1)
+            .align_y(Alignment::Center)
+            .width(Length::Fill)
+            .into(),
+            RowKind::Other => text(r.name.clone())
+                .font(name_font)
+                .size(TEXT_13)
+                .wrapping(Wrapping::None)
+                .color(fg)
+                .width(Length::Fill)
+                .into(),
+        }
+    };
+    let mid_content = container(mid_content)
+        .width(Length::Fill)
+        .height(Length::Fixed(mid_h))
+        .align_y(Alignment::Center)
+        .clip(true);
+
+    let zone = |h: f32, pos: DragPos, content: Element<'a, Message>| -> Element<'a, Message> {
+        mouse_area(
+            container(content)
+                .width(Length::Fill)
+                .height(Length::Fixed(h)),
+        )
+        .on_press(Message::LayerPress(id.to_owned()))
+        .on_release(Message::LayerDrop(id.to_owned(), pos))
+        .on_enter(Message::LayerZoneHover(id.to_owned(), pos))
+        .into()
+    };
+    let strip = column![
+        zone(6.0, DragPos::Before, Space::new().into()),
+        zone(mid_h, DragPos::Inside, mid_content.into()),
+        zone(6.0, DragPos::After, Space::new().into()),
+    ]
+    .width(Length::Fill);
+
+    // The eye is always there; lock and the menu appear on hover, selection,
+    // a lock, an open menu, and always on touch screens (no hover there).
+    // (Narrow panels and touch rows have no room for all three at once, so a
+    // touch row keeps the eye and the menu, whose Lock entry does the rest.)
+    let show_lock = hovered || r.locked || menu_open;
+    let show_menu = touch || hovered || menu_open;
+    let mut tools = row![kit::icon_button(
+        if r.visible { "eye" } else { "eye-slash" },
+        !r.visible,
+        Some(Message::LayerToggleVisible(id.to_owned())),
+        d,
+    )]
+    .spacing(2)
+    .align_y(Alignment::Center);
+    if show_lock {
+        tools = tools.push(kit::icon_button(
+            if r.locked {
+                "lock-simple"
+            } else {
+                "lock-simple-open"
+            },
+            r.locked,
+            Some(Message::LayerToggleLocked(id.to_owned())),
+            d,
+        ));
+    }
+    if show_menu {
+        tools = tools.push(kit::icon_button(
+            "dots-three",
+            menu_open,
+            Some(Message::LayerRowMenu(id.to_owned())),
+            d,
+        ));
+    }
+
+    let row_body = row![head, lead, strip, tools]
+        .spacing(4)
+        .padding(Padding {
+            left: 4.0 + r.depth as f32 * 14.0,
+            right: 4.0,
+            top: 0.0,
+            bottom: 0.0,
+        })
+        .align_y(Alignment::Center)
+        .width(Length::Fill)
+        .height(Length::Fixed(row_h));
+
+    let inside = drop_mark == Some(DragPos::Inside);
+    let frame = container(row_body)
+        .width(Length::Fill)
+        .style(move |_| container::Style {
+            background: Some(Background::Color(if selected {
+                tokens::accent_soft()
+            } else if hovered && !dragging {
+                tokens::hover()
+            } else {
+                Color::TRANSPARENT
+            })),
+            border: Border {
+                color: if selected || inside {
+                    tokens::accent()
+                } else {
+                    Color::TRANSPARENT
+                },
+                width: if selected || inside { 1.0 } else { 0.0 },
+                radius: RADIUS_CONTROL.into(),
+            },
+            ..container::Style::default()
+        });
+
+    let marked: Element<'a, Message> = match drop_mark {
+        Some(DragPos::Before) => column![drop_rule(), frame].width(Length::Fill).into(),
+        Some(DragPos::After) => column![frame, drop_rule()].width(Length::Fill).into(),
+        _ => frame.into(),
+    };
+
+    let layer_menu_msg = Message::LayerRowMenu(id.to_owned());
+    kit::long_press(
+        mouse_area(marked)
+            .on_enter(Message::LayerHoverRow(id.to_owned()))
+            .on_exit(Message::LayerHoverRowGone(id.to_owned()))
+            .on_right_press(layer_menu_msg.clone()),
+        layer_menu_msg,
+    )
+}
+
+fn drop_rule<'a>() -> Element<'a, Message> {
+    container(Space::new())
+        .width(Length::Fill)
+        .height(Length::Fixed(2.0))
+        .style(|_| container::Style {
+            background: Some(Background::Color(tokens::accent())),
+            ..container::Style::default()
+        })
+        .into()
+}
+
+fn inline_layer_menu<'a>(app: &'a App, r: &LayerRow, d: Density) -> Element<'a, Message> {
+    let id = r.id.clone();
+    let poly = r
+        .area_poly_id
+        .as_deref()
+        .filter(|_| !r.is_group)
+        .and_then(|p| p.parse::<i64>().ok());
+    let item = |icon: &'static str, label: &'a str, msg: Message| MenuEntry::Item {
+        icon: Some(icon),
+        label,
+        shortcut: None,
+        checked: false,
+        focused: false,
+        on_press: Some(msg),
+    };
+    let mut entries: Vec<MenuEntry<'a>> = Vec::new();
+    match poly {
+        Some(poly) => entries.push(item(
+            "pencil-simple",
+            "Edit area…",
+            Message::AreaWorkflow(WorkflowMsg::Open(poly)),
+        )),
+        None => entries.push(item("text-t", "Rename", Message::LayerStartRename(id.clone()))),
+    }
+    entries.push(item(
+        if r.visible { "eye-slash" } else { "eye" },
+        if r.visible { "Hide" } else { "Show" },
+        Message::LayerToggleVisible(id.clone()),
+    ));
+    entries.push(item(
+        if r.locked {
+            "lock-simple-open"
+        } else {
+            "lock-simple"
+        },
+        if r.locked { "Unlock" } else { "Lock" },
+        Message::LayerToggleLocked(id.clone()),
+    ));
+
+    if !r.is_group {
+        let current = app
+            .layers
+            .layer(&r.id)
+            .and_then(|l| l.parent_id.as_deref());
+        let folders: Vec<&'a crate::layers::Layer> = app
+            .layers
+            .items
+            .iter()
+            .filter(|l| l.is_group && Some(l.id.as_str()) != current)
+            .collect();
+        if !folders.is_empty() || current.is_some() {
+            entries.push(MenuEntry::Separator);
+            entries.push(MenuEntry::Item {
+                icon: None,
+                label: "Move to layer",
+                shortcut: None,
+                checked: false,
+                focused: false,
+                on_press: None,
+            });
+            for folder in folders {
+                entries.push(item(
+                    "folder-simple",
+                    folder.name.as_str(),
+                    Message::LayerMoveTo(id.clone(), Some(folder.id.clone())),
+                ));
+            }
+            if current.is_some() {
+                entries.push(item(
+                    "arrow-up",
+                    "Top level",
+                    Message::LayerMoveTo(id.clone(), None),
+                ));
+            }
+        }
+        entries.push(MenuEntry::Separator);
+        entries.push(item("export", "Export", Message::LayerExport(id.clone())));
+    } else {
+        entries.push(MenuEntry::Separator);
+        entries.push(item(
+            "trash",
+            "Delete layer",
+            Message::LayerDelete(id.clone()),
+        ));
+    }
+    entries.push(item("x", "Close menu", Message::LayerMenuClose));
+
+    container(opaque(kit::popover(
+        kit::menu(entries, 190.0, d),
+        RADIUS_DIALOG,
+    )))
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .padding([4, 8])
+    .align_x(alignment::Horizontal::Right)
+    .align_y(alignment::Vertical::Top)
+    .into()
 }
 
 fn detail_line<'a>(label: &'static str, value: String, alarm: bool) -> Element<'a, Message> {
@@ -1023,377 +1306,6 @@ fn type_row<'a>(
         .align_y(Alignment::Center)
         .width(Length::Fill)
         .into()
-}
-
-// ---------------------------------------------------------------------------
-// Layers section / tab
-// ---------------------------------------------------------------------------
-
-fn wide_layers_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
-    let filter = app.area_layer_filter();
-    let count = app.layers.visible_rows(|l| filter.keeps(l)).len();
-    let caret = if app.ui.layers_expanded {
-        "caret-down"
-    } else {
-        "caret-right"
-    };
-    let toggle = button(
-        row![
-            icons::mono(caret, 12.0, tokens::muted()),
-            text(format!("LAYERS ({count})"))
-                .font(BSC_SEMIBOLD)
-                .size(TEXT_11)
-                .color(tokens::muted())
-                .width(Length::Fill),
-        ]
-        .spacing(SPACE_1)
-        .align_y(Alignment::Center)
-        .padding([4, 2]),
-    )
-    .padding(0)
-    .width(Length::Fill)
-    .on_press(Message::Ui(UiMsg::ToggleLayersSection))
-    .style(|_, status| button::Style {
-        background: matches!(status, button::Status::Hovered | button::Status::Pressed)
-            .then_some(Background::Color(tokens::hover())),
-        border: Border {
-            radius: RADIUS_CONTROL.into(),
-            ..Border::default()
-        },
-        ..button::Style::default()
-    });
-
-    if !app.ui.layers_expanded {
-        return column![kit::divider(), toggle]
-            .spacing(SPACE_1)
-            .width(Length::Fill)
-            .into();
-    }
-
-    let grip = container(
-        container(Space::new().width(32).height(3)).style(|_| container::Style {
-            background: Some(Background::Color(tokens::muted())),
-            border: Border {
-                radius: 2.0.into(),
-                ..Border::default()
-            },
-            ..container::Style::default()
-        }),
-    )
-    .width(Length::Fill)
-    .align_x(Alignment::Center);
-    column![grip, toggle, layers_view(app, d)]
-        .spacing(SPACE_1)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
-}
-
-fn layers_view<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
-    let filter = app.area_layer_filter();
-    let rows = app.layers.visible_rows(|l| filter.keeps(l));
-    let body: Element<'a, Message> = if rows.is_empty() {
-        container(
-            text("Closed areas create layers automatically.")
-                .font(BARLOW)
-                .size(TEXT_12)
-                .color(tokens::muted()),
-        )
-        .padding([6, 4])
-        .width(Length::Fill)
-        .into()
-    } else {
-        let mut list = Column::new().spacing(2).width(Length::Fill);
-        let mut active_menu: Option<LayerRow> = None;
-        for r in &rows {
-            if app.dock.layer_menu.as_deref() == Some(r.id.as_str()) {
-                active_menu = Some(r.clone());
-            }
-            list = list.push(next_layer_row(app, r, d));
-        }
-        let sc = make_scrollable(list)
-            .id("ledger-layers")
-            .direction(Direction::Vertical(
-                Scrollbar::new().width(5).scroller_width(5),
-            ))
-            .width(Length::Fill)
-            .height(Length::Fill);
-        if let Some(menu_row) = active_menu {
-            stack![sc, inline_layer_menu(&menu_row, d)]
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .into()
-        } else {
-            sc.into()
-        }
-    };
-
-    body
-}
-
-fn next_layer_row<'a>(app: &'a App, r: &LayerRow, d: Density) -> Element<'a, Message> {
-    let id = r.id.as_str();
-    let dragging = app.dock.layer_drag.as_deref() == Some(id);
-    let drop_mark: Option<DragPos> = if dragging {
-        None
-    } else {
-        app.dock
-            .layer_over
-            .as_ref()
-            .filter(|(target, _)| target != id && app.dock.layer_drag.is_some())
-            .map(|(_, p)| *p)
-    };
-
-    let hovered = app.dock.layer_hover.as_deref() == Some(id);
-    let renaming = app
-        .dock
-        .layer_rename
-        .as_ref()
-        .filter(|(target, _)| target == id)
-        .map(|(_, buf)| buf.clone());
-
-    let row_h: f32 = if matches!(d, Density::Touch) {
-        38.0
-    } else {
-        30.0
-    };
-    let mid_h = (row_h - 12.0).max(16.0);
-    let fg = if dragging {
-        tokens::disabled()
-    } else if !r.visible || r.locked {
-        tokens::muted()
-    } else {
-        tokens::text()
-    };
-
-    let head: Element<'a, Message> = if r.is_group {
-        let caret = if r.collapsed {
-            "caret-right"
-        } else {
-            "caret-down"
-        };
-        kit::icon_button(
-            caret,
-            false,
-            Some(Message::LayerToggleCollapsed(id.to_owned())),
-            d,
-        )
-    } else {
-        Space::new().width(Length::Fixed(16.0)).into()
-    };
-
-    let kind_icon = icons::mono(
-        if r.is_group {
-            "folder-simple"
-        } else {
-            "shapes"
-        },
-        14.0,
-        if r.is_group {
-            tokens::accent()
-        } else {
-            tokens::muted()
-        },
-    );
-
-    let mid_content: Element<'a, Message> = if let Some(buf) = renaming {
-        let id_owned = id.to_owned();
-        container(
-            text_input("", buf.as_str())
-                .id(dock::RENAME_ID)
-                .size(TEXT_12)
-                .font(BARLOW)
-                .padding([2, 6])
-                .width(Length::Fill)
-                .on_input(move |s| Message::LayerRename(id_owned.clone(), s))
-                .on_submit(Message::LayerRenameCommit),
-        )
-        .width(Length::Fill)
-        .align_y(Alignment::Center)
-        .into()
-    } else {
-        container(
-            text(r.name.clone())
-                .font(if r.active {
-                    BARLOW_SEMIBOLD
-                } else {
-                    BARLOW_MEDIUM
-                })
-                .size(TEXT_12)
-                .color(fg),
-        )
-        .width(Length::Fill)
-        .height(Length::Fixed(mid_h))
-        .align_y(Alignment::Center)
-        .padding(Padding {
-            left: r.depth as f32 * 12.0,
-            ..Padding::ZERO
-        })
-        .into()
-    };
-
-    let zone = |h: f32, pos: DragPos, content: Element<'a, Message>| -> Element<'a, Message> {
-        mouse_area(
-            container(content)
-                .width(Length::Fill)
-                .height(Length::Fixed(h)),
-        )
-        .on_press(Message::LayerPress(id.to_owned()))
-        .on_release(Message::LayerDrop(id.to_owned(), pos))
-        .on_enter(Message::LayerZoneHover(id.to_owned(), pos))
-        .into()
-    };
-    let strip = column![
-        zone(6.0, DragPos::Before, Space::new().into()),
-        zone(mid_h, DragPos::Inside, mid_content),
-        zone(6.0, DragPos::After, Space::new().into()),
-    ]
-    .width(Length::Fill);
-
-    let tools = row![
-        kit::icon_button(
-            if r.visible { "eye" } else { "eye-slash" },
-            !r.visible,
-            Some(Message::LayerToggleVisible(id.to_owned())),
-            d,
-        ),
-        kit::icon_button(
-            if r.locked {
-                "lock-simple"
-            } else {
-                "lock-simple-open"
-            },
-            r.locked,
-            Some(Message::LayerToggleLocked(id.to_owned())),
-            d,
-        ),
-        kit::icon_button(
-            "dots-three",
-            app.dock.layer_menu.as_deref() == Some(id),
-            Some(Message::LayerRowMenu(id.to_owned())),
-            d,
-        ),
-    ]
-    .spacing(2)
-    .align_y(Alignment::Center);
-
-    let row_body = row![head, kind_icon, strip, tools]
-        .spacing(4)
-        .padding([0, 4])
-        .align_y(Alignment::Center)
-        .width(Length::Fill)
-        .height(Length::Fixed(row_h));
-
-    let inside = drop_mark == Some(DragPos::Inside);
-    let active_row = r.active;
-    let frame = container(row_body)
-        .width(Length::Fill)
-        .style(move |_| container::Style {
-            background: Some(Background::Color(if active_row {
-                tokens::accent_soft()
-            } else if hovered && !dragging {
-                tokens::hover()
-            } else {
-                Color::TRANSPARENT
-            })),
-            border: Border {
-                color: if active_row || inside {
-                    tokens::accent()
-                } else {
-                    Color::TRANSPARENT
-                },
-                width: if active_row || inside { 1.0 } else { 0.0 },
-                radius: RADIUS_CONTROL.into(),
-            },
-            ..container::Style::default()
-        });
-
-    let marked: Element<'a, Message> = match drop_mark {
-        Some(DragPos::Before) => column![drop_rule(), frame].width(Length::Fill).into(),
-        Some(DragPos::After) => column![frame, drop_rule()].width(Length::Fill).into(),
-        _ => frame.into(),
-    };
-
-    let layer_menu_msg = Message::LayerRowMenu(id.to_owned());
-    kit::long_press(
-        mouse_area(marked)
-            .on_enter(Message::LayerHoverRow(id.to_owned()))
-            .on_exit(Message::LayerHoverRowGone(id.to_owned()))
-            .on_right_press(layer_menu_msg.clone()),
-        layer_menu_msg,
-    )
-}
-
-fn drop_rule<'a>() -> Element<'a, Message> {
-    container(Space::new())
-        .width(Length::Fill)
-        .height(Length::Fixed(2.0))
-        .style(|_| container::Style {
-            background: Some(Background::Color(tokens::accent())),
-            ..container::Style::default()
-        })
-        .into()
-}
-
-fn inline_layer_menu<'a>(r: &LayerRow, d: Density) -> Element<'a, Message> {
-    let id = r.id.clone();
-    let entries = vec![
-        MenuEntry::Item {
-            icon: Some("text-t"),
-            label: "Rename",
-            shortcut: None,
-            checked: false,
-            focused: false,
-            on_press: Some(Message::LayerStartRename(id.clone())),
-        },
-        MenuEntry::Item {
-            icon: Some(if r.visible { "eye-slash" } else { "eye" }),
-            label: if r.visible { "Hide" } else { "Show" },
-            shortcut: None,
-            checked: false,
-            focused: false,
-            on_press: Some(Message::LayerToggleVisible(id.clone())),
-        },
-        MenuEntry::Item {
-            icon: Some(if r.locked {
-                "lock-simple-open"
-            } else {
-                "lock-simple"
-            }),
-            label: if r.locked { "Unlock" } else { "Lock" },
-            shortcut: None,
-            checked: false,
-            focused: false,
-            on_press: Some(Message::LayerToggleLocked(id.clone())),
-        },
-        MenuEntry::Separator,
-        MenuEntry::Item {
-            icon: Some("export"),
-            label: "Export",
-            shortcut: None,
-            checked: false,
-            focused: false,
-            on_press: Some(Message::LayerExport(id)),
-        },
-        MenuEntry::Item {
-            icon: Some("x"),
-            label: "Close menu",
-            shortcut: None,
-            checked: false,
-            focused: false,
-            on_press: Some(Message::LayerMenuClose),
-        },
-    ];
-    container(opaque(kit::popover(
-        kit::menu(entries, 172.0, d),
-        RADIUS_DIALOG,
-    )))
-    .width(Length::Fill)
-    .height(Length::Fill)
-    .padding([4, 8])
-    .align_x(alignment::Horizontal::Right)
-    .align_y(alignment::Vertical::Top)
-    .into()
 }
 
 // ---------------------------------------------------------------------------
