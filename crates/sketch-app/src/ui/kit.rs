@@ -1062,11 +1062,16 @@ pub fn menu<'a>(entries: Vec<MenuEntry<'a>>, width: f32, density: Density) -> El
                         .width(Length::Fill),
                 );
                 if let Some(key) = shortcut {
-                    r = r.push(text(key).font(BSC_MEDIUM).size(TEXT_12).color(if disabled {
-                        tokens::disabled()
-                    } else {
-                        tokens::muted()
-                    }));
+                    r = r.push(
+                        text(crate::input::localize_shortcut(key))
+                            .font(BSC_MEDIUM)
+                            .size(TEXT_12)
+                            .color(if disabled {
+                                tokens::disabled()
+                            } else {
+                                tokens::muted()
+                            }),
+                    );
                 }
 
                 let spec = SurfaceSpec {

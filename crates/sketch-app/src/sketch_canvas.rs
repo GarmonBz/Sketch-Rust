@@ -330,6 +330,8 @@ impl canvas::Program<crate::Message> for SketchCanvas<'_> {
                                     canvas::Action::publish(Message::CanvasDrag(
                                         x,
                                         y,
+                                        // Fine drag: physical Control (trackpads
+                                        // also synthesize Ctrl for pinch).
                                         state.mods.control(),
                                     ))
                                     .and_capture(),
@@ -526,7 +528,8 @@ impl canvas::Program<crate::Message> for SketchCanvas<'_> {
                     x,
                     y,
                     double,
-                    ctrl: state.mods.control(),
+                    // Additive selection: host primary (⌘-click / Ctrl-click).
+                    ctrl: crate::shortcut_host::primary(state.mods),
                 }))
             }
             Event::Mouse(mouse::Event::CursorLeft) => Some(canvas::Action::publish(

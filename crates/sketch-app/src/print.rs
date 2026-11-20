@@ -141,9 +141,14 @@ pub fn render_pages(pdf: &[u8], width: u32) -> Result<Vec<Vec<u8>>, String> {
     .map_err(|e| format!("Could not render the report preview: {e}"))
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+pub fn render_pages(pdf: &[u8], max_edge: u32) -> Result<Vec<Vec<u8>>, String> {
+    crate::print_macos::render_pages(pdf, max_edge)
+}
+
+#[cfg(all(not(windows), not(target_os = "macos")))]
 pub fn render_pages(_: &[u8], _: u32) -> Result<Vec<Vec<u8>>, String> {
-    Err("The native PDF preview renderer requires Windows.".into())
+    Err("The native PDF preview renderer requires Windows or macOS.".into())
 }
 
 /// Where Print writes the report: `%TEMP%\SketchRust\<name>.pdf`.

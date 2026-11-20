@@ -683,7 +683,7 @@ fn action_row<'a>(
         r = r.push(icons::mono("caret-right", 12.0, tokens::muted()));
     } else if !a.shortcut.is_empty() {
         r = r.push(
-            text(a.shortcut)
+            text(crate::input::localize_shortcut(a.shortcut))
                 .font(BSC_MEDIUM)
                 .size(TEXT_12)
                 .color(if a.enabled {

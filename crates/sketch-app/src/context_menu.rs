@@ -79,11 +79,12 @@ impl Action {
     }
 
     /// The key that does the same thing, where there is a fixed one.
+    /// Stored Windows-style; localize at display via [`crate::shortcut_host`].
     fn shortcut(self) -> &'static str {
         match self {
-            Action::Cut => "Ctrl X",
-            Action::Copy => "Ctrl C",
-            Action::Paste => "Ctrl V",
+            Action::Cut => "Ctrl+X",
+            Action::Copy => "Ctrl+C",
+            Action::Paste => "Ctrl+V",
             Action::Delete => "Del",
             _ => "",
         }
@@ -202,7 +203,7 @@ fn row_button<'a>(action: Action, d: Density) -> Element<'a, crate::Message> {
     .align_y(alignment::Vertical::Center);
     if !action.shortcut().is_empty() {
         body = body.push(
-            text(action.shortcut())
+            text(crate::shortcut_host::localize_shortcut(action.shortcut()))
                 .size(TEXT_12)
                 .font(BSC_MEDIUM)
                 .color(tokens::muted())

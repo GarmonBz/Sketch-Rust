@@ -280,7 +280,11 @@ fn tray_tile<'a>(app: &'a App, tool: TrayTool, d: Density) -> Element<'a, Messag
     let interactive: Element<'a, Message> = if has_fly {
         kit::context_press(with_mark, Message::Ui(UiMsg::ToggleTrayFlyout(Some(tool))))
     } else {
-        kit::tooltip(with_mark, tool.tooltip(), Position::Top)
+        kit::tooltip(
+            with_mark,
+            crate::input::localize_shortcut(tool.tooltip()),
+            Position::Top,
+        )
     };
 
     interactive
@@ -379,7 +383,11 @@ fn compact_pill<'a>(app: &'a App, tool: TrayTool, d: Density) -> Element<'a, Mes
     let interactive: Element<'a, Message> = if has_fly {
         kit::context_press(btn, Message::Ui(UiMsg::ToggleTrayFlyout(Some(tool))))
     } else {
-        kit::tooltip(btn, tool.tooltip(), Position::Top)
+        kit::tooltip(
+            btn,
+            crate::input::localize_shortcut(tool.tooltip()),
+            Position::Top,
+        )
     };
 
     interactive

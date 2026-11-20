@@ -3704,7 +3704,7 @@ fn p13_start_screen_dialogs_and_guide_across_sizes() {
         let mut harness = harness_next_at(iced::Size::new(w, h));
         harness.send(Message::Shortcuts(ShortcutsMsg::Open));
         assert!(harness.shows("Keyboard Shortcuts"));
-        assert!(harness.shows("Ctrl + K"));
+        assert!(harness.shows(crate::input::localize_shortcut("Ctrl + K").as_ref()));
         let shot = harness.screenshot_in("e2e-next", &format!("p13-shortcuts-{label}"));
         assert!(shot.exists());
     }

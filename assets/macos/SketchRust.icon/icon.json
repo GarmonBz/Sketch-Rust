@@ -1,0 +1,33 @@
+{
+  "fill" : {
+    "linear-gradient" : [
+      "srgb:0.32549,0.56078,0.94902,1.00000",
+      "srgb:0.09020,0.26275,0.58824,1.00000"
+    ]
+  },
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "image-name" : "2-floorplan-inner.svg",
+          "name" : "2-floorplan-inner"
+        },
+        {
+          "image-name" : "1-floorplan.svg",
+          "name" : "1-floorplan"
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.3
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : "shared"
+  }
+}

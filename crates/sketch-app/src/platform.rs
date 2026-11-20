@@ -37,6 +37,32 @@ pub fn open_target(target: &OsStr) {
 
 /// The work area (monitor minus the taskbar and other docked bars) of the
 /// monitor holding `window`, in OS-logical pixels (physical / DPI scale).
+#[cfg(target_os = "macos")]
+#[allow(dead_code)] // `main.rs` still uses `monitor_size` on macOS until wired in a later task.
+pub fn work_area(window: &dyn iced::window::Window) -> Option<(f32, f32)> {
+    use iced::window::raw_window_handle::RawWindowHandle;
+    use objc2::rc::Retained;
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::NSView;
+
+    let handle = window.window_handle().ok()?;
+    let RawWindowHandle::AppKit(appkit) = handle.as_raw() else {
+        return None;
+    };
+    let ns_view = appkit.ns_view.as_ptr() as usize;
+    with_appkit_main(move |_mtm: MainThreadMarker| {
+        // SAFETY: `ns_view` is the live view iced handed us for this call.
+        let ns_view = ns_view as *mut NSView;
+        let view = unsafe { Retained::retain(ns_view)? };
+        let window = view.window()?;
+        let screen = window.screen()?;
+        let visible = screen.visibleFrame();
+        Some((visible.size.width as f32, visible.size.height as f32))
+    })
+}
+
+/// The work area (monitor minus the taskbar and other docked bars) of the
+/// monitor holding `window`, in OS-logical pixels (physical / DPI scale).
 #[cfg(windows)]
 pub fn work_area(window: &dyn iced::window::Window) -> Option<(f32, f32)> {
     use iced::window::raw_window_handle::RawWindowHandle;
@@ -83,11 +109,73 @@ pub fn point_on_screen(x: i32, y: i32) -> bool {
         // SAFETY: a plain query with no pointers.
         !unsafe { MonitorFromPoint(POINT { x, y }, MONITOR_DEFAULTTONULL) }.is_invalid()
     }
-    #[cfg(not(windows))]
+    #[cfg(all(not(windows), not(target_os = "macos")))]
     {
         let _ = (x, y);
         true
     }
+    #[cfg(target_os = "macos")]
+    {
+        point_on_screen_macos(x, y)
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn with_appkit_main<F, R>(f: F) -> R
+where
+    F: FnOnce(objc2::MainThreadMarker) -> R + Send,
+    R: Send,
+{
+    use dispatch2::run_on_main;
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::NSApplication;
+
+    if let Some(mtm) = MainThreadMarker::new() {
+        return f(mtm);
+    }
+    let mtm = unsafe { MainThreadMarker::new_unchecked() };
+    let app = NSApplication::sharedApplication(mtm);
+    if app.isRunning() {
+        run_on_main(f)
+    } else {
+        // Headless unit tests: no run loop, so `dispatch2` would block forever.
+        f(mtm)
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn point_on_screen_macos(x: i32, y: i32) -> bool {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::NSScreen;
+    use objc2_core_graphics::{CGDisplayBounds, CGMainDisplayID};
+
+    with_appkit_main(|mtm: MainThreadMarker| {
+        if NSScreen::screens(mtm).is_empty() {
+            return false;
+        }
+        let main_height = CGDisplayBounds(CGMainDisplayID()).size.height;
+        let (x, y) = (x as f64, y as f64);
+        NSScreen::screens(mtm).iter().any(|screen| {
+            cg_point_in_appkit_frame(x, y, screen.frame(), main_height)
+        })
+    })
+}
+
+/// Hit-test in the same global desktop space as iced/winit `WindowEvent::Moved`
+/// (CG-style: origin top-left of the main display, y increasing downward).
+#[cfg(target_os = "macos")]
+fn cg_point_in_appkit_frame(
+    x: f64,
+    y: f64,
+    frame: objc2_foundation::NSRect,
+    main_height: f64,
+) -> bool {
+    let top = main_height - frame.origin.y - frame.size.height;
+    let left = frame.origin.x;
+    x >= left
+        && x < left + frame.size.width
+        && y >= top
+        && y < top + frame.size.height
 }
 
 /// The name of the event an instance holds while `path` is its open file.
@@ -181,6 +269,23 @@ pub fn activation_stream(path: &std::path::PathBuf) -> impl iced::futures::Strea
         std::mem::forget(tx);
     }
     rx
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod macos_tests {
+    #[test]
+    fn point_on_screen_accepts_origin_of_main_screen() {
+        // Top-left of the main display in winit/iced desktop coordinates is on-screen.
+        assert!(
+            crate::platform::point_on_screen(0, 0),
+            "expected (0,0) in screen space to hit a display on CI/dev Macs"
+        );
+    }
+
+    #[test]
+    fn point_on_screen_rejects_far_away_coordinate() {
+        assert!(!crate::platform::point_on_screen(i32::MAX / 2, i32::MAX / 2));
+    }
 }
 
 // ---------------------------------------------------------------------------
