@@ -56,7 +56,7 @@ icon_table! {
         "backspace", "caret-up", "check", "compass", "dots-six-vertical", "dots-three",
         "files", "list", "plus-circle", "push-pin",
         // Top bar Open / Save.
-        "floppy-disk", "folder-open",
+        "floppy-disk", "folder-open", "eraser",
     ],
     fill: [
         "arrow-clockwise", "arrow-counter-clockwise", "arrow-square-in", "arrow-square-out",
@@ -129,7 +129,7 @@ pub fn tint_of(name: &str) -> Option<crate::ui::tokens::IconTint> {
         | "blueprint" | "list-bullets" | "list-dashes" | "arrow-line-up" | "arrow-line-down"
         | "star" | "stairs" | "door-open" | "bathtub" | "oven" | "washing-machine"
         | "swimming-pool" | "fire" => Orange,
-        "x-bold" | "trash" | "file-x" | "file-minus" | "eye-slash" | "bounding-box"
+        "eraser" | "x-bold" | "trash" | "file-x" | "file-minus" | "eye-slash" | "bounding-box"
         | "hand-pointing" | "minus-circle" | "warning" | "power" | "fire-extinguisher" => Red,
         "plus-circle" | "file-plus" | "file" | "files" | "folder-open" | "folder-simple"
         | "floppy-disk" | "check-circle" | "export" | "arrow-square-in" | "arrow-square-out"

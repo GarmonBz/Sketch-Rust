@@ -748,7 +748,7 @@ impl Drawing {
     /// option thickness for the wall's type; the result is in FEET.
     pub fn wall_thickness_of(&self, line: &SketchLine) -> f64 {
         if let Some(t) = line.thickness {
-            if t > 0.0 {
+            if t >= 0.0 {
                 return t / 12.0;
             }
         }

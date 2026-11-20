@@ -432,6 +432,8 @@ fn p5_tray_and_flyouts_enter_every_mode_and_follow_shortcuts_at_four_sizes() {
     );
     assert_tool(&["click \"Area\""], vec![], Mode::DefineArea, TrayTool::Area);
     assert_tool(&["click \"Curve\""], vec![], Mode::Curve, TrayTool::Curve);
+    assert_tool(&["click \"Freeform\""], vec![], Mode::Freeform, TrayTool::Freeform);
+    assert_tool(&["click \"Erase\""], vec![], Mode::Erase, TrayTool::Erase);
     assert_tool(&["click \"Measure\""], vec![], Mode::Measure, TrayTool::Measure);
     assert_tool(&["click \"Pan\""], vec![], Mode::Pan, TrayTool::Pan);
     assert_tool(

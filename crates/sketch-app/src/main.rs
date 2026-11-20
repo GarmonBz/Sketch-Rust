@@ -37,6 +37,9 @@ mod event_tap;
 mod exporter;
 mod file_dialogs;
 mod format;
+mod freeform;
+#[cfg(test)]
+mod freeform_tests;
 mod guide;
 mod handles;
 mod icons;
@@ -2709,6 +2712,28 @@ impl App {
             }
             Message::CanvasPress(x, y) => {
                 let world = self.world(x, y);
+                if matches!(
+                    self.view.mode,
+                    view_state::Mode::Freeform | view_state::Mode::Erase
+                )
+                    && !self.bg_image.edit_mode
+                    && !self.bg_image.orient_mode
+                    && !self.bg_image.scale_mode
+                {
+                    self.selection.clear();
+                    self.drag_banked = false;
+                    let last = view_state::World {
+                        x: world.x,
+                        y: world.y,
+                    };
+                    self.view.drag = Some(if self.view.mode == view_state::Mode::Freeform {
+                        view_state::Drag::Freeform { last }
+                    } else {
+                        view_state::Drag::Erase { last }
+                    });
+                    self.stroke_to(world);
+                    return Task::none();
+                }
                 // Image Edit Mode's press starts the photo drag
                 // (canvas-engine.js:846: `dragState = {type:'photo'}`).
                 if self.bg_image.edit_mode {
@@ -3014,6 +3039,13 @@ impl App {
                 Task::none()
             }
             Message::CanvasDrag(x, y, ctrl) => {
+                if matches!(
+                    self.view.drag,
+                    Some(view_state::Drag::Freeform { .. } | view_state::Drag::Erase { .. })
+                ) {
+                    self.stroke_to(self.world(x, y));
+                    return Task::none();
+                }
                 if self.view.drag.is_none() && self.view.fence.is_some() {
                     self.view.fence_move(x as f64, y as f64);
                     return Task::none();
@@ -3032,6 +3064,7 @@ impl App {
                     y: world.y,
                 };
                 match self.view.drag.clone() {
+                    Some(view_state::Drag::Freeform { .. } | view_state::Drag::Erase { .. }) => {}
                     Some(view_state::Drag::Vertex { handle, origin, grab }) => {
                         let dx = world.x - grab.x;
                         let dy = world.y - grab.y;
@@ -3270,6 +3303,7 @@ impl App {
                 let moved = match &self.view.drag {
                     Some(view_state::Drag::Move { .. }) => self.drag_banked,
                     Some(view_state::Drag::Vertex { .. }) => false,
+                    Some(view_state::Drag::Freeform { .. } | view_state::Drag::Erase { .. }) => false,
                     Some(view_state::Drag::ChainOffset { moved, .. }) => *moved,
                     Some(view_state::Drag::SymbolResize { .. }) => self.drag_banked,
                     Some(view_state::Drag::SymbolRotate { .. }) => self.drag_banked,
@@ -5564,6 +5598,13 @@ impl App {
 
     fn set_mode(&mut self, mode: view_state::Mode) -> Task<Message> {
         if mode != self.view.mode {
+            if matches!(
+                self.view.drag,
+                Some(view_state::Drag::Freeform { .. } | view_state::Drag::Erase { .. })
+            ) {
+                self.view.drag = None;
+                self.drag_banked = false;
+            }
             self.workflow_close();
             self.workflow.hover = None;
             self.ui.tray_flyout = None;
@@ -5589,7 +5630,9 @@ impl App {
         ) {
             self.ui.select_more = false;
         }
-        if mode.is_drawing() {
+        let drawing_or_erasing = mode.is_drawing()
+            || matches!(mode, view_state::Mode::Freeform | view_state::Mode::Erase);
+        if drawing_or_erasing {
             self.ui.ledger_open = false;
             self.ui.inspector_open = false;
             self.ui.menu_open = false;
@@ -5605,7 +5648,7 @@ impl App {
         } else if !self.ui.pad_manual {
             self.touch_panel_open = false;
         }
-        if mode.is_drawing()
+        if drawing_or_erasing
             || ui::pad::is_drawing_tool(mode) != ui::pad::is_drawing_tool(self.view.mode)
         {
             self.sync_canvas();
@@ -6355,6 +6398,13 @@ impl App {
 
     /// A snapshot restore: the drawing plus the layer stack it banked.
     fn restore_snapshot(&mut self, snap: &crate::undo::Snapshot) {
+        if matches!(
+            self.view.drag,
+            Some(view_state::Drag::Freeform { .. } | view_state::Drag::Erase { .. })
+        ) {
+            self.view.drag = None;
+            self.drag_banked = false;
+        }
         self.drawing.restore(snap);
         if let Some(layers) = &snap.layers {
             self.layers.items = layers.clone();

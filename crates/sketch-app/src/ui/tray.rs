@@ -23,12 +23,14 @@ use crate::ui::Msg as UiMsg;
 use crate::view_state::{Mode, RailTool};
 use crate::{App, Message};
 
-/// The 10 tools shown in the Next tray (`01-design-spec.md §5.2`).
+/// Drawing and editing tools shown in the tray.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayTool {
     Select,
     Wall,
     Inner,
+    Freeform,
+    Erase,
     Area,
     Shape,
     Curve,
@@ -46,10 +48,12 @@ pub enum DrawerTab {
 }
 
 impl TrayTool {
-    pub const ALL: [TrayTool; 10] = [
+    pub const ALL: [TrayTool; 12] = [
         TrayTool::Select,
         TrayTool::Wall,
         TrayTool::Inner,
+        TrayTool::Freeform,
+        TrayTool::Erase,
         TrayTool::Area,
         TrayTool::Shape,
         TrayTool::Curve,
@@ -64,6 +68,8 @@ impl TrayTool {
             TrayTool::Select => "Select",
             TrayTool::Wall => "Wall",
             TrayTool::Inner => "Inner",
+            TrayTool::Freeform => "Freeform",
+            TrayTool::Erase => "Erase",
             TrayTool::Area => "Area",
             TrayTool::Shape => "Shape",
             TrayTool::Curve => "Curve",
@@ -79,6 +85,8 @@ impl TrayTool {
             TrayTool::Select => "cursor",
             TrayTool::Wall => "polygon",
             TrayTool::Inner => "square-split-vertical",
+            TrayTool::Freeform => "pencil-simple",
+            TrayTool::Erase => "eraser",
             TrayTool::Area => "bounding-box",
             TrayTool::Shape => "square",
             TrayTool::Curve => "bezier-curve",
@@ -106,6 +114,8 @@ impl TrayTool {
             TrayTool::Select => "Select and edit (P) — click active or right-click for Fence / Lasso",
             TrayTool::Wall => "Draw exterior walls (E) — click active or right-click for shapes",
             TrayTool::Inner => "Draw interior lines (I) — click active or right-click for shapes",
+            TrayTool::Freeform => "Freeform draw: drag to draw without snapping",
+            TrayTool::Erase => "Erase: click or drag across lines, labels, or symbols (Ctrl+Z to undo)",
             TrayTool::Area => "Area tool: click inside an outline",
             TrayTool::Shape => "Insert a room shape (M)",
             TrayTool::Curve => "Curve wall — click active or right-click for Insert vertex",
@@ -121,6 +131,8 @@ impl TrayTool {
             TrayTool::Select => Message::Rail(RailTool::Select),
             TrayTool::Wall => Message::Rail(RailTool::DrawExterior),
             TrayTool::Inner => Message::Rail(RailTool::DrawInterior),
+            TrayTool::Freeform => Message::Rail(RailTool::Freeform),
+            TrayTool::Erase => Message::Rail(RailTool::Erase),
             TrayTool::Area => Message::Rail(RailTool::DefineArea),
             TrayTool::Shape => Message::Rail(RailTool::Shapes),
             TrayTool::Curve => Message::Rail(RailTool::Curve),
@@ -137,6 +149,8 @@ impl TrayTool {
             TrayTool::Select => matches!(mode, Mode::Select | Mode::Fence | Mode::Lasso),
             TrayTool::Wall => mode == Mode::DrawExterior,
             TrayTool::Inner => mode == Mode::DrawInterior,
+            TrayTool::Freeform => mode == Mode::Freeform,
+            TrayTool::Erase => mode == Mode::Erase,
             TrayTool::Area => mode == Mode::DefineArea,
             TrayTool::Shape => mode == Mode::PlaceShape || app.room_shapes.open,
             TrayTool::Curve => matches!(mode, Mode::Curve | Mode::InsertVertex),
