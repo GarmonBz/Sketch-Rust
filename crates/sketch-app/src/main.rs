@@ -290,6 +290,8 @@ pub enum Message {
     Print,
     /// File > Print Preview... and its toolbar.
     PrintPreviewOpen,
+    #[cfg(test)]
+    PrintPreviewLayoutFixture,
     PrintPreview(print::PreviewMsg),
     /// `emailSupport()` — the mailto opener (S12-026/071/084).
     Email,
@@ -4138,6 +4140,21 @@ impl App {
                     Ok(()) => Task::none(),
                     Err(message) => self.toasts.show(message),
                 }
+            }
+            #[cfg(test)]
+            Message::PrintPreviewLayoutFixture => {
+                // Layout checks exercise the preview sheet without starting
+                // Windows.Data.Pdf's native COM threads on a headless runner.
+                let paper = self.page_layout.paper_size;
+                let (width, height) = paper.size();
+                let (width, height) = (width.round() as u32, height.round() as u32);
+                self.print_preview.pdf = self.report_pdf();
+                self.print_preview.paper = Some(paper);
+                self.print_preview.rasters = vec![iced::widget::image::Handle::from_rgba(
+                    width, height, vec![255; width as usize * height as usize * 4],
+                )];
+                self.print_preview.open = true;
+                Task::none()
             }
             Message::PrintPreview(m) => match m {
                 print::PreviewMsg::Close => {
@@ -8586,7 +8603,7 @@ impl App {
     /// visible/centered/auto-fit to ~60 feet, flips reset, the 50
     /// intensity.
     fn photo_load(&mut self) -> Task<Message> {
-        if let Some(path) = crate::platform::pick_file("Images", &["png", "jpg", "jpeg"])
+        if let Some(path) = file_dialogs::open_image()
         {
             if let Ok(bytes) = std::fs::read(&path) {
                 let size = reference_image::image_size(&bytes);

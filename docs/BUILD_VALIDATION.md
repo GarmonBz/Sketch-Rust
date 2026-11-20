@@ -1,5 +1,13 @@
 # Historical build validation through 0.1.29
 
+Windows release CI runs the complete workspace suite with
+`cargo test --workspace --no-default-features --locked -- --test-threads=1`.
+This uses the tiny-skia software renderer for headless UI checks. Desktop
+release builds retain the default GPU renderer. Native file selection is
+injected in tests; the preview layout case uses a page fixture instead of
+starting Windows.Data.Pdf COM threads. These layout checks do not validate
+the native PDF renderer.
+
 These results describe earlier builds. Sketch Rust 0.1.30 removed the Apex
 compatibility runtime, AXF file handling and provider setup. See
 [the Appraise-It Pro plan](APPRAISE_IT_PRO_INTEGRATION.md).

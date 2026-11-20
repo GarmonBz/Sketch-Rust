@@ -41,8 +41,9 @@ jobs:
           cargo fetch --locked
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Test workspace
+        timeout-minutes: 15
         run: |
-          cargo test --workspace --locked -- --test-threads=1
+          cargo test --workspace --no-default-features --locked -- --test-threads=1 --nocapture
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Compile optimized application
         run: |

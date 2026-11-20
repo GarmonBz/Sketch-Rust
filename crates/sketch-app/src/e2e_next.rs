@@ -3170,7 +3170,7 @@ fn dialogs_that_scroll_at(size: iced::Size, tag: &str) -> Vec<String> {
     }
     for (name, steps) in [
         ("page-layout", vec![Message::PageLayout(LayoutMsg::Open)]),
-        ("print-preview", vec![Message::PrintPreviewOpen]),
+        ("print-preview", vec![Message::PrintPreviewLayoutFixture]),
         ("breakdown", vec![Message::OpenBreakdown]),
         ("area-attributes", vec![Message::OpenAreaAttributes(true)]),
         ("area-properties", vec![Message::AreaProps]),
