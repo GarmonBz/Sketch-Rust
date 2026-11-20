@@ -68,6 +68,7 @@ pub const TOPICS: &[Topic] = &[
         title: "Drawing walls",
         blocks: &[
             Para("Press E for exterior walls (Wall) or I for interior walls (Inner). Walls can be drawn with the mouse, keyboard, touch, or the on-screen Pad."),
+            Para("Choose Freeform in the tool tray and drag to draw unsnapped lines without dimensions. Choose Erase, then click or drag across lines, room labels, or symbols to remove them. Each stroke is one Undo step (Ctrl+Z). Freeform lines are saved and included in printed and exported sketches."),
             Heading("With the pointer"),
             Points(&[
                 "Click or tap to set each corner. The live preview snaps to grid steps and existing corners.",

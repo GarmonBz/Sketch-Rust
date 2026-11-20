@@ -281,8 +281,14 @@ fn p4_pages_rename_search_undo_redo_and_export_work_at_all_sizes() {
 
         // 1. Add pages and switch between them.
         harness.send(Message::Status(StatusMsg::PageAdd));
-        assert!(harness.shows("Page 2"), "Page 2 tab missing at {label}");
-        harness.script(&["click \"Page 1\""]);
+        // The page switcher shows the current page; pressing it opens the list.
+        assert!(harness.shows("Page 2"), "page switcher missing Page 2 at {label}");
+        assert!(harness.shows("2 / 2"), "page count missing at {label}");
+        harness.script(&["click \"Page 2\""]);
+        assert!(harness.shows("PAGES"), "switcher did not open the page list at {label}");
+        harness.send(Message::PagesNav(NavMsg::Go(0)));
+        harness.send(Message::PagesNav(NavMsg::Close));
+        assert!(harness.shows("1 / 2"), "Go(0) did not change page at {label}");
         {
             let mut h2 = harness_next_at(iced::Size::new(w, h));
             h2.send(Message::Status(StatusMsg::PageAdd));
@@ -391,8 +397,12 @@ fn p4_pages_rename_search_undo_redo_and_export_work_at_all_sizes() {
 fn p5_tray_and_flyouts_enter_every_mode_and_follow_shortcuts_at_four_sizes() {
     let assert_tool = |steps: &[&str], extra: Vec<Message>, expected_mode: Mode, tool: TrayTool| {
         let mut h = harness_next_at(VIEWPORT);
-        if !steps.is_empty() {
-            h.script(steps);
+        for step in steps {
+            if let Err(failed) = h.step(step) {
+                let shot = h.screenshot_in("e2e-next", &format!("failed-tray-{tool:?}"));
+                panic!("instruction failed: {failed}; screenshot: {}", shot.display());
+            }
+            h.wait(15);
         }
         for msg in extra {
             h.send(msg);
@@ -432,6 +442,8 @@ fn p5_tray_and_flyouts_enter_every_mode_and_follow_shortcuts_at_four_sizes() {
     );
     assert_tool(&["click \"Area\""], vec![], Mode::DefineArea, TrayTool::Area);
     assert_tool(&["click \"Curve\""], vec![], Mode::Curve, TrayTool::Curve);
+    assert_tool(&["click \"Freeform\""], vec![], Mode::Freeform, TrayTool::Freeform);
+    assert_tool(&["click \"Erase\""], vec![], Mode::Erase, TrayTool::Erase);
     assert_tool(&["click \"Measure\""], vec![], Mode::Measure, TrayTool::Measure);
     assert_tool(&["click \"Pan\""], vec![], Mode::Pan, TrayTool::Pan);
     assert_tool(
@@ -624,6 +636,114 @@ fn first_closed_area_is_centred_in_the_view_across_sizes() {
             r.height
         );
     }
+}
+
+#[test]
+fn layers_split_resizes_with_the_mouse_and_keeps_totals_visible() {
+    use crate::e2e_support::scroll_areas;
+    for (label, size, density) in [
+        ("desktop", iced::Size::new(1536.0, 914.0), Density::Comfortable),
+        ("short", iced::Size::new(1280.0, 560.0), Density::Comfortable),
+        ("touch", iced::Size::new(1280.0, 800.0), Density::Touch),
+    ] {
+        let prepare = || {
+            let mut h = harness_next_at(size);
+            h.send(Message::Ui(UiMsg::SetDensity(density)));
+            draw_closed_square(&mut h);
+            h
+        };
+        let baseline = state(prepare());
+        let areas = scroll_areas(&baseline, size);
+        // Ids come through Debug-formatted, so match on the name inside.
+        let find = |id: &str| {
+            areas
+                .iter()
+                .find(|s| s.id.as_deref().is_some_and(|got| got.contains(id)))
+                .unwrap()
+                .bounds
+        };
+        let upper = find("ledger-areas");
+        let lower = find("ledger-layers");
+        if label == "desktop" {
+            assert!(
+                lower.height > 240.0,
+                "Layers should get more than its old 140px cap (got {:.0}px of {:.0}px list)",
+                lower.height,
+                upper.height + lower.height
+            );
+        }
+        let grab_y = upper.y + upper.height + 4.0;
+        let x = upper.center_x();
+        let mut h = prepare();
+        h.script(&[
+            &format!("press ({x}, {grab_y})"),
+            &format!("move ({x}, {})", grab_y - 60.0),
+            &format!("release ({x}, {})", grab_y - 60.0),
+        ]);
+        assert!(h.shows("Gross living area"));
+        assert!(h.shows("Show the math"));
+        let shot = h.screenshot_in("e2e-next", &format!("layers-split-{label}"));
+        assert!(shot.exists());
+        let app = state(h);
+        assert!(app.ui.ledger_split.ratio() < baseline.ui.ledger_split.ratio(),
+            "dragging upward must expand Layers at {label}");
+        let resized = scroll_areas(&app, size);
+        let new_layers = resized
+            .iter()
+            .find(|s| s.id.as_deref().is_some_and(|got| got.contains("ledger-layers")))
+            .unwrap()
+            .bounds;
+        assert!(new_layers.height > lower.height + 25.0, "Layers did not grow at {label}");
+        assert!(new_layers.y + new_layers.height < size.height - 100.0,
+            "Layers must leave room for totals at {label}");
+    }
+}
+
+#[test]
+fn canvas_context_menu_closes_on_an_outside_press_and_on_escape() {
+    let r = {
+        let mut peek = harness_next_at(VIEWPORT);
+        draw_closed_square(&mut peek);
+        state(peek).canvas_rect()
+    };
+    let at = iced::Point::new(r.x + 100.0, r.y + 100.0);
+
+    let mut h = harness_next_at(VIEWPORT);
+    draw_closed_square(&mut h);
+    h.send(Message::RightPress(at));
+    // A press on empty canvas, away from the menu, dismisses it.
+    let (px, py) = (r.x + r.width - 40.0, r.y + r.height - 40.0);
+    h.script(&[&format!("press ({px}, {py})"), &format!("release ({px}, {py})")]);
+    assert!(state(h).context.open.is_none(), "an outside press must close the menu");
+
+    let mut h = harness_next_at(VIEWPORT);
+    draw_closed_square(&mut h);
+    h.send(Message::RightPress(at));
+    h.send(Message::ContextClose);
+    assert!(state(h).context.open.is_none());
+}
+
+#[test]
+fn layers_split_is_saved_restored_and_survives_collapse() {
+    let mut h = harness_next_at(VIEWPORT);
+    draw_closed_square(&mut h);
+    h.script(&["click \"LAYERS (1)\"", "click \"LAYERS (1)\""]);
+    let mut app = state(h);
+    app.ui.ledger_split.set_ratio(0.35);
+    let model = app.build_save_model();
+    assert!((model["settings"]["sidebar"]["layersSplit"].as_f64().unwrap() - 0.35).abs() < 0.001);
+    app.ui.ledger_split.set_ratio(0.75);
+    app.apply_settings(model.get("settings"));
+    assert!((app.ui.ledger_split.ratio() - 0.35).abs() < 0.001);
+    app.apply_settings(Some(&serde_json::json!({"sidebar": {"layersSplit": 4.0}})));
+    assert_eq!(app.ui.ledger_split.ratio(), 0.85);
+    app.apply_settings(Some(&serde_json::json!({"sidebar": {}})));
+    assert_eq!(app.ui.ledger_split.ratio(), 0.45);
+    app.ui.ledger_split.set_ratio(f32::NAN);
+    assert_eq!(app.ui.ledger_split.ratio(), 0.45);
+    app.ui.ledger_split.set_ratio(0.3);
+    app.apply_settings(None);
+    assert_eq!(app.ui.ledger_split.ratio(), 0.45);
 }
 
 #[test]
@@ -1352,6 +1472,87 @@ fn zoom_fence_button_zooms_to_a_dragged_rectangle() {
 }
 
 #[test]
+fn drawing_chrome_laid_out_controls_never_overlap_the_tray() {
+    use crate::e2e_support::scroll_areas;
+    let mut h = harness_next_at(VIEWPORT);
+    h.send(Message::Status(StatusMsg::PageAdd));
+    draw_closed_square(&mut h);
+    let mut app = state(h);
+    let line = app.drawing.lines[0].id;
+    app.view.mode = Mode::Pan;
+    // Includes the reported desktop layout, logical sizes at 125%/150%
+    // Windows scaling, a very wide bottom dock, and a narrow canvas with
+    // both the resized ledger and inspector taking space.
+    for (w, height) in [(2600.0, 1100.0), (2048.0, 1218.0), (1638.4, 974.4),
+        (1920.0, 1080.0), (1280.0, 800.0), (1100.0, 800.0), (800.0, 1000.0), (372.0, 800.0)] {
+        for density in [Density::Comfortable, Density::Touch] {
+            for inspect in [false, true] {
+                app.window_size = iced::Size::new(w, height);
+                app.ui.density = density;
+                app.ui.ledger_width = Some(if inspect { 400.0 } else { density.ledger_w() });
+                app.selection.clear();
+                if inspect { app.selection.lines.insert(line); }
+                let canvas = crate::ui::layout::canvas_rect(&app);
+                let areas = scroll_areas(&app, app.window_size);
+                let find = |name: &str| areas.iter().find(|a| a.id.as_ref().is_some_and(|id| id.contains(name)))
+                    .unwrap_or_else(|| panic!("missing {name}: {w} {density:?} inspector={inspect}"));
+                let zoom = find("drawing-zoom").bounds;
+                let snap = find("drawing-snap").bounds;
+                let compact = SizeClass::of(w) == SizeClass::Compact;
+                let tray = find(if compact { "drawing-compact-tray" } else { "drawing-tool-tray" }).bounds;
+                let expanded = |r: iced::Rectangle, pad: f32| iced::Rectangle {
+                    x: r.x - pad, y: r.y - pad,
+                    width: r.width + pad * 2.0, height: r.height + pad * 2.0,
+                };
+                let tray_card = expanded(tray, if compact { 0.0 } else { 6.0 });
+                for control in [zoom, snap] {
+                    let card = expanded(control, 4.0);
+                    let overlaps = card.x < tray_card.x + tray_card.width
+                        && card.x + card.width > tray_card.x
+                        && card.y < tray_card.y + tray_card.height
+                        && card.y + card.height > tray_card.y;
+                    assert!(!overlaps, "overlap at {w} {density:?} inspector={inspect}: {card:?} vs {tray_card:?}");
+                    assert!(control.x >= canvas.x && control.x + control.width <= canvas.x + canvas.width + 0.5,
+                        "control outside canvas at {w}: {control:?} vs {canvas:?}");
+                }
+                assert!(zoom.intersection(&snap).is_none(), "top controls overlap at {w}");
+                assert!(tray.x >= canvas.x && tray.x + tray.width <= canvas.x + canvas.width + 0.5,
+                    "tray outside canvas at {w}: {tray:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn drawing_chrome_buttons_and_popovers_work_after_reflow() {
+    for (name, w, height, density) in [
+        ("reported", 1536.0, 914.0, Density::Comfortable),
+        ("wide", 2200.0, 1080.0, Density::Comfortable),
+        ("touch", 1280.0, 800.0, Density::Touch),
+    ] {
+        let mut h = harness_next_at(iced::Size::new(w, height));
+        h.send(Message::Ui(UiMsg::SetDensity(density)));
+        h.script(&["click \"Freeform\"", "click \"Erase\"", "click \"Pan\"",
+            "click \"Grid\"", "click \"Snap\"", "click \"Dims: Out\""]);
+        h.script(&["click \"100%\""]);
+        assert!(h.shows("Zoom & Scale"));
+        h.send(Message::Ui(UiMsg::CloseOverlays));
+        h.script(&["click \"Show\""]);
+        assert!(h.shows("Dimensions"));
+        h.send(Message::Ui(UiMsg::CloseOverlays));
+        // Clicking active Pan opens its flyout at the tray, clear of the
+        // drawing controls in both the top and bottom arrangements.
+        h.script(&["click \"Pan\""]);
+        assert!(h.shows("Zoom to rectangle"));
+        let shot = h.screenshot_in("e2e-next", &format!("chrome-{name}-flyout"));
+        assert!(shot.exists());
+        let app = state(h);
+        assert!(!app.view.grid && !app.view.snap);
+        assert_eq!(app.ui.tray_flyout, Some(TrayTool::Pan));
+    }
+}
+
+#[test]
 fn p9_controls_length_strip_and_area_chooser_across_sizes() {
     for &(label, w, h, _) in SIZES {
         // 1. Zoom, scale, fit, grid, snap, pitch/angle-step, show, dims, north, underlay, minimap, touch.
@@ -1984,7 +2185,7 @@ fn p11_area_type_editor_and_default_colors_across_sizes() {
             h.send(Message::Key(KeyCmd::Enter));
             h.send(Message::Rail(crate::view_state::RailTool::DrawExterior));
             let mut app = state(h);
-            assert_eq!(app.area_codes.len(), 32);
+            assert_eq!(app.area_codes.len(), 26);
             assert_eq!(app.area_codes[1].code, "GLA2");
             assert_eq!(app.area_codes[1].color, "#0987A0");
             assert_eq!(app.area_codes[2].color, "#B83280");
@@ -2156,7 +2357,7 @@ fn p11_area_type_editor_and_default_colors_across_sizes() {
         let _ = app.update(Message::Ui(UiMsg::TypeEditor(TypeMsg::RequestRestoreDefaults)));
         let _ = app.update(Message::Ui(UiMsg::TypeEditor(TypeMsg::ConfirmRestoreDefaults)));
         let _ = app.update(Message::Ui(UiMsg::TypeEditor(TypeMsg::Save)));
-        assert_eq!(app.area_codes.len(), 32);
+        assert_eq!(app.area_codes.len(), 26);
         assert!(app.area_codes.iter().any(|c| c.code == "GAR"));
         let _ = std::fs::remove_dir_all(&tmp_dir);
     }
@@ -2220,8 +2421,8 @@ fn p12_symbol_library_and_shape_editing_across_sizes() {
             let cmd = crate::ui::commands::find("symbol-library").unwrap();
             let _ = app.update((cmd.run)(&app));
             assert!(app.ui.symbol_library.open);
-            assert_eq!(app.symbols_lib().library.symbols.len(), 572);
-            assert_eq!(app.symbols_lib().categories.len(), 22);
+            assert_eq!(app.symbols_lib().library.symbols.len(), 499);
+            assert_eq!(app.symbols_lib().categories.len(), 18);
 
             let first_sym_id = app.ui.symbol_library.focused.clone().unwrap();
 
@@ -2386,7 +2587,7 @@ fn p12_symbol_library_and_shape_editing_across_sizes() {
             assert!(report.conflicts.contains(&desk_id));
             let _ = std::fs::remove_dir_all(&tmp_dir);
 
-            // Delete a category (writes symbols.json.bak) then Restore original library -> 572 symbols.
+            // Delete a category (writes symbols.json.bak) then Restore original library -> 499 symbols.
             let del_cat = app.symbols_lib().categories[0].key.clone();
             let _ = app.update(Message::Ui(UiMsg::SymbolLibrary(SymMsg::Open(None))));
             let _ = app.update(Message::Ui(UiMsg::SymbolLibrary(
@@ -2404,8 +2605,8 @@ fn p12_symbol_library_and_shape_editing_across_sizes() {
                 SymMsg::RequestRestoreOriginal,
             )));
             let _ = app.update(Message::Ui(UiMsg::SymbolLibrary(SymMsg::Confirm)));
-            assert_eq!(app.symbols_lib().library.symbols.len(), 572);
-            assert_eq!(app.symbols_lib().categories.len(), 22);
+            assert_eq!(app.symbols_lib().library.symbols.len(), 499);
+            assert_eq!(app.symbols_lib().categories.len(), 18);
             assert_eq!(app.ui.symbol_library.category, ALL_KEY);
         });
     });
@@ -2950,6 +3151,85 @@ fn selected_area_corner_moves_connected_walls_and_can_be_undone() {
     }
 }
 
+/// "Select more" replaces holding Ctrl, so the pill is for touch only.
+#[test]
+fn select_more_pill_is_only_on_screen_for_touch() {
+    let mut h = harness_next_at(VIEWPORT);
+    draw_closed_square(&mut h);
+    h.send(Message::Rail(crate::view_state::RailTool::Select));
+    assert!(!h.shows("Select more"), "the pill must not show with a mouse");
+    h.send(Message::Ui(UiMsg::TouchDetected));
+    assert!(h.shows("Select more"), "the pill must show for touch");
+}
+
+/// With Snap on, dragging a wall's end handle and moving a selection both land
+/// on the grid, at every pitch; with Snap off they do not.
+#[test]
+fn wall_end_drags_and_selection_moves_land_on_the_grid_when_snap_is_on() {
+    let on_grid = |v: f64, pitch: f64| ((v / pitch).round() * pitch - v).abs() < 1e-6;
+    for (label, pitch) in [("1'", 1.0), ("1/2'", 0.5), ("1\"", 1.0 / 12.0)] {
+        for snap in [true, false] {
+            let pick = crate::statusbar::PitchOption { label, value: pitch };
+            let prepare = || {
+                let mut h = harness_next_at(VIEWPORT);
+                draw_closed_square(&mut h);
+                h.send(Message::Key(KeyCmd::Select));
+                h.send(Message::Status(StatusMsg::Pitch(pick.clone())));
+                if !snap {
+                    h.send(Message::Status(StatusMsg::ToggleSnap));
+                }
+                h
+            };
+
+            // Wall end handle: select the wall, then drag its start handle.
+            let ((mx, my), _) = drawn_square_wall_point(VIEWPORT.width, VIEWPORT.height, 0.5);
+            let ((sx, sy), _) = drawn_square_wall_point(VIEWPORT.width, VIEWPORT.height, 0.0);
+            let mut h = prepare();
+            h.send(Message::CanvasPress(mx, my));
+            h.send(Message::CanvasDragEnd);
+            h.send(Message::CanvasPress(sx, sy));
+            h.send(Message::CanvasDrag(sx + 23.3, sy - 11.7, false));
+            h.send(Message::CanvasDragEnd);
+            let app = state(h);
+            let p = app.drawing.lines[0].start;
+            assert_eq!(
+                on_grid(p.x, pitch) && on_grid(p.y, pitch),
+                snap,
+                "wall end at pitch {label}, snap {snap}: ({}, {})",
+                p.x,
+                p.y
+            );
+
+            // Selection move: press inside the area, drag by an off-grid amount.
+            let (cx, cy) = {
+                let mut tmp = harness_next_at(VIEWPORT);
+                draw_closed_square(&mut tmp);
+                let app = state(tmp);
+                let poly = &app.drawing.polygons[0];
+                let n = poly.points.len() as f64;
+                let wx = poly.points.iter().map(|p| p.x).sum::<f64>() / n;
+                let wy = poly.points.iter().map(|p| p.y).sum::<f64>() / n;
+                let (x, y) = app.view.to_screen(crate::view_state::World { x: wx, y: wy });
+                (x as f32, y as f32)
+            };
+            let mut h = prepare();
+            h.send(Message::CanvasPress(cx, cy));
+            h.send(Message::CanvasDrag(cx + 10.0, cy - 5.0, false));
+            h.send(Message::CanvasDrag(cx + 23.3, cy - 11.7, false));
+            h.send(Message::CanvasDragEnd);
+            let app = state(h);
+            let pts = &app.drawing.polygons[0].points;
+            let min_x = pts.iter().map(|p| p.x).fold(f64::INFINITY, f64::min);
+            let min_y = pts.iter().map(|p| p.y).fold(f64::INFINITY, f64::min);
+            assert_eq!(
+                on_grid(min_x, pitch) && on_grid(min_y, pitch),
+                snap,
+                "moved area origin at pitch {label}, snap {snap}: ({min_x}, {min_y})"
+            );
+        }
+    }
+}
+
 /// Canvas-local screen position of a world point of the closed square.
 fn drawn_square_screen(w: f32, h: f32, pick: impl Fn(&crate::App) -> (f64, f64)) -> (f32, f32) {
     let mut tmp = harness_next_at(iced::Size::new(w, h));
@@ -3168,7 +3448,7 @@ fn dialogs_that_scroll_at(size: iced::Size, tag: &str) -> Vec<String> {
     }
     for (name, steps) in [
         ("page-layout", vec![Message::PageLayout(LayoutMsg::Open)]),
-        ("print-preview", vec![Message::PrintPreviewOpen]),
+        ("print-preview", vec![Message::PrintPreviewLayoutFixture]),
         ("breakdown", vec![Message::OpenBreakdown]),
         ("area-attributes", vec![Message::OpenAreaAttributes(true)]),
         ("area-properties", vec![Message::AreaProps]),

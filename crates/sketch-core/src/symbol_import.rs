@@ -224,6 +224,13 @@ mod tests {
                     assert!(current["symbols"].get(to).is_some(), "{id} -> {to}");
                 }
                 (Some(_), Some(_)) => panic!("{id} is both live and aliased"),
+                // The default library dropped the Arrows, Doors, Windows and
+                // Miscellaneous categories on purpose.
+                (None, None)
+                    if matches!(
+                        symbol["category"].as_str(),
+                        Some("arrows" | "doors" | "windows" | "miscellaneous")
+                    ) => {}
                 (None, None) => panic!("{id} is gone"),
             }
         }

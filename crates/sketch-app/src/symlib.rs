@@ -587,8 +587,8 @@ mod tests {
     fn library_loads_from_the_external_file_with_the_originals_index() {
         let lib = library();
         let ix = lib.as_ref().as_ref().expect("assets/symbols.json loads");
-        assert_eq!(ix.library.symbols.len(), 572);
-        assert_eq!(ix.categories.len(), 22);
+        assert_eq!(ix.library.symbols.len(), 499);
+        assert_eq!(ix.categories.len(), 18);
         assert_eq!(ix.categories[0].key, "caddillo-doors-windows");
         assert_eq!(ix.categories[0].items.len(), 20);
         assert!(ix

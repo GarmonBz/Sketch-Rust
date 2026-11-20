@@ -1,5 +1,17 @@
 # Sketch Rust — STATUS ledger
 
+0.2.9 prevents the floating tool tray from overlapping Zoom, Grid, Snap,
+Show, and Dimensions. The shared dock reserves space for all twelve tools
+and both control groups; controls move to top rows when the canvas is too
+narrow. Sidebar and inspector widths, touch density, popover clearance,
+and horizontal tool scrolling are included in placement.
+
+0.2.8 restores Freeform and Erase in the tool tray and command search. Freeform
+draws unsnapped interior strokes without dimensions or wall solids. Erase
+supports clicks and continuous drags across lines, text, and symbols, respects
+hidden/locked layers, and groups each gesture into one Undo step. Mouse and
+touch input share the existing save, print, and export pipeline.
+
 0.1.30 removes the Apex-based host integration and AXF support. Sketchy and
 SKX remain the editable formats. See the
 [Appraise-It Pro integration plan](docs/APPRAISE_IT_PRO_INTEGRATION.md).

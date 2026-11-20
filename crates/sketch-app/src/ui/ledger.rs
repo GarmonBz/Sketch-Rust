@@ -6,8 +6,8 @@ use std::collections::HashMap;
 
 use iced::widget::scrollable::{Direction, Scrollbar};
 use iced::widget::{
-    button, column, container, mouse_area, opaque, row, scrollable as make_scrollable, stack,
-    text, text_input, Column, Space,
+    button, column, container, mouse_area, opaque, pane_grid, row, scrollable as make_scrollable,
+    stack, text, text_input, Column, Space,
 };
 use iced::{alignment, mouse, Alignment, Background, Border, Color, Element, Length, Padding};
 use sketch_core::geometry::{distance, AreaCode};
@@ -31,6 +31,51 @@ pub const MIN_W: f32 = 220.0;
 pub const MAX_W: f32 = 400.0;
 pub const CANVAS_MIN_W: f32 = 220.0;
 
+/// The lower (Layers) pane starts with 55% of the list space, instead of a
+/// 140px cap; the divider between the two lists drags from there.
+const DEFAULT_LIST_SPLIT: f32 = 0.45;
+
+#[derive(Debug, Clone, Copy)]
+pub enum LedgerPane {
+    Areas,
+    Layers,
+}
+
+#[derive(Debug)]
+pub struct LedgerSplit {
+    panes: pane_grid::State<LedgerPane>,
+    split: pane_grid::Split,
+}
+
+impl Default for LedgerSplit {
+    fn default() -> Self {
+        let (mut panes, areas) = pane_grid::State::new(LedgerPane::Areas);
+        let (_, split) = panes
+            .split(pane_grid::Axis::Horizontal, areas, LedgerPane::Layers)
+            .expect("split the two ledger lists");
+        panes.resize(split, DEFAULT_LIST_SPLIT);
+        Self { panes, split }
+    }
+}
+
+impl LedgerSplit {
+    pub fn ratio(&self) -> f32 {
+        match self.panes.layout() {
+            pane_grid::Node::Split { ratio, .. } => *ratio,
+            _ => DEFAULT_LIST_SPLIT,
+        }
+    }
+
+    pub fn set_ratio(&mut self, ratio: f32) {
+        let ratio = if ratio.is_finite() {
+            ratio.clamp(0.15, 0.85)
+        } else {
+            DEFAULT_LIST_SPLIT
+        };
+        self.panes.resize(self.split, ratio);
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LedgerView {
     #[default]
@@ -48,15 +93,14 @@ pub fn clamp_width(w: f32, viewport_w: f32) -> f32 {
 /// Horizontal resize strip straddling the right edge of the Wide docked Ledger.
 pub fn wide_resize_handle<'a>(app: &'a App) -> Element<'a, Message> {
     let lit = app.ui.ledger_handle_hover || app.ui.ledger_resizing;
-    let strip = container(Space::new().width(7).height(Length::Fill)).style(move |_| {
-        container::Style {
+    let strip =
+        container(Space::new().width(7).height(Length::Fill)).style(move |_| container::Style {
             background: lit.then_some(Background::Color(Color {
                 a: 0.35,
                 ..tokens::accent()
             })),
             ..container::Style::default()
-        }
-    });
+        });
     let handle = mouse_area(strip)
         .on_press(Message::Ui(UiMsg::LedgerResizeStart))
         .on_double_click(Message::Ui(UiMsg::LedgerResizeReset))
@@ -92,18 +136,46 @@ pub fn panel<'a>(
     };
 
     let header = panel_header(app, class, view, d, overlay);
-    let main_list: Element<'a, Message> = match view {
-        LedgerView::Drawn => drawn_view(app, &calcs_model, d),
-        LedgerView::Types => types_view(app, d),
-        LedgerView::Layers => layers_view(app, d, false),
+    let main_list = || -> Element<'a, Message> {
+        match view {
+            LedgerView::Drawn => drawn_view(app, &calcs_model, d),
+            LedgerView::Types => types_view(app, d),
+            LedgerView::Layers => layers_view(app, d),
+        }
     };
 
-    let mut content = column![header, container(main_list).width(Length::Fill).height(Length::Fill)]
+    let lists: Element<'a, Message> = if class == SizeClass::Wide && app.ui.layers_expanded {
+        pane_grid(&app.ui.ledger_split.panes, |_, pane, _| {
+            pane_grid::Content::new(match pane {
+                LedgerPane::Areas => main_list(),
+                LedgerPane::Layers => wide_layers_section(app, d),
+            })
+        })
         .spacing(SPACE_2)
-        .width(Length::Fill)
-        .height(Length::Fill);
+        .min_size(80.0)
+        .on_resize(if d == Density::Touch { 20.0 } else { 10.0 }, |event| {
+            Message::Ui(UiMsg::ResizeLayers(event))
+        })
+        .style(|theme| {
+            let mut style = pane_grid::default(theme);
+            style.hovered_split.color = tokens::accent();
+            style.picked_split.color = tokens::accent();
+            style
+        })
+        .into()
+    } else {
+        main_list()
+    };
 
-    if matches!(class, SizeClass::Wide) {
+    let mut content = column![
+        header,
+        container(lists).width(Length::Fill).height(Length::Fill)
+    ]
+    .spacing(SPACE_2)
+    .width(Length::Fill)
+    .height(Length::Fill);
+
+    if class == SizeClass::Wide && !app.ui.layers_expanded {
         content = content.push(wide_layers_section(app, d));
     }
 
@@ -280,24 +352,22 @@ pub fn layer<'a>(app: &'a App) -> Option<Element<'a, Message>> {
         SizeClass::Medium | SizeClass::Compact => SPACE_3,
     };
 
-    Some(
-        opaque(
-            mouse_area(
-                container(opaque(card))
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-                    .padding(Padding {
-                        top: top_pad,
-                        left: left_pad,
-                        right: SPACE_3,
-                        bottom: SPACE_3,
-                    })
-                    .align_x(alignment::Horizontal::Left)
-                    .align_y(alignment::Vertical::Top),
-            )
-            .on_press(Message::Ui(UiMsg::ToggleLedgerMenu)),
-        ),
-    )
+    Some(opaque(
+        mouse_area(
+            container(opaque(card))
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .padding(Padding {
+                    top: top_pad,
+                    left: left_pad,
+                    right: SPACE_3,
+                    bottom: SPACE_3,
+                })
+                .align_x(alignment::Horizontal::Left)
+                .align_y(alignment::Vertical::Top),
+        )
+        .on_press(Message::Ui(UiMsg::ToggleLedgerMenu)),
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -354,13 +424,7 @@ fn drawn_view<'a>(app: &'a App, calcs_model: &calcs::Calcs, d: Density) -> Eleme
                     net_area: poly.area,
                     perimeter: app.computed.get(&poly.id).map_or(0.0, |c| c.perimeter),
                 };
-                rows.push(drawn_area_block(
-                    app,
-                    &area_row,
-                    und_color,
-                    true,
-                    d,
-                ));
+                rows.push(drawn_area_block(app, &area_row, und_color, true, d));
             }
         }
     }
@@ -439,7 +503,10 @@ fn drawn_view<'a>(app: &'a App, calcs_model: &calcs::Calcs, d: Density) -> Eleme
     }
 
     make_scrollable(Column::with_children(rows).spacing(4).width(Length::Fill))
-        .direction(Direction::Vertical(Scrollbar::new().width(5).scroller_width(5)))
+        .id("ledger-areas")
+        .direction(Direction::Vertical(
+            Scrollbar::new().width(5).scroller_width(5),
+        ))
         .width(Length::Fill)
         .height(Length::Fill)
         .into()
@@ -517,11 +584,19 @@ fn group_toggle_row<'a>(
             text(total_text.to_owned())
                 .font(BSC_SEMIBOLD)
                 .size(TEXT_12)
-                .color(if flagged { tokens::flag() } else { tokens::text() }),
+                .color(if flagged {
+                    tokens::flag()
+                } else {
+                    tokens::text()
+                }),
         ]
         .spacing(SPACE_1)
         .align_y(Alignment::Center)
-        .height(Length::Fixed(if matches!(d, Density::Touch) { 32.0 } else { 26.0 }))
+        .height(Length::Fixed(if matches!(d, Density::Touch) {
+            32.0
+        } else {
+            26.0
+        }))
         .padding([0, 4]),
     )
     .padding(0)
@@ -551,9 +626,21 @@ fn drawn_area_block<'a>(
     let selected = app.selection.polys.contains(&area.id);
     let expanded = app.dock.calcs_expanded.contains(&area.id);
     let value = format!("{:.1} sf", area.net_area);
-    let title_color = if flagged { tokens::flag() } else { tokens::text() };
-    let value_color = if flagged { tokens::flag() } else { tokens::muted() };
-    let caret = if expanded { "caret-down" } else { "caret-right" };
+    let title_color = if flagged {
+        tokens::flag()
+    } else {
+        tokens::text()
+    };
+    let value_color = if flagged {
+        tokens::flag()
+    } else {
+        tokens::muted()
+    };
+    let caret = if expanded {
+        "caret-down"
+    } else {
+        "caret-right"
+    };
 
     let row_content = row![
         container(Space::new())
@@ -569,7 +656,11 @@ fn drawn_area_block<'a>(
                 ..container::Style::default()
             }),
         text(area.name.clone())
-            .font(if selected { BARLOW_SEMIBOLD } else { BARLOW_MEDIUM })
+            .font(if selected {
+                BARLOW_SEMIBOLD
+            } else {
+                BARLOW_MEDIUM
+            })
             .size(TEXT_13)
             .color(title_color)
             .width(Length::Fill),
@@ -639,7 +730,11 @@ fn drawn_area_block<'a>(
             detail_line("Total", format!("{:.1} sf", area.total), false),
             detail_line("Subtracted", sub_text, sub > 0.0),
             detail_line("Net area", format!("{:.1} sf", area.net_area), false),
-            detail_line("Perimeter", app.drawing.options.units.length(area.perimeter), false),
+            detail_line(
+                "Perimeter",
+                app.drawing.options.units.length(area.perimeter),
+                false
+            ),
         ]
         .spacing(2),
     )
@@ -673,10 +768,11 @@ fn detail_line<'a>(label: &'static str, value: String, alarm: bool) -> Element<'
             .size(TEXT_11)
             .color(tokens::muted())
             .width(Length::Fill),
-        text(value)
-            .font(BSC_MEDIUM)
-            .size(TEXT_12)
-            .color(if alarm { tokens::flag() } else { tokens::text() }),
+        text(value).font(BSC_MEDIUM).size(TEXT_12).color(if alarm {
+            tokens::flag()
+        } else {
+            tokens::text()
+        }),
     ]
     .align_y(Alignment::Center)
     .width(Length::Fill)
@@ -747,7 +843,9 @@ fn types_view<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
     }
 
     let scroll = make_scrollable(list)
-        .direction(Direction::Vertical(Scrollbar::new().width(5).scroller_width(5)))
+        .direction(Direction::Vertical(
+            Scrollbar::new().width(5).scroller_width(5),
+        ))
         .width(Length::Fill)
         .height(Length::Fill);
 
@@ -767,7 +865,10 @@ fn types_view<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
     .spacing(SPACE_1)
     .wrap();
 
-    let mut col = column![search].spacing(SPACE_2).width(Length::Fill).height(Length::Fill);
+    let mut col = column![search]
+        .spacing(SPACE_2)
+        .width(Length::Fill)
+        .height(Length::Fill);
     if !app.workflow.status.is_empty() {
         col = col.push(
             container(
@@ -823,9 +924,17 @@ fn type_row<'a>(
                 ..container::Style::default()
             }),
         text(name.to_owned())
-            .font(if armed { BARLOW_SEMIBOLD } else { BARLOW_MEDIUM })
+            .font(if armed {
+                BARLOW_SEMIBOLD
+            } else {
+                BARLOW_MEDIUM
+            })
             .size(TEXT_13)
-            .color(if is_clear { tokens::flag() } else { tokens::text() })
+            .color(if is_clear {
+                tokens::flag()
+            } else {
+                tokens::text()
+            })
             .width(Length::Fill),
     ]
     .spacing(SPACE_2)
@@ -889,7 +998,11 @@ fn type_row<'a>(
                 _ => bg,
             })),
             border: Border {
-                color: if armed { tokens::accent() } else { Color::TRANSPARENT },
+                color: if armed {
+                    tokens::accent()
+                } else {
+                    Color::TRANSPARENT
+                },
                 width: if armed { 1.0 } else { 0.0 },
                 radius: RADIUS_CONTROL.into(),
             },
@@ -899,7 +1012,9 @@ fn type_row<'a>(
     let menu_btn = kit::icon_button(
         "dots-three",
         app.workflow.menu.as_deref() == Some(code),
-        Some(Message::AreaWorkflow(WorkflowMsg::TypeMenu(code.to_owned()))),
+        Some(Message::AreaWorkflow(WorkflowMsg::TypeMenu(
+            code.to_owned(),
+        ))),
         d,
     );
 
@@ -955,13 +1070,26 @@ fn wide_layers_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
             .into();
     }
 
-    column![kit::divider(), toggle, layers_view(app, d, true)]
+    let grip = container(
+        container(Space::new().width(32).height(3)).style(|_| container::Style {
+            background: Some(Background::Color(tokens::muted())),
+            border: Border {
+                radius: 2.0.into(),
+                ..Border::default()
+            },
+            ..container::Style::default()
+        }),
+    )
+    .width(Length::Fill)
+    .align_x(Alignment::Center);
+    column![grip, toggle, layers_view(app, d)]
         .spacing(SPACE_1)
         .width(Length::Fill)
+        .height(Length::Fill)
         .into()
 }
 
-fn layers_view<'a>(app: &'a App, d: Density, capped: bool) -> Element<'a, Message> {
+fn layers_view<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
     let filter = app.area_layer_filter();
     let rows = app.layers.visible_rows(|l| filter.keeps(l));
     let body: Element<'a, Message> = if rows.is_empty() {
@@ -983,17 +1111,17 @@ fn layers_view<'a>(app: &'a App, d: Density, capped: bool) -> Element<'a, Messag
             }
             list = list.push(next_layer_row(app, r, d));
         }
-        let mut sc = make_scrollable(list)
-            .direction(Direction::Vertical(Scrollbar::new().width(5).scroller_width(5)))
-            .width(Length::Fill);
-        sc = if capped {
-            sc.height(Length::Fixed(140.0))
-        } else {
-            sc.height(Length::Fill)
-        };
+        let sc = make_scrollable(list)
+            .id("ledger-layers")
+            .direction(Direction::Vertical(
+                Scrollbar::new().width(5).scroller_width(5),
+            ))
+            .width(Length::Fill)
+            .height(Length::Fill);
         if let Some(menu_row) = active_menu {
             stack![sc, inline_layer_menu(&menu_row, d)]
                 .width(Length::Fill)
+                .height(Length::Fill)
                 .into()
         } else {
             sc.into()
@@ -1024,7 +1152,11 @@ fn next_layer_row<'a>(app: &'a App, r: &LayerRow, d: Density) -> Element<'a, Mes
         .filter(|(target, _)| target == id)
         .map(|(_, buf)| buf.clone());
 
-    let row_h: f32 = if matches!(d, Density::Touch) { 38.0 } else { 30.0 };
+    let row_h: f32 = if matches!(d, Density::Touch) {
+        38.0
+    } else {
+        30.0
+    };
     let mid_h = (row_h - 12.0).max(16.0);
     let fg = if dragging {
         tokens::disabled()
@@ -1051,7 +1183,11 @@ fn next_layer_row<'a>(app: &'a App, r: &LayerRow, d: Density) -> Element<'a, Mes
     };
 
     let kind_icon = icons::mono(
-        if r.is_group { "folder-simple" } else { "shapes" },
+        if r.is_group {
+            "folder-simple"
+        } else {
+            "shapes"
+        },
         14.0,
         if r.is_group {
             tokens::accent()
@@ -1078,7 +1214,11 @@ fn next_layer_row<'a>(app: &'a App, r: &LayerRow, d: Density) -> Element<'a, Mes
     } else {
         container(
             text(r.name.clone())
-                .font(if r.active { BARLOW_SEMIBOLD } else { BARLOW_MEDIUM })
+                .font(if r.active {
+                    BARLOW_SEMIBOLD
+                } else {
+                    BARLOW_MEDIUM
+                })
                 .size(TEXT_12)
                 .color(fg),
         )
@@ -1093,11 +1233,15 @@ fn next_layer_row<'a>(app: &'a App, r: &LayerRow, d: Density) -> Element<'a, Mes
     };
 
     let zone = |h: f32, pos: DragPos, content: Element<'a, Message>| -> Element<'a, Message> {
-        mouse_area(container(content).width(Length::Fill).height(Length::Fixed(h)))
-            .on_press(Message::LayerPress(id.to_owned()))
-            .on_release(Message::LayerDrop(id.to_owned(), pos))
-            .on_enter(Message::LayerZoneHover(id.to_owned(), pos))
-            .into()
+        mouse_area(
+            container(content)
+                .width(Length::Fill)
+                .height(Length::Fixed(h)),
+        )
+        .on_press(Message::LayerPress(id.to_owned()))
+        .on_release(Message::LayerDrop(id.to_owned(), pos))
+        .on_enter(Message::LayerZoneHover(id.to_owned(), pos))
+        .into()
     };
     let strip = column![
         zone(6.0, DragPos::Before, Space::new().into()),
@@ -1114,7 +1258,11 @@ fn next_layer_row<'a>(app: &'a App, r: &LayerRow, d: Density) -> Element<'a, Mes
             d,
         ),
         kit::icon_button(
-            if r.locked { "lock-simple" } else { "lock-simple-open" },
+            if r.locked {
+                "lock-simple"
+            } else {
+                "lock-simple-open"
+            },
             r.locked,
             Some(Message::LayerToggleLocked(id.to_owned())),
             d,
@@ -1236,13 +1384,16 @@ fn inline_layer_menu<'a>(r: &LayerRow, d: Density) -> Element<'a, Message> {
             on_press: Some(Message::LayerMenuClose),
         },
     ];
-    container(opaque(kit::popover(kit::menu(entries, 172.0, d), RADIUS_DIALOG)))
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .padding([4, 8])
-        .align_x(alignment::Horizontal::Right)
-        .align_y(alignment::Vertical::Top)
-        .into()
+    container(opaque(kit::popover(
+        kit::menu(entries, 172.0, d),
+        RADIUS_DIALOG,
+    )))
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .padding([4, 8])
+    .align_x(alignment::Horizontal::Right)
+    .align_y(alignment::Vertical::Top)
+    .into()
 }
 
 // ---------------------------------------------------------------------------
@@ -1282,10 +1433,22 @@ fn advanced_subview<'a>(app: &'a App, d: Density, overlay: bool) -> Element<'a, 
     let body = column![
         kit::group_header("AREA OPERATIONS", None),
         row![
-            kit::text_button("Redefine", Some(Message::AreaWorkflow(WorkflowMsg::Redefine)), d),
+            kit::text_button(
+                "Redefine",
+                Some(Message::AreaWorkflow(WorkflowMsg::Redefine)),
+                d
+            ),
             kit::text_button("Clone", Some(Message::AreaWorkflow(WorkflowMsg::Clone)), d),
-            kit::text_button("Reopen", Some(Message::AreaWorkflow(WorkflowMsg::Reopen)), d),
-            kit::text_button("Detect", Some(Message::AreaWorkflow(WorkflowMsg::Detect)), d),
+            kit::text_button(
+                "Reopen",
+                Some(Message::AreaWorkflow(WorkflowMsg::Reopen)),
+                d
+            ),
+            kit::text_button(
+                "Detect",
+                Some(Message::AreaWorkflow(WorkflowMsg::Detect)),
+                d
+            ),
         ]
         .spacing(SPACE_1),
         kit::divider(),
@@ -1319,7 +1482,9 @@ fn advanced_subview<'a>(app: &'a App, d: Density, overlay: bool) -> Element<'a, 
     column![
         header,
         make_scrollable(body)
-            .direction(Direction::Vertical(Scrollbar::new().width(5).scroller_width(5)))
+            .direction(Direction::Vertical(
+                Scrollbar::new().width(5).scroller_width(5)
+            ))
             .width(Length::Fill)
             .height(Length::Fill),
     ]

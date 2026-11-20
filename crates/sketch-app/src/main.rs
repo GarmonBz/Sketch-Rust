@@ -37,6 +37,9 @@ mod event_tap;
 mod exporter;
 mod file_dialogs;
 mod format;
+mod freeform;
+#[cfg(test)]
+mod freeform_tests;
 mod guide;
 mod handles;
 mod icons;
@@ -287,6 +290,8 @@ pub enum Message {
     Print,
     /// File > Print Preview... and its toolbar.
     PrintPreviewOpen,
+    #[cfg(test)]
+    PrintPreviewLayoutFixture,
     PrintPreview(print::PreviewMsg),
     /// `emailSupport()` — the mailto opener (S12-026/071/084).
     Email,
@@ -360,6 +365,8 @@ pub enum Message {
     SelectByType(select_menu::SelectKind),
     /// A canvas context-menu row.
     ContextAction(context_menu::Action),
+    /// Dismiss the canvas context menu (outside press or Escape).
+    ContextClose,
     /// Save or discard a temporary symbol shape-editing session (`ui/symbol_library.rs`).
     SaveSymbolShape,
     CancelSymbolShape,
@@ -1956,6 +1963,10 @@ impl App {
                     self.ui.export_menu = false;
                     Task::none()
                 }
+                ui::Msg::TrayScrolled(x) => {
+                    self.ui.tray_scroll_x = x;
+                    Task::none()
+                }
                 ui::Msg::ToggleTrayFlyout(target) => {
                     self.ui.menu_open = false;
                     self.ui.menu_sub = None;
@@ -2082,6 +2093,10 @@ impl App {
                 ui::Msg::ToggleLayersSection => {
                     self.ui.ledger_menu = false;
                     self.ui.layers_expanded = !self.ui.layers_expanded;
+                    Task::none()
+                }
+                ui::Msg::ResizeLayers(event) => {
+                    self.ui.ledger_split.set_ratio(event.ratio);
                     Task::none()
                 }
                 ui::Msg::TypeFilterChanged(s) => {
@@ -2709,6 +2724,28 @@ impl App {
             }
             Message::CanvasPress(x, y) => {
                 let world = self.world(x, y);
+                if matches!(
+                    self.view.mode,
+                    view_state::Mode::Freeform | view_state::Mode::Erase
+                )
+                    && !self.bg_image.edit_mode
+                    && !self.bg_image.orient_mode
+                    && !self.bg_image.scale_mode
+                {
+                    self.selection.clear();
+                    self.drag_banked = false;
+                    let last = view_state::World {
+                        x: world.x,
+                        y: world.y,
+                    };
+                    self.view.drag = Some(if self.view.mode == view_state::Mode::Freeform {
+                        view_state::Drag::Freeform { last }
+                    } else {
+                        view_state::Drag::Erase { last }
+                    });
+                    self.stroke_to(world);
+                    return Task::none();
+                }
                 // Image Edit Mode's press starts the photo drag
                 // (canvas-engine.js:846: `dragState = {type:'photo'}`).
                 if self.bg_image.edit_mode {
@@ -3014,6 +3051,13 @@ impl App {
                 Task::none()
             }
             Message::CanvasDrag(x, y, ctrl) => {
+                if matches!(
+                    self.view.drag,
+                    Some(view_state::Drag::Freeform { .. } | view_state::Drag::Erase { .. })
+                ) {
+                    self.stroke_to(self.world(x, y));
+                    return Task::none();
+                }
                 if self.view.drag.is_none() && self.view.fence.is_some() {
                     self.view.fence_move(x as f64, y as f64);
                     return Task::none();
@@ -3032,6 +3076,7 @@ impl App {
                     y: world.y,
                 };
                 match self.view.drag.clone() {
+                    Some(view_state::Drag::Freeform { .. } | view_state::Drag::Erase { .. }) => {}
                     Some(view_state::Drag::Vertex { handle, origin, grab }) => {
                         let dx = world.x - grab.x;
                         let dy = world.y - grab.y;
@@ -3270,6 +3315,7 @@ impl App {
                 let moved = match &self.view.drag {
                     Some(view_state::Drag::Move { .. }) => self.drag_banked,
                     Some(view_state::Drag::Vertex { .. }) => false,
+                    Some(view_state::Drag::Freeform { .. } | view_state::Drag::Erase { .. }) => false,
                     Some(view_state::Drag::ChainOffset { moved, .. }) => *moved,
                     Some(view_state::Drag::SymbolResize { .. }) => self.drag_banked,
                     Some(view_state::Drag::SymbolRotate { .. }) => self.drag_banked,
@@ -4105,6 +4151,21 @@ impl App {
                     Err(message) => self.toasts.show(message),
                 }
             }
+            #[cfg(test)]
+            Message::PrintPreviewLayoutFixture => {
+                // Layout checks exercise the preview sheet without starting
+                // Windows.Data.Pdf's native COM threads on a headless runner.
+                let paper = self.page_layout.paper_size;
+                let (width, height) = paper.size();
+                let (width, height) = (width.round() as u32, height.round() as u32);
+                self.print_preview.pdf = self.report_pdf();
+                self.print_preview.paper = Some(paper);
+                self.print_preview.rasters = vec![iced::widget::image::Handle::from_rgba(
+                    width, height, vec![255; width as usize * height as usize * 4],
+                )];
+                self.print_preview.open = true;
+                Task::none()
+            }
             Message::PrintPreview(m) => match m {
                 print::PreviewMsg::Close => {
                     self.print_preview.close();
@@ -4410,6 +4471,10 @@ impl App {
                     }
                     other => self.area_dialog.update(other),
                 }
+                Task::none()
+            }
+            Message::ContextClose => {
+                self.context.close();
                 Task::none()
             }
             Message::ContextAction(action) => {
@@ -5564,6 +5629,13 @@ impl App {
 
     fn set_mode(&mut self, mode: view_state::Mode) -> Task<Message> {
         if mode != self.view.mode {
+            if matches!(
+                self.view.drag,
+                Some(view_state::Drag::Freeform { .. } | view_state::Drag::Erase { .. })
+            ) {
+                self.view.drag = None;
+                self.drag_banked = false;
+            }
             self.workflow_close();
             self.workflow.hover = None;
             self.ui.tray_flyout = None;
@@ -5589,7 +5661,9 @@ impl App {
         ) {
             self.ui.select_more = false;
         }
-        if mode.is_drawing() {
+        let drawing_or_erasing = mode.is_drawing()
+            || matches!(mode, view_state::Mode::Freeform | view_state::Mode::Erase);
+        if drawing_or_erasing {
             self.ui.ledger_open = false;
             self.ui.inspector_open = false;
             self.ui.menu_open = false;
@@ -5605,7 +5679,7 @@ impl App {
         } else if !self.ui.pad_manual {
             self.touch_panel_open = false;
         }
-        if mode.is_drawing()
+        if drawing_or_erasing
             || ui::pad::is_drawing_tool(mode) != ui::pad::is_drawing_tool(self.view.mode)
         {
             self.sync_canvas();
@@ -6355,6 +6429,13 @@ impl App {
 
     /// A snapshot restore: the drawing plus the layer stack it banked.
     fn restore_snapshot(&mut self, snap: &crate::undo::Snapshot) {
+        if matches!(
+            self.view.drag,
+            Some(view_state::Drag::Freeform { .. } | view_state::Drag::Erase { .. })
+        ) {
+            self.view.drag = None;
+            self.drag_banked = false;
+        }
         self.drawing.restore(snap);
         if let Some(layers) = &snap.layers {
             self.layers.items = layers.clone();
@@ -8536,7 +8617,7 @@ impl App {
     /// visible/centered/auto-fit to ~60 feet, flips reset, the 50
     /// intensity.
     fn photo_load(&mut self) -> Task<Message> {
-        if let Some(path) = crate::platform::pick_file("Images", &["png", "jpg", "jpeg"])
+        if let Some(path) = file_dialogs::open_image()
         {
             if let Ok(bytes) = std::fs::read(&path) {
                 let size = reference_image::image_size(&bytes);
@@ -8832,6 +8913,9 @@ impl App {
         }
         if let (Some(map), Some(w)) = (sidebar.as_object_mut(), self.ui.ledger_width) {
             map.insert("ledgerWidth".to_owned(), serde_json::json!(w));
+        }
+        if let Some(map) = sidebar.as_object_mut() {
+            map.insert("layersSplit".to_owned(), serde_json::json!(self.ui.ledger_split.ratio()));
         }
         let settings = serde_json::json!({
             "defineFirst": self.drawing.options.define_first,
@@ -9357,6 +9441,7 @@ impl App {
     /// applySaveModel's settings block. Keys this port owns update their
     /// state owners; the others land in `settings_extra` verbatim.
     fn apply_settings(&mut self, settings: Option<&serde_json::Value>) {
+        self.ui.ledger_split = ui::ledger::LedgerSplit::default();
         let Some(s) = settings else {
             // An older sketch with no saved settings must not inherit solids.
             self.drawing.options = crate::options::Options::default();
@@ -9464,6 +9549,9 @@ impl App {
                 .get("ledgerWidth")
                 .and_then(|v| v.as_f64())
                 .map(|w| ui::ledger::clamp_width(w as f32, self.window_size.width));
+            if let Some(ratio) = sb.get("layersSplit").and_then(|v| v.as_f64()) {
+                self.ui.ledger_split.set_ratio(ratio as f32);
+            }
         }
         if let Some(labels) = s.get("textLibraryLabels") {
             self.dock.text_labels = labels
@@ -9897,9 +9985,11 @@ impl App {
         } else {
             None
         };
+        let context_open = self.context.open.is_some();
         tap = tap.capture_key(move |key, mods| {
             use iced::keyboard::{key::Named, Key};
             match key.as_ref() {
+                Key::Named(Named::Escape) if context_open => Some(Message::ContextClose),
                 Key::Named(Named::Tab) if workflow_dialog => Some(Message::AreaWorkflow(
                     area_workflow::Msg::Focus(mods.shift()),
                 )),

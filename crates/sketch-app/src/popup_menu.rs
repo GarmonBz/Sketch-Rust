@@ -86,8 +86,8 @@ pub fn entries(kind: Kind, canvas: CanvasTheme, interface: InterfaceTheme) -> Ve
         ],
         Kind::CanvasBackground => [
             (CanvasTheme::Light, "sun"),
-            (CanvasTheme::Dark, "moon"),
             (CanvasTheme::Blue, "drop"),
+            (CanvasTheme::Dark, "moon"),
         ]
         .into_iter()
         .map(|(t, glyph)| Entry {
@@ -113,8 +113,8 @@ pub fn entries(kind: Kind, canvas: CanvasTheme, interface: InterfaceTheme) -> Ve
         .collect(),
         Kind::InterfaceTheme => [
             (InterfaceTheme::Light, "Light", "sun"),
-            (InterfaceTheme::Dark, "Dark", "moon"),
             (InterfaceTheme::Blue, "Blue", "drop"),
+            (InterfaceTheme::Dark, "Dark", "moon"),
         ]
         .into_iter()
         .map(|(t, label, glyph)| Entry {
@@ -231,16 +231,16 @@ mod tests {
     }
 
     #[test]
-    fn the_canvas_menu_says_white_for_light_and_marks_the_current() {
+    fn the_canvas_menu_lists_light_blue_dark_and_marks_the_current() {
         let e = entries(
             Kind::CanvasBackground,
             CanvasTheme::Blue,
             InterfaceTheme::Dark,
         );
         let labels: Vec<&str> = e.iter().map(|x| x.label).collect();
-        assert_eq!(labels, vec!["White", "Dark", "Blue"]);
+        assert_eq!(labels, vec!["Light", "Blue", "Dark"]);
         let active: Vec<bool> = e.iter().map(|x| x.active).collect();
-        assert_eq!(active, vec![false, false, true]);
+        assert_eq!(active, vec![false, true, false]);
     }
 
     #[test]
@@ -251,7 +251,7 @@ mod tests {
             InterfaceTheme::Light,
         );
         let labels: Vec<&str> = e.iter().map(|x| x.label).collect();
-        assert_eq!(labels, vec!["Light", "Dark", "Blue"]);
+        assert_eq!(labels, vec!["Light", "Blue", "Dark"]);
         assert!(e[0].active && !e[1].active && !e[2].active);
     }
 

@@ -4,9 +4,15 @@ version.workspace = true
 edition.workspace = true
 license-file.workspace = true
 
+[features]
+# Keep GPU acceleration in desktop builds; headless CI can select tiny-skia
+# alone with --no-default-features instead of opening a GPU device per test.
+default = ["gpu"]
+gpu = ["iced/wgpu"]
+
 [dependencies]
 sketch-core = { path = "../sketch-core" }
-iced = { version = "0.14", features = ["canvas", "image", "svg", "advanced"] }
+iced = { version = "0.14", default-features = false, features = ["tiny-skia", "crisp", "web-colors", "thread-pool", "linux-theme-detection", "x11", "wayland", "canvas", "image", "svg", "advanced"] }
 rfd = "0.15"
 btleplug = "0.11"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }

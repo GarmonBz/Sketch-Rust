@@ -16,6 +16,21 @@ pub fn open_sketch() -> Option<PathBuf> {
     })
 }
 
+/// The image picker uses the same test boundary as sketch Open, so headless
+/// layout checks never wait for an interactive Windows file dialog.
+pub fn open_image() -> Option<PathBuf> {
+    #[cfg(not(test))]
+    {
+        crate::platform::pick_file("Images", &["png", "jpg", "jpeg"])
+    }
+    #[cfg(test)]
+    TEST_PICKER.with(|state| {
+        let mut state = state.borrow_mut();
+        state.open_requests += 1;
+        state.open_destination.take()
+    })
+}
+
 pub fn save_sketch(default_name: &str, preferred: &str) -> Option<PathBuf> {
     #[cfg(not(test))]
     {
@@ -101,4 +116,26 @@ fn with_picker<R>(picker: TestPicker, run: impl FnOnce() -> R) -> (R, TestPicker
     let result = run();
     let picker = TEST_PICKER.with(|state| state.take());
     (result, picker)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn image_picker_cancels_and_loads_without_a_native_dialog() {
+        let mut app = crate::App::boot(1.).0;
+        let (_, requests) = with_open_path(None, || {
+            let _ = app.update(crate::Message::GeoLoadMap);
+        });
+        assert_eq!(requests, 1);
+        assert!(!app.bg_image.loaded());
+        let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../assets/app-icon.png");
+        let (_, requests) = with_open_path(Some(fixture), || {
+            let _ = app.update(crate::Message::PhotoLoad);
+        });
+        assert_eq!(requests, 1);
+        assert!(app.bg_image.loaded());
+        assert!(app.bg_image.width > 0 && app.bg_image.height > 0);
+    }
 }

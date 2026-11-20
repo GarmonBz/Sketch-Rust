@@ -3,7 +3,8 @@
 //!
 //! Separate from the interface theme: it recolours only the canvas
 //! background, the two grid weights, the dimension labels and the witness
-//! lines. `light` (shown as "White") is the default.
+//! lines. `light` is the default. The selectors list Light, Blue, Dark, as the
+//! interface theme's do.
 //!
 //! Held in a thread-local like `theme::interface_theme`: the view and the
 //! canvas draw run on the thread that runs `update`, and the test harness
@@ -42,7 +43,7 @@ impl CanvasTheme {
     /// The menu label (`showCanvasBackgroundMenu`).
     pub fn label(self) -> &'static str {
         match self {
-            CanvasTheme::Light => "White",
+            CanvasTheme::Light => "Light",
             CanvasTheme::Dark => "Dark",
             CanvasTheme::Blue => "Blue",
         }

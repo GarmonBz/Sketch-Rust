@@ -924,9 +924,9 @@ fn appearance_section<'a>(d: Density) -> Element<'a, Message> {
     let ui = theme::interface_theme();
     let theme_seg = kit::segmented(
         [
-            (InterfaceTheme::Dark, "Dark"),
-            (InterfaceTheme::Blue, "Blue"),
             (InterfaceTheme::Light, "Light"),
+            (InterfaceTheme::Blue, "Blue"),
+            (InterfaceTheme::Dark, "Dark"),
         ]
         .into_iter()
         .map(|(t, label)| kit::Segment {
@@ -941,9 +941,9 @@ fn appearance_section<'a>(d: Density) -> Element<'a, Message> {
     let canvas = canvas_theme::current();
     let canvas_seg = kit::segmented(
         [
-            (CanvasTheme::Light, "White"),
-            (CanvasTheme::Dark, "Dark"),
+            (CanvasTheme::Light, "Light"),
             (CanvasTheme::Blue, "Blue"),
+            (CanvasTheme::Dark, "Dark"),
         ]
         .into_iter()
         .map(|(t, label)| kit::Segment {

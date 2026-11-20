@@ -1,6 +1,20 @@
-Sketch Rust 0.2.5 - Windows x64
+Sketch Rust 0.2.9 - Windows x64
 
-Area outlines and fills use their assigned area colors. A magnifier beside
+The tool tray and drawing controls now share a layout that prevents overlap.
+Zoom and Grid/Snap/Show/Dimensions move to separate top rows when there is
+not enough canvas width beside the twelve-tool tray. Menus follow their
+controls, including after sidebar resizing and horizontal tool scrolling.
+
+Freeform and Erase are back in the tool tray and command search. Drag with
+Freeform to draw without snapping, dimensions, or wall solids. Click or drag
+with Erase to remove lines, room labels, and symbols. Each gesture is one
+Undo step (Ctrl+Z). Both tools support mouse and touch input, respect hidden
+and locked layers, and use the existing save, print, and export formats.
+
+0.2.7 snaps moves to the grid, deselects on empty canvas clicks, and adds
+Open and Save buttons. 0.2.6 adds sketch-wide length formats and edit snapping.
+
+0.2.5: Area outlines and fills use their assigned area colors. A magnifier beside
 Fit zooms to a dragged rectangle. Selected walls and areas show draggable
 endpoints and corners. The inspector combines properties and editing
 controls, and wall length accepts decimal feet or inches.

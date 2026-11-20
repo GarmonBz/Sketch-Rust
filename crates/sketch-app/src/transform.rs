@@ -865,7 +865,7 @@ mod tests {
         d.texts[0].y = 5.0;
         d.symbols.push(
             serde_json::from_value(serde_json::json!({
-                "id": 8, "symbolType": "windows/36in", "x": 0.0, "y": 5.0
+                "id": 8, "symbolType": "caddillo/window-single-36", "x": 0.0, "y": 5.0
             }))
             .unwrap(),
         );

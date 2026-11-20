@@ -42,8 +42,8 @@ The struct is `#[serde(rename_all = "camelCase")]`, with `includeInGLA` renamed 
 | Group heading | Types (code) |
 |---|---|
 | Living space | First Floor (GLA1), Second Floor (GLA2), Third Floor (GLA3), Fourth Floor (GLA4) |
-| Building area | First to Tenth Floor (GBA1 to GBA10) |
-| Garage / carport | Garage (GAR), Carport (GAR2) |
+| Building area | First to Fourth Floor (GBA1 to GBA4) |
+| Garage / carport | Garage (GAR), Carport (CPT) |
 | Basement | Finished BSMT (BSMT), Unfinished BSMT (BSMT2) |
 | Outdoor (group `P/P`) | Open Frame Porch (OFP), Screen Frame Porch (SFP), Enclosed Frame Porch (EFP), Patio (PAT), Porch (PORCH), Wood Deck (DK), Balcony (BAL) |
 | Storage (group `OTH`) | Pool (POOL), Shed (SHED), Storage (OTH) |

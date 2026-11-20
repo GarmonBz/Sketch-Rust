@@ -229,6 +229,13 @@ impl canvas::Program<crate::Message> for SketchCanvas<'_> {
                             fired: false,
                             drag_kind: None,
                         });
+                        if !self.finger_pan_only && !self.space_pan
+                            && matches!(self.mode, Mode::Freeform | Mode::Erase)
+                        {
+                            state.touch_hold.as_mut().unwrap().drag_kind = Some(TouchDragKind::Press);
+                            let (x, y) = rel(position);
+                            return Some(canvas::Action::publish(Message::CanvasPress(x, y)).and_capture());
+                        }
                         return Some(
                             canvas::Action::request_redraw_at(now + TOUCH_HOLD_DELAY).and_capture(),
                         );
@@ -340,6 +347,9 @@ impl canvas::Program<crate::Message> for SketchCanvas<'_> {
                         return None;
                     }
                     state.touch_hold = None;
+                    if is_lost && hold.drag_kind == Some(TouchDragKind::Press) {
+                        return Some(canvas::Action::publish(Message::CanvasDragEnd).and_capture());
+                    }
                     if hold.fired || is_lost {
                         return Some(canvas::Action::capture());
                     }
@@ -425,7 +435,8 @@ impl canvas::Program<crate::Message> for SketchCanvas<'_> {
                     let (x, y) = rel(p);
                     return Some(canvas::Action::publish(Message::FenceStart(x, y)).and_capture());
                 }
-                if *button == mouse::Button::Left && matches!(self.mode, Mode::Select | Mode::Curve)
+                if *button == mouse::Button::Left
+                    && matches!(self.mode, Mode::Select | Mode::Curve | Mode::Freeform | Mode::Erase)
                 {
                     // The pointer doubles as the marquee tool when the drag
                     // starts on empty canvas; main hit-tests and decides. The
@@ -892,6 +903,85 @@ mod tests {
     ) -> Option<Message> {
         let action = c.update(state, &event, BOUNDS, cursor)?;
         action.into_inner().0
+    }
+
+    #[test]
+    fn freeform_and_erase_capture_mouse_and_touch_strokes() {
+        for mode in [Mode::Freeform, Mode::Erase] {
+            let mut c = canvas(mode);
+            let mut state = CanvasState::default();
+            assert!(matches!(
+                message_with(
+                    &c,
+                    &mut state,
+                    Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
+                    at(400., 400.)
+                ),
+                Some(Message::CanvasPress(..))
+            ));
+            c.dragging = true;
+            assert!(matches!(
+                message_with(
+                    &c,
+                    &mut state,
+                    Event::Mouse(mouse::Event::CursorMoved {
+                        position: Point::new(500., 420.)
+                    }),
+                    at(500., 420.)
+                ),
+                Some(Message::CanvasDrag(..))
+            ));
+            assert!(matches!(
+                message_with(
+                    &c,
+                    &mut state,
+                    Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
+                    at(500., 420.)
+                ),
+                Some(Message::CanvasDragEnd)
+            ));
+
+            c.dragging = false;
+            c.touch_gestures = true;
+            let id = iced::touch::Finger(1);
+            assert!(matches!(
+                message_with(
+                    &c,
+                    &mut state,
+                    Event::Touch(iced::touch::Event::FingerPressed {
+                        id,
+                        position: Point::new(400., 400.)
+                    }),
+                    at(400., 400.)
+                ),
+                Some(Message::CanvasPress(..))
+            ));
+            c.dragging = true;
+            assert!(matches!(
+                message_with(
+                    &c,
+                    &mut state,
+                    Event::Touch(iced::touch::Event::FingerMoved {
+                        id,
+                        position: Point::new(500., 420.)
+                    }),
+                    at(500., 420.)
+                ),
+                Some(Message::CanvasDrag(..))
+            ));
+            assert!(matches!(
+                message_with(
+                    &c,
+                    &mut state,
+                    Event::Touch(iced::touch::Event::FingerLost {
+                        id,
+                        position: Point::new(500., 420.)
+                    }),
+                    at(500., 420.)
+                ),
+                Some(Message::CanvasDragEnd)
+            ));
+        }
     }
 
     #[test]

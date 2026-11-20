@@ -1,5 +1,13 @@
 # Residential symbol library
 
+## Smaller default library
+
+The default `symbols.json` no longer carries the older Arrows, Doors,
+Windows and Miscellaneous categories or the 73 symbols in them. The
+Doors & windows category (the CADdillo doors and windows) stays, and so do all
+other categories. `symbols.json` now holds 499 symbols. They can be added back
+to the library later if they are needed.
+
 ## Plain category names and fewer duplicates (0.2.2)
 
 The CADdillo categories now have plain names. Six of them merged into the

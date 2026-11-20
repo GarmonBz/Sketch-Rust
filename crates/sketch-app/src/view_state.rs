@@ -22,6 +22,8 @@ pub enum Mode {
     Pan,
     DrawExterior,
     DrawInterior,
+    Freeform,
+    Erase,
     InsertVertex,
     Curve,
     Measure,
@@ -42,7 +44,9 @@ impl Mode {
     pub fn crosshair(self) -> bool {
         matches!(
             self,
-            Mode::DefineArea
+            Mode::Freeform
+                | Mode::Erase
+                | Mode::DefineArea
                 | Mode::Fence
                 | Mode::Lasso
                 | Mode::InsertVertex
@@ -111,6 +115,9 @@ pub struct World {
 /// A pointer drag in progress (`state.dragState`).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Drag {
+    /// Unsnapped drawing / eraser stroke, grouped into one undo step.
+    Freeform { last: World },
+    Erase { last: World },
     /// `type: 'chain-offset'` — reposition a chain's offset line (S9-035).
     ChainOffset {
         chain_id: i64,
@@ -518,6 +525,7 @@ impl View {
                 Some((dx, dy))
             }
             Drag::Vertex { .. } => None,
+            Drag::Freeform { .. } | Drag::Erase { .. } => None,
             Drag::Curve { .. } => None,
             Drag::RotateArea { .. } => None,
             Drag::RotateText { .. } => None,
@@ -631,6 +639,8 @@ pub enum RailTool {
     Pan,
     DrawExterior,
     DrawInterior,
+    Freeform,
+    Erase,
     InsertVertex,
     Curve,
     Measure,
@@ -655,6 +665,8 @@ impl RailTool {
             RailTool::Pan => Mode::Pan,
             RailTool::DrawExterior => Mode::DrawExterior,
             RailTool::DrawInterior => Mode::DrawInterior,
+            RailTool::Freeform => Mode::Freeform,
+            RailTool::Erase => Mode::Erase,
             RailTool::InsertVertex => Mode::InsertVertex,
             RailTool::Curve => Mode::Curve,
             RailTool::Measure => Mode::Measure,

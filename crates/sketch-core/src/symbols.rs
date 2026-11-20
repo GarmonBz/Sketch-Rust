@@ -332,12 +332,12 @@ mod tests {
             return;
         };
         let library = SymbolLibrary::load(&path).expect("library loads");
-        assert_eq!(library.symbols.len(), 572);
-        assert_eq!(library.symbol_count, 572);
-        assert_eq!(library.categories.len(), 23);
+        assert_eq!(library.symbols.len(), 499);
+        assert_eq!(library.symbol_count, 499);
+        assert_eq!(library.categories.len(), 19);
         assert_eq!(library.default_favorites.len(), 18);
         assert_eq!(library.version, 1);
-        assert_eq!(library.symbol_count(), 572);
+        assert_eq!(library.symbol_count(), 499);
     }
 
     #[test]
@@ -369,7 +369,7 @@ mod tests {
         if let Some(path) = real_library_path() {
             assert_eq!(resolve(Some(&path)), path);
             let library = SymbolLibrary::load_resolved(Some(&path)).expect("load_resolved");
-            assert_eq!(library.symbols.len(), 572);
+            assert_eq!(library.symbols.len(), 499);
         }
         // With no file anywhere, resolution still returns a usable candidate path.
         let fallback = resolve(None);

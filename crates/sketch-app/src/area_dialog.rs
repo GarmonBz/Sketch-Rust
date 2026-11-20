@@ -63,6 +63,12 @@ pub enum PostSwitch {
     Factor,
 }
 
+/// The name part of the `"CODE - Name"` entry for `code`.
+fn code_name<'a>(codes: &'a [String], code: &str) -> Option<&'a str> {
+    let prefix = format!("{code} - ");
+    codes.iter().find_map(|s| s.strip_prefix(prefix.as_str()))
+}
+
 impl AreaDialog {
     /// Open with the first selected area's values (`showSelectedAreaProperties`).
     pub fn open_with(props: AreaProperties, codes: Vec<String>) -> AreaDialog {
@@ -98,7 +104,19 @@ impl AreaDialog {
     /// Apply a control's change to the pending payload.
     pub fn update(&mut self, msg: AreaDialogMsg) {
         match msg {
-            AreaDialogMsg::Code(code) => self.props.code = code,
+            AreaDialogMsg::Code(code) => {
+                // A name that is only a default (blank, "Undefined Area", or
+                // the old type's own name) follows the type; a custom one stays.
+                let old_default = code_name(&self.codes, &self.props.code);
+                let follows_type = self.props.name.trim().is_empty()
+                    || self.props.name == "Undefined Area"
+                    || old_default == Some(self.props.name.as_str());
+                let new_name = code_name(&self.codes, &code).map(str::to_owned);
+                self.props.code = code;
+                if let (true, Some(name)) = (follows_type, new_name) {
+                    self.props.name = name;
+                }
+            }
             AreaDialogMsg::Name(name) => self.props.name = name,
             AreaDialogMsg::Factor(text) => {
                 self.factor_text = text.clone();
@@ -183,6 +201,23 @@ mod tests {
         d.update(AreaDialogMsg::Factor("1.25".into()));
         assert_eq!(d.props.factor, Some(1.25));
         assert_eq!(d.payload().factor, Some(1.25));
+    }
+
+    #[test]
+    fn changing_the_type_renames_a_default_name_but_keeps_a_custom_one() {
+        let mut d = dialog();
+        d.update(AreaDialogMsg::Code("GLA2".into()));
+        assert_eq!(d.props.name, "Second Floor", "old type's own name follows");
+
+        let mut d = dialog();
+        d.props.name = "Undefined Area".into();
+        d.update(AreaDialogMsg::Code("GLA2".into()));
+        assert_eq!(d.props.name, "Second Floor");
+
+        let mut d = dialog();
+        d.props.name = "Master suite".into();
+        d.update(AreaDialogMsg::Code("GLA2".into()));
+        assert_eq!(d.props.name, "Master suite", "a custom name stays");
     }
 
     #[test]

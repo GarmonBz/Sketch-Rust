@@ -438,8 +438,21 @@ impl App {
             search: String::new(),
             group: "ALL".into(),
             code,
+            // Only a custom name is carried into the chooser; a default one
+            // ("Undefined Area", or the current type's own name) would
+            // otherwise override the type the user picks.
             name: poly
                 .filter(|_| existing)
+                .filter(|p| {
+                    let default_name = self
+                        .area_codes
+                        .iter()
+                        .find(|c| c.code == p.kind)
+                        .map(|c| c.name.as_str());
+                    !p.name.trim().is_empty()
+                        && p.name != "Undefined Area"
+                        && default_name != Some(p.name.as_str())
+                })
                 .map(|p| p.name.clone())
                 .unwrap_or_default(),
             post: poly

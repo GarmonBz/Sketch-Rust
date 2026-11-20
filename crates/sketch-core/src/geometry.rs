@@ -1633,14 +1633,8 @@ pub mod area_codes {
   { "code": "GBA2", "name": "Second Floor", "description": "Gross Building Area", "group": "GBA", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#065F40", "fill": "rgba(6,95,64,.10)" },
   { "code": "GBA3", "name": "Third Floor", "description": "Gross Building Area", "group": "GBA", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#017142", "fill": "rgba(1,113,66,.10)" },
   { "code": "GBA4", "name": "Fourth Floor", "description": "Gross Building Area", "group": "GBA", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#238247", "fill": "rgba(35,130,71,.10)" },
-  { "code": "GBA5", "name": "Fifth Floor", "description": "Gross Building Area", "group": "GBA", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#42924D", "fill": "rgba(66,146,77,.10)" },
-  { "code": "GBA6", "name": "Sixth Floor", "description": "Gross Building Area", "group": "GBA", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#5DA254", "fill": "rgba(93,162,84,.10)" },
-  { "code": "GBA7", "name": "Seventh Floor", "description": "Gross Building Area", "group": "GBA", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#77B25B", "fill": "rgba(119,178,91,.10)" },
-  { "code": "GBA8", "name": "Eighth Floor", "description": "Gross Building Area", "group": "GBA", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#92C263", "fill": "rgba(146,194,99,.10)" },
-  { "code": "GBA9", "name": "Ninth Floor", "description": "Gross Building Area", "group": "GBA", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#ADD26B", "fill": "rgba(173,210,107,.10)" },
-  { "code": "GBA10", "name": "Tenth Floor", "description": "Gross Building Area", "group": "GBA", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#C9E274", "fill": "rgba(201,226,116,.10)" },
   { "code": "GAR", "name": "Garage", "description": "Garage", "group": "GAR", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#805AD5", "fill": "rgba(128,90,213,.10)" },
-  { "code": "GAR2", "name": "Carport", "description": "Carport", "group": "GAR", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#9F7AEA", "fill": "rgba(159,122,234,.10)" },
+  { "code": "CPT", "name": "Carport", "description": "Carport", "group": "GAR", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#9F7AEA", "fill": "rgba(159,122,234,.10)" },
   { "code": "BSMT", "name": "Finished BSMT", "description": "Basement", "group": "BSMT", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#4A5568", "fill": "rgba(74,85,104,.10)" },
   { "code": "BSMT2", "name": "Unfinished BSMT", "description": "Basement", "group": "BSMT", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#718096", "fill": "rgba(113,128,150,.10)" },
   { "code": "OFP", "name": "Open Frame Porch", "description": "Porch/Patio", "group": "P/P", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#B7791F", "fill": "rgba(183,121,31,.10)" },
@@ -2521,7 +2515,7 @@ mod tests {
     #[test]
     fn default_area_codes_parse_to_32_verified_entries() {
         let codes = default_area_codes();
-        assert_eq!(codes.len(), 32);
+        assert_eq!(codes.len(), 26);
         let first = &codes[0];
         assert_eq!(first.code, "GLA1");
         assert_eq!(first.name, "First Floor");
@@ -2641,10 +2635,9 @@ mod tests {
         let codes = area_codes::default_area_codes();
         let actual_codes: Vec<&str> = codes.iter().map(|c| c.code.as_str()).collect();
         let expected_codes = [
-            "GLA1", "GLA2", "GLA3", "GLA4", "GBA1", "GBA2", "GBA3", "GBA4", "GBA5", "GBA6",
-            "GBA7", "GBA8", "GBA9", "GBA10", "GAR", "GAR2", "BSMT", "BSMT2", "OFP", "SFP",
-            "EFP", "PAT", "PORCH", "DK", "BAL", "POOL", "SHED", "LAND", "SITE", "OTH", "NCA",
-            "UND",
+            "GLA1", "GLA2", "GLA3", "GLA4", "GBA1", "GBA2", "GBA3", "GBA4", "GAR", "CPT",
+            "BSMT", "BSMT2", "OFP", "SFP", "EFP", "PAT", "PORCH", "DK", "BAL", "POOL", "SHED",
+            "LAND", "SITE", "OTH", "NCA", "UND",
         ];
         assert_eq!(actual_codes, expected_codes);
         let gla: Vec<(&str, &str, &str)> = codes

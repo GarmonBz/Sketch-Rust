@@ -5,7 +5,7 @@
 //! that never wrap; placement against the real window size; and only the
 //! entries that apply to what was clicked and selected.
 
-use iced::widget::{button, container, pin, row, text, Column, Space};
+use iced::widget::{button, container, mouse_area, opaque, pin, row, stack, text, Column, Space};
 use iced::{alignment, Background, Border, Element, Length, Padding, Size};
 
 use crate::icons;
@@ -291,7 +291,15 @@ pub fn layer<'a>(v: &ContextMenu, win: Size, d: Density) -> Option<Element<'a, c
             ..container::Style::default()
         });
     let (left, top) = place(cx, cy, WIDTH, height, win);
-    Some(pin(panel).x(left).y(top).into())
+    // A press anywhere outside the panel (the canvas included) dismisses it;
+    // Escape is routed in `wrap_event_tap`.
+    let backdrop = mouse_area(
+        container(Space::new())
+            .width(Length::Fill)
+            .height(Length::Fill),
+    )
+    .on_press(crate::Message::ContextClose);
+    Some(stack![backdrop, pin(opaque(panel)).x(left).y(top)].into())
 }
 
 /// Top-left corner for a `w` x `h` menu opened at (`cx`, `cy`): at the

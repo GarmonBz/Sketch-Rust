@@ -1,7 +1,7 @@
 //! Top bar, page tabs, tab context menu, export menu, and pages drawer overlay for `Shell::Next`.
 
 use iced::widget::{
-    button, column, container, mouse_area, opaque, row, scrollable, text, Space,
+    button, column, container, mouse_area, opaque, row, text, Space,
 };
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
 
@@ -447,124 +447,95 @@ fn symbol_edit_strip<'a>(
 }
 
 fn page_tabs_strip<'a>(app: &'a App, d: Density, compact: bool) -> Element<'a, Message> {
-    let mut strip = row![].spacing(4).align_y(Alignment::Center);
-    for i in 0..app.pages.len() {
-        strip = strip.push(page_tab_item(app, i, d));
-    }
+    let count = app.pages.len();
+    let current = app.pages.current.min(count.saturating_sub(1));
+    let h = if matches!(d, Density::Touch) { 36.0 } else { 28.0 };
 
-    let tabs_scroll = scrollable(strip)
-        .direction(scrollable::Direction::Horizontal(
-            scrollable::Scrollbar::new()
-                .width(0)
-                .scroller_width(0),
-        ))
-        .width(Length::Shrink);
+    let step = |icon: &'static str, label: &'static str, target: Option<usize>| {
+        kit::tooltip(
+            kit::icon_button(icon, false, target.map(|i| Message::PagesNav(NavMsg::Go(i))), d),
+            label,
+            iced::widget::tooltip::Position::Bottom,
+        )
+    };
+    let prev = step("caret-left", "Previous page", current.checked_sub(1));
+    let next = step("caret-right", "Next page", (current + 1 < count).then_some(current + 1));
 
-    let add_btn = kit::tooltip(
-        kit::icon_button(
-            "plus",
-            false,
-            Some(Message::Status(StatusMsg::PageAdd)),
-            d,
-        ),
-        "Add page",
-        iced::widget::tooltip::Position::Bottom,
-    );
-
-    let all_pages_btn = kit::tooltip(
-        kit::icon_button(
-            "files",
-            app.pages_nav_open,
-            Some(Message::PagesNav(NavMsg::Toggle)),
-            d,
-        ),
-        "All pages",
-        iced::widget::tooltip::Position::Bottom,
-    );
-
-    let max_tabs_w = if compact { 160.0 } else { 420.0 };
-    row![
-        container(tabs_scroll).max_width(max_tabs_w),
-        add_btn,
-        all_pages_btn,
+    // One control for the current page: its name, "n / total", and a caret.
+    // Press opens the page list; right-click or long-press opens the page menu.
+    let name_w = if compact { 120.0 } else { 280.0 };
+    let body = row![
+        container(
+            text(app.pages.page_name(current))
+                .font(BARLOW_SEMIBOLD)
+                .size(TEXT_12)
+                .color(tokens::text())
+                .wrapping(iced::widget::text::Wrapping::None),
+        )
+        .max_width(name_w)
+        .clip(true),
+        text(format!("{} / {}", current + 1, count))
+            .font(BARLOW_MEDIUM)
+            .size(TEXT_11)
+            .color(tokens::muted()),
+        icons::mono("caret-down", 12.0, tokens::muted()),
     ]
-    .spacing(SPACE_1)
-    .align_y(Alignment::Center)
-    .into()
-}
+    .spacing(8)
+    .align_y(Alignment::Center);
 
-fn page_tab_item<'a>(app: &'a App, index: usize, d: Density) -> Element<'a, Message> {
-    let active = index == app.pages.current;
-    let underlay = app.pages.underlay == Some(index);
-    let label = app.pages.page_name(index);
-    let h = if matches!(d, Density::Touch) {
-        36.0
-    } else {
-        28.0
-    };
-    let fg = if active { tokens::text() } else { tokens::muted() };
-    let bg = if active {
-        tokens::field()
-    } else {
-        Color::TRANSPARENT
-    };
-    let border_color = if active { tokens::accent() } else { tokens::rule() };
-
-    let mut body = row![].spacing(4).align_y(Alignment::Center);
-    if underlay {
-        body = body.push(icons::mono("copy-simple", 12.0, tokens::accent()));
-    }
-    body = body.push(
-        text(label)
-            .font(if active { BARLOW_SEMIBOLD } else { BARLOW_MEDIUM })
-            .size(TEXT_12)
-            .color(fg),
-    );
-    if active {
-        body = body.push(icons::mono("dots-three", 12.0, tokens::muted()));
-    }
-
-    let on_click = if active {
-        Message::Ui(UiMsg::TogglePageMenu(Some(index)))
-    } else {
-        Message::PagesNav(NavMsg::Go(index))
-    };
-
-    let tab_btn = button(
+    let open = app.pages_nav_open;
+    let switcher_btn = button(
         container(body)
             .height(Length::Fixed(h))
-            .padding([0, 9])
+            .padding([0, 10])
             .align_y(Alignment::Center),
     )
     .padding(0)
-    .on_press(on_click)
+    .on_press(Message::PagesNav(NavMsg::Toggle))
     .style(move |_, status| {
-        let hover_bg = if active {
-            tokens::field()
-        } else {
-            tokens::hover()
-        };
         let fill = match status {
-            button::Status::Hovered => hover_bg,
+            button::Status::Hovered => tokens::hover(),
             button::Status::Pressed => tokens::pressed(),
-            _ => bg,
+            _ => tokens::field(),
         };
         button::Style {
             background: Some(Background::Color(fill)),
-            text_color: fg,
+            text_color: tokens::text(),
             border: Border {
-                color: border_color,
+                color: if open { tokens::accent() } else { tokens::rule() },
                 width: 1.0,
                 radius: RADIUS_CONTROL.into(),
             },
             ..button::Style::default()
         }
     });
+    let switcher = kit::long_press(
+        mouse_area(switcher_btn)
+            .on_right_press(Message::Ui(UiMsg::TogglePageMenu(Some(current)))),
+        Message::Ui(UiMsg::TogglePageMenu(Some(current))),
+    );
 
-    kit::long_press(
-        mouse_area(tab_btn).on_right_press(Message::Ui(UiMsg::TogglePageMenu(Some(index)))),
-        Message::Ui(UiMsg::TogglePageMenu(Some(index))),
-    )
+    let page_menu_btn = kit::tooltip(
+        kit::icon_button(
+            "dots-three",
+            app.ui.page_menu == Some(current),
+            Some(Message::Ui(UiMsg::TogglePageMenu(Some(current)))),
+            d,
+        ),
+        "Page options",
+        iced::widget::tooltip::Position::Bottom,
+    );
+
+    let add_btn = kit::tooltip(
+        kit::icon_button("plus", false, Some(Message::Status(StatusMsg::PageAdd)), d),
+        "Add page",
+        iced::widget::tooltip::Position::Bottom,
+    );
+
+    row![prev, switcher, next, page_menu_btn, add_btn]
+        .spacing(SPACE_1)
+        .align_y(Alignment::Center)
+        .into()
 }
 
 fn undo_redo_controls<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
