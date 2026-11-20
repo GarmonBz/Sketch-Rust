@@ -64,6 +64,16 @@ jobs:
           ./tools/package-smoke.ps1
       - name: Build and check Windows installer
         run: ./tools/installer.ps1 -FetchWix -SkipPackage -Test
+      - name: Make checked release files available
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-release-files
+          path: |
+            dist/SketchRust-*.msi
+            dist/SketchRust-*.zip
+            dist/SketchRust-*.sha256
+          if-no-files-found: error
+          retention-days: 14
       - name: Publish checked release
         env:
           GH_TOKEN: ${{ github.token }}
