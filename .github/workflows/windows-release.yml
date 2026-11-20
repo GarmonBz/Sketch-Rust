@@ -40,15 +40,24 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo fetch --locked
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Test restored drawing tools and toolbar
-        timeout-minutes: 10
+      - name: Test drawing layout and toolbar
+        timeout-minutes: 15
         run: |
+          cargo test -p sketch-app --no-default-features --locked drawing_chrome -- --test-threads=1 --nocapture
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo test -p sketch-app --no-default-features --locked freeform -- --test-threads=1 --nocapture
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo test -p sketch-app --no-default-features --locked every_command_has_an_embedded_icon -- --test-threads=1 --nocapture
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo test -p sketch-app --no-default-features --locked p5_tray_and_flyouts -- --test-threads=1 --nocapture
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Preserve drawing layout screenshots
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-layout-checks
+          path: target/e2e-next/chrome-*.png
+          if-no-files-found: error
+          retention-days: 7
       - name: Test workspace
         timeout-minutes: 15
         run: |

@@ -1358,6 +1358,89 @@ fn zoom_fence_button_zooms_to_a_dragged_rectangle() {
 }
 
 #[test]
+fn drawing_chrome_laid_out_controls_never_overlap_the_tray() {
+    use crate::e2e_support::scroll_areas;
+    let mut h = harness_next_at(VIEWPORT);
+    h.send(Message::Status(StatusMsg::PageAdd));
+    draw_closed_square(&mut h);
+    let mut app = state(h);
+    let line = app.drawing.lines[0].id;
+    app.view.mode = Mode::Pan;
+    // Includes the reported desktop layout, logical sizes at 125%/150%
+    // Windows scaling, a very wide bottom dock, and a narrow canvas with
+    // both the resized ledger and inspector taking space.
+    for (w, height) in [(2600.0, 1100.0), (2048.0, 1218.0), (1638.4, 974.4),
+        (1920.0, 1080.0), (1280.0, 800.0), (1100.0, 800.0), (800.0, 1000.0), (372.0, 800.0)] {
+        for density in [Density::Comfortable, Density::Touch] {
+            for inspect in [false, true] {
+                app.window_size = iced::Size::new(w, height);
+                app.ui.density = density;
+                app.ui.ledger_width = Some(if inspect { 400.0 } else { density.ledger_w() });
+                app.selection.clear();
+                if inspect { app.selection.lines.insert(line); }
+                let canvas = crate::ui::layout::canvas_rect(&app);
+                let areas = scroll_areas(&app, app.window_size);
+                let find = |name: &str| areas.iter().find(|a| a.id.as_ref().is_some_and(|id| id.contains(name)))
+                    .unwrap_or_else(|| panic!("missing {name}: {w} {density:?} inspector={inspect}"));
+                let zoom = find("drawing-zoom").bounds;
+                let snap = find("drawing-snap").bounds;
+                let compact = SizeClass::of(w) == SizeClass::Compact;
+                let tray = find(if compact { "drawing-compact-tray" } else { "drawing-tool-tray" }).bounds;
+                let expanded = |r: iced::Rectangle, pad: f32| iced::Rectangle {
+                    x: r.x - pad, y: r.y - pad,
+                    width: r.width + pad * 2.0, height: r.height + pad * 2.0,
+                };
+                let tray_card = expanded(tray, if compact { 0.0 } else { 6.0 });
+                for control in [zoom, snap] {
+                    let card = expanded(control, 4.0);
+                    let overlaps = card.x < tray_card.x + tray_card.width
+                        && card.x + card.width > tray_card.x
+                        && card.y < tray_card.y + tray_card.height
+                        && card.y + card.height > tray_card.y;
+                    assert!(!overlaps, "overlap at {w} {density:?} inspector={inspect}: {card:?} vs {tray_card:?}");
+                    assert!(control.x >= canvas.x && control.x + control.width <= canvas.x + canvas.width + 0.5,
+                        "control outside canvas at {w}: {control:?} vs {canvas:?}");
+                }
+                assert!(zoom.intersection(&snap).is_none(), "top controls overlap at {w}");
+                assert!(tray.x >= canvas.x && tray.x + tray.width <= canvas.x + canvas.width + 0.5,
+                    "tray outside canvas at {w}: {tray:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn drawing_chrome_buttons_and_popovers_work_after_reflow() {
+    for (name, w, height, density) in [
+        ("reported", 1536.0, 914.0, Density::Comfortable),
+        ("wide", 2200.0, 1080.0, Density::Comfortable),
+        ("touch", 1280.0, 800.0, Density::Touch),
+    ] {
+        let mut h = harness_next_at(iced::Size::new(w, height));
+        h.send(Message::Ui(UiMsg::SetDensity(density)));
+        h.script(&["click \"Freeform\"", "click \"Erase\"", "click \"Pan\"",
+            "click \"Grid\"", "click \"Snap\"", "click \"Dims: Out\""]);
+        let shot = h.screenshot_in("e2e-next", &format!("chrome-{name}"));
+        assert!(shot.exists());
+        h.script(&["click \"100%\""]);
+        assert!(h.shows("Zoom & Scale"));
+        h.send(Message::Ui(UiMsg::CloseOverlays));
+        h.script(&["click \"Show\""]);
+        assert!(h.shows("Dimensions"));
+        h.send(Message::Ui(UiMsg::CloseOverlays));
+        // Clicking active Pan opens its flyout at the tray, clear of the
+        // drawing controls in both the top and bottom arrangements.
+        h.script(&["click \"Pan\""]);
+        assert!(h.shows("Zoom to rectangle"));
+        let shot = h.screenshot_in("e2e-next", &format!("chrome-{name}-flyout"));
+        assert!(shot.exists());
+        let app = state(h);
+        assert!(!app.view.grid && !app.view.snap);
+        assert_eq!(app.ui.tray_flyout, Some(TrayTool::Pan));
+    }
+}
+
+#[test]
 fn p9_controls_length_strip_and_area_chooser_across_sizes() {
     for &(label, w, h, _) in SIZES {
         // 1. Zoom, scale, fit, grid, snap, pitch/angle-step, show, dims, north, underlay, minimap, touch.

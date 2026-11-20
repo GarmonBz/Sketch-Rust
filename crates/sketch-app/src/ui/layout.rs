@@ -4,7 +4,7 @@
 use iced::widget::{column, container, mouse_area, row, Space, Stack};
 use iced::{Alignment, Background, Color, Element, Length, Rectangle};
 
-use crate::ui::tokens::{self, SPACE_2};
+use crate::ui::tokens::{self, Density, SPACE_1, SPACE_2, SPACE_3};
 use crate::ui::Msg;
 use crate::{App, Message};
 
@@ -14,6 +14,61 @@ pub const MEDIUM_MIN: f32 = 700.0;
 pub const PAGE_BAR_H: f32 = 44.0;
 pub const SLIDE_OVER_W: f32 = 280.0;
 pub const COMPACT_SHEET_H: f32 = 360.0;
+
+/// Bounds shared by the tray, drawing controls, and their popovers. Side lanes
+/// are capped (and scroll if necessary), so labels cannot spill into the tray.
+pub const CHROME_INSET: f32 = SPACE_3;
+pub const CHROME_GAP: f32 = SPACE_3;
+pub const CONTROL_LANE_W: f32 = 320.0;
+pub const TRAY_GAP: f32 = 4.0;
+pub const TRAY_PAD: f32 = SPACE_1 + 2.0;
+
+#[derive(Debug, Clone, Copy)]
+pub struct DrawingChrome {
+    pub controls_at_top: bool,
+    pub tray_width: f32,
+    pub tray_height: f32,
+    pub zoom_width: f32,
+    pub snap_width: f32,
+    pub control_height: f32,
+}
+
+impl DrawingChrome {
+    pub fn for_app(app: &App) -> Self {
+        Self::new(
+            canvas_rect(app).width,
+            SizeClass::of(app.window_size.width),
+            app.ui.density,
+            super::tray::TrayTool::ALL.len(),
+        )
+    }
+
+    pub fn new(canvas_width: f32, class: SizeClass, density: Density, tool_count: usize) -> Self {
+        let available = (canvas_width - CHROME_INSET * 2.0).max(1.0);
+        let (tile_w, tile_h) = density.tray_button();
+        let natural = tool_count as f32 * tile_w
+            + tool_count.saturating_sub(1) as f32 * TRAY_GAP + TRAY_PAD * 2.0;
+        let controls_at_top = class != SizeClass::Wide || density == Density::Touch
+            || available < natural + 2.0 * (CONTROL_LANE_W + CHROME_GAP);
+        Self {
+            controls_at_top,
+            tray_width: natural.min(available),
+            tray_height: tile_h + TRAY_PAD * 2.0,
+            // Leave a separate lane for North on the first top row.
+            zoom_width: CONTROL_LANE_W.min((available - 76.0 - CHROME_GAP).max(1.0)),
+            snap_width: CONTROL_LANE_W.min(available),
+            control_height: if density == Density::Touch { 38.0 } else { 32.0 },
+        }
+    }
+
+    pub fn tray_clearance(self) -> f32 {
+        CHROME_INSET + self.tray_height + CHROME_GAP
+    }
+
+    pub fn top_popover_offset(self, row: usize) -> f32 {
+        CHROME_INSET + row as f32 * (self.control_height + SPACE_1) + SPACE_2
+    }
+}
 
 /// Layout bucket selected on every window resize from logical window width.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -229,6 +284,23 @@ pub fn compact_layout<'a>(
 mod tests {
     use super::*;
     use crate::ui::tokens::Density;
+
+    #[test]
+    fn drawing_chrome_requires_room_for_both_side_lanes_and_all_tools() {
+        let d = Density::Comfortable;
+        let tools = super::super::tray::TrayTool::ALL.len();
+        let natural = tools as f32 * d.tray_button().0
+            + (tools - 1) as f32 * TRAY_GAP + TRAY_PAD * 2.0;
+        let threshold = natural + 2.0 * (CONTROL_LANE_W + CHROME_GAP + CHROME_INSET);
+        assert!(DrawingChrome::new(threshold - 1.0, SizeClass::Wide, d, tools).controls_at_top);
+        assert!(!DrawingChrome::new(threshold, SizeClass::Wide, d, tools).controls_at_top);
+        // Screenshot regression: 2048 physical pixels at 125% scaling with
+        // a 280px ledger leaves 1358 logical pixels, too narrow for 12 tools.
+        assert!(DrawingChrome::new(2048.0 / 1.25 - 280.0, SizeClass::Wide, d, tools).controls_at_top);
+        assert!(DrawingChrome::new(2400.0, SizeClass::Wide, Density::Touch, tools).controls_at_top);
+        // A future additional tool must also change the fit decision.
+        assert!(DrawingChrome::new(threshold, SizeClass::Wide, d, tools + 1).controls_at_top);
+    }
 
     #[test]
     fn size_class_switches_at_exact_thresholds() {

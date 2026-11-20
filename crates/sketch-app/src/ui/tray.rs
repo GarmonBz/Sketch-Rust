@@ -14,7 +14,7 @@ use crate::statusbar::StatusMsg;
 use crate::theme::over;
 use crate::ui::fonts::{BARLOW_MEDIUM, BARLOW_SEMIBOLD, BSC_SEMIBOLD};
 use crate::ui::kit::{self, MenuEntry};
-use crate::ui::layout::SizeClass;
+use crate::ui::layout::{self, DrawingChrome, SizeClass, CHROME_INSET, TRAY_GAP, TRAY_PAD};
 use crate::ui::tokens::{
     self, Density, RADIUS_CONTROL, RADIUS_SHEET, SPACE_1, SPACE_2, SPACE_3, TEXT_11,
     TEXT_12,
@@ -166,26 +166,24 @@ impl TrayTool {
     }
 }
 
-/// Centered floating tool tray inside the canvas stack (`Wide` & `Medium`).
-pub fn floating_tray<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
-    let mut strip = row![].spacing(4).align_y(Alignment::Center);
+/// Tray card placed in the same dock row as the drawing controls. Its width
+/// includes the surface padding and is bounded by the actual canvas width.
+pub fn dock_card<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
+    let chrome = DrawingChrome::for_app(app);
+    let mut strip = row![].spacing(TRAY_GAP).align_y(Alignment::Center);
     for tool in TrayTool::ALL {
         strip = strip.push(tray_tile(app, tool, d));
     }
 
-    let scroll = scrollable(strip).direction(scrollable::Direction::Horizontal(
-        scrollable::Scrollbar::new().width(0).scroller_width(0),
-    ));
-
-    let bar = kit::tray_surface(scroll);
-
-    container(bar)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .padding(SPACE_3)
-        .align_x(Alignment::Center)
-        .align_y(iced::alignment::Vertical::Bottom)
-        .into()
+    let scroll = scrollable(strip)
+        .id("drawing-tool-tray")
+        .on_scroll(|viewport| Message::Ui(UiMsg::TrayScrolled(viewport.absolute_offset().x)))
+        .width(Length::Fixed((chrome.tray_width - TRAY_PAD * 2.0).max(1.0)))
+        .height(Length::Fixed(d.tray_button().1))
+        .direction(scrollable::Direction::Horizontal(
+            scrollable::Scrollbar::new().width(0).scroller_width(0),
+        ));
+    kit::tray_surface(scroll)
 }
 
 /// Bottom horizontally scrollable tool bar for `Compact` (`< 700px`).
@@ -196,6 +194,7 @@ pub fn compact_bar<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
     }
 
     let scroll = scrollable(strip)
+        .id("drawing-compact-tray")
         .direction(scrollable::Direction::Horizontal(
             scrollable::Scrollbar::new().width(0).scroller_width(0),
         ))
@@ -567,19 +566,33 @@ fn flyout_overlay<'a>(app: &'a App, tool: TrayTool) -> Element<'a, Message> {
 
     let bottom_pad = match class {
         SizeClass::Compact => d.bar_h() + 8.0,
-        SizeClass::Wide | SizeClass::Medium => d.tray_button().1 + SPACE_3 * 2.0 + 12.0,
+        SizeClass::Wide | SizeClass::Medium => DrawingChrome::for_app(app).tray_clearance(),
     };
+
+    let canvas = layout::canvas_rect(app);
+    let chrome = DrawingChrome::for_app(app);
+    let index = TrayTool::ALL.iter().position(|t| *t == tool).unwrap_or(0) as f32;
+    let natural = TrayTool::ALL.len() as f32 * (d.tray_button().0 + TRAY_GAP)
+        - TRAY_GAP + TRAY_PAD * 2.0;
+    let scroll_x = app.ui.tray_scroll_x.clamp(0.0, (natural - chrome.tray_width).max(0.0));
+    let tool_x = canvas.x + (canvas.width - chrome.tray_width) / 2.0 + TRAY_PAD
+        + index * (d.tray_button().0 + TRAY_GAP) + d.tray_button().0 / 2.0 - scroll_x;
+    let center = if class == SizeClass::Compact { canvas.x + canvas.width / 2.0 } else { tool_x };
+    let left = (center - width / 2.0).clamp(
+        canvas.x + CHROME_INSET,
+        (canvas.x + canvas.width - width - CHROME_INSET).max(canvas.x + CHROME_INSET),
+    );
 
     let positioned = container(opaque(card))
         .width(Length::Fill)
         .height(Length::Fill)
         .padding(Padding {
             top: SPACE_3,
-            left: SPACE_3,
+            left,
             right: SPACE_3,
             bottom: bottom_pad,
         })
-        .align_x(Alignment::Center)
+        .align_x(Alignment::Start)
         .align_y(iced::alignment::Vertical::Bottom);
 
     opaque(

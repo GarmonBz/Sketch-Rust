@@ -1961,6 +1961,10 @@ impl App {
                     self.ui.export_menu = false;
                     Task::none()
                 }
+                ui::Msg::TrayScrolled(x) => {
+                    self.ui.tray_scroll_x = x;
+                    Task::none()
+                }
                 ui::Msg::ToggleTrayFlyout(target) => {
                     self.ui.menu_open = false;
                     self.ui.menu_sub = None;

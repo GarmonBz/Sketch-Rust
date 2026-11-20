@@ -29,7 +29,7 @@ use crate::drawing::WallShape;
 use crate::ui::layout::SizeClass;
 use crate::ui::ledger::LedgerView;
 use crate::ui::menu::MenuSub;
-use crate::ui::tokens::{Density, SPACE_2, SPACE_3};
+use crate::ui::tokens::Density;
 use crate::ui::tray::{DrawerTab, TrayTool};
 use crate::view_state::CurveMode;
 use crate::{App, Message};
@@ -82,6 +82,7 @@ pub enum Msg {
     ToggleExportMenu,
     TogglePreferExportPrimary,
     ToggleTrayFlyout(Option<TrayTool>),
+    TrayScrolled(f32),
     TrayWallShape(WallType, WallShape),
     OpenDrawer(Option<DrawerTab>),
     ToggleDrawerPin,
@@ -152,6 +153,7 @@ pub struct UiState {
     pub export_menu: bool,
     pub prefer_export_primary: bool,
     pub tray_flyout: Option<TrayTool>,
+    pub tray_scroll_x: f32,
     pub drawer: Option<DrawerTab>,
     pub drawer_pinned: bool,
     pub controls_popover: Option<ControlsPopover>,
@@ -198,6 +200,7 @@ impl Default for UiState {
             export_menu: false,
             prefer_export_primary: false,
             tray_flyout: None,
+            tray_scroll_x: 0.0,
             drawer: None,
             drawer_pinned: false,
             controls_popover: None,
@@ -266,16 +269,10 @@ impl UiState {
     }
 }
 
-fn drawing_overlays<'a>(
-    app: &'a App,
-    tray: Option<Element<'a, Message>>,
-) -> Vec<Element<'a, Message>> {
+fn drawing_overlays<'a>(app: &'a App) -> Vec<Element<'a, Message>> {
     let mut out = vec![controls::bars_layer(app)];
     if let Some(strip) = tape::layer(app) {
         out.push(strip);
-    }
-    if let Some(t) = tray {
-        out.push(t);
     }
     if let Some(pop) = controls::popover_layer(app) {
         out.push(pop);
@@ -316,7 +313,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
                 topbar::top_bar(app, size_class, d, has_inspector),
                 ledger_el,
                 resize_el,
-                layout::drawing_stack(app.canvas_element(), drawing_overlays(app, Some(tray::floating_tray(app, d)))),
+                layout::drawing_stack(app.canvas_element(), drawing_overlays(app)),
                 insp,
             )
         }
@@ -331,11 +328,11 @@ pub fn view(app: &App) -> Element<'_, Message> {
             } else {
                 None
             };
-            let tray_clearance = d.tray_button().1 + SPACE_3 * 2.0 + SPACE_2;
+            let tray_clearance = layout::DrawingChrome::for_app(app).tray_clearance();
             layout::medium_layout(
                 topbar::top_bar(app, size_class, d, has_inspector),
                 topbar::page_bar(app, size_class, d, has_inspector),
-                layout::drawing_stack(app.canvas_element(), drawing_overlays(app, Some(tray::floating_tray(app, d)))),
+                layout::drawing_stack(app.canvas_element(), drawing_overlays(app)),
                 ledger_slide,
                 inspector_slide,
                 tray_clearance,
@@ -354,7 +351,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
             layout::compact_layout(
                 topbar::top_bar(app, size_class, d, has_inspector),
                 topbar::page_bar(app, size_class, d, has_inspector),
-                layout::drawing_stack(app.canvas_element(), drawing_overlays(app, None)),
+                layout::drawing_stack(app.canvas_element(), drawing_overlays(app)),
                 tray::compact_bar(app, d),
                 sheet,
             )

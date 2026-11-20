@@ -1,4 +1,9 @@
-Sketch Rust 0.2.8 - Windows x64
+Sketch Rust 0.2.9 - Windows x64
+
+The tool tray and drawing controls now share a layout that prevents overlap.
+Zoom and Grid/Snap/Show/Dimensions move to separate top rows when there is
+not enough canvas width beside the twelve-tool tray. Menus follow their
+controls, including after sidebar resizing and horizontal tool scrolling.
 
 Freeform and Erase are back in the tool tray and command search. Drag with
 Freeform to draw without snapping, dimensions, or wall solids. Click or drag

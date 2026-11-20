@@ -19,9 +19,9 @@ use crate::icons;
 use crate::statusbar::{PitchOption, StatusMsg};
 use crate::ui::fonts::{BARLOW, BARLOW_MEDIUM, BARLOW_SEMIBOLD, BSC_SEMIBOLD};
 use crate::ui::kit;
-use crate::ui::layout::{self, SizeClass};
+use crate::ui::layout::{DrawingChrome, SizeClass, CHROME_GAP, CHROME_INSET, CONTROL_LANE_W};
 use crate::ui::tokens::{
-    self, Density, FOCUS_RING_WIDTH, RADIUS_CONTROL, RADIUS_DIALOG, SPACE_1, SPACE_2, SPACE_3,
+    self, Density, FOCUS_RING_WIDTH, RADIUS_CONTROL, RADIUS_DIALOG, SPACE_1, SPACE_2,
     TEXT_11, TEXT_12, TEXT_13,
 };
 use crate::ui::{ControlsPopover, Msg as UiMsg};
@@ -30,25 +30,20 @@ use crate::{App, Message};
 
 const ANGLE_STEPS: &[f64] = &[0.0, 5.0, 15.0, 45.0, 90.0];
 
-fn corners_at_top(app: &App) -> bool {
-    let sc = SizeClass::of(app.window_size.width);
-    let d = app.ui.density;
-    !matches!(sc, SizeClass::Wide) || matches!(d, Density::Touch) || layout::canvas_rect(app).width < 1240.0
-}
-
-/// Corner bars and mini-map rendered inside `layout::drawing_stack` (under the tray).
+/// Drawing controls and tray share a dock row rather than overlapping layers.
 pub fn bars_layer<'a>(app: &'a App) -> Element<'a, Message> {
     let sc = SizeClass::of(app.window_size.width);
     let d = app.ui.density;
-    let corners_at_top = corners_at_top(app);
+    let chrome = DrawingChrome::for_app(app);
+    let corners_at_top = chrome.controls_at_top;
     let show_underlay = app.pages.len() > 1 || app.pages.underlay_label() != "Underlay: None";
 
-    let mk_zoom = || pill_surface(zoom_group(app, d, corners_at_top));
-    let mk_snap = || pill_surface(snap_group(app, d));
+    let mk_zoom = || bounded_pill(zoom_group(app, d, corners_at_top), chrome.zoom_width, "drawing-zoom");
+    let mk_snap = || bounded_pill(snap_group(app, d), chrome.snap_width, "drawing-snap");
     let north = pill_surface(north_chip(app, d));
-    let underlay = show_underlay.then(|| pill_surface(underlay_chip(app, d)));
+    let underlay = show_underlay.then(|| bounded_pill(underlay_chip(app, d), CONTROL_LANE_W.min(chrome.snap_width), "drawing-underlay"));
 
-    let top_area: Element<'a, Message> = if matches!(sc, SizeClass::Compact) {
+    let top_area: Element<'a, Message> = if corners_at_top {
         let r1 = row![mk_zoom(), Space::new().width(Length::Fill), north].align_y(Alignment::Center);
         let r2 = row![Space::new().width(Length::Fill), mk_snap()].align_y(Alignment::Center);
         let mut col = column![r1, r2].spacing(SPACE_1).width(Length::Fill);
@@ -56,32 +51,6 @@ pub fn bars_layer<'a>(app: &'a App) -> Element<'a, Message> {
             col = col.push(row![u].align_y(Alignment::Center));
         }
         col.into()
-    } else if matches!(sc, SizeClass::Medium) {
-        let mut left = row![mk_zoom()].spacing(SPACE_1).align_y(Alignment::Center);
-        if let Some(u) = underlay {
-            left = left.push(u);
-        }
-        let r1 = row![left, Space::new().width(Length::Fill), north]
-            .spacing(SPACE_2)
-            .align_y(Alignment::Center)
-            .width(Length::Fill);
-        let r2 = row![Space::new().width(Length::Fill), mk_snap()]
-            .align_y(Alignment::Center)
-            .width(Length::Fill);
-        column![r1, r2].spacing(SPACE_1).width(Length::Fill).into()
-    } else if corners_at_top {
-        let mut left = row![mk_zoom()].spacing(SPACE_1).align_y(Alignment::Center);
-        if let Some(u) = underlay {
-            left = left.push(u);
-        }
-        let right = row![mk_snap(), north]
-            .spacing(SPACE_1)
-            .align_y(Alignment::Center);
-        row![left, Space::new().width(Length::Fill), right]
-            .spacing(SPACE_2)
-            .align_y(Alignment::Center)
-            .width(Length::Fill)
-            .into()
     } else {
         let mut r = row![].align_y(Alignment::Center).width(Length::Fill);
         if let Some(u) = underlay {
@@ -117,20 +86,25 @@ pub fn bars_layer<'a>(app: &'a App) -> Element<'a, Message> {
     });
 
     let bottom_row: Element<'a, Message> = if !corners_at_top {
-        let mut r = row![mk_zoom(), Space::new().width(Length::Fill), mk_snap()]
-            .spacing(SPACE_2)
+        row![
+            container(mk_zoom()).width(Length::Fill).align_x(Alignment::Start),
+            super::tray::dock_card(app, d),
+            container(mk_snap()).width(Length::Fill).align_x(Alignment::End),
+        ]
+            .spacing(CHROME_GAP)
             .align_y(Alignment::Center)
-            .width(Length::Fill);
-        if let Some(extras) = touch_extras {
-            r = r.push(extras);
-        }
-        r.into()
-    } else if let Some(extras) = touch_extras {
-        row![Space::new().width(Length::Fill), extras]
             .width(Length::Fill)
             .into()
     } else {
-        Space::new().height(0).into()
+        let mut footer = column![].spacing(SPACE_2).width(Length::Fill);
+        if let Some(extras) = touch_extras {
+            footer = footer.push(container(extras).width(Length::Fill).align_x(Alignment::End));
+        }
+        if sc != SizeClass::Compact {
+            footer = footer.push(container(super::tray::dock_card(app, d))
+                .width(Length::Fill).align_x(Alignment::Center));
+        }
+        footer.into()
     };
 
     let mut stack_col = column![top_area].spacing(SPACE_2).width(Length::Fill);
@@ -172,29 +146,23 @@ pub fn bars_layer<'a>(app: &'a App) -> Element<'a, Message> {
     stack_col = stack_col.push(Space::new().height(Length::Fill));
     stack_col = stack_col.push(bottom_row);
 
-    let bottom_pad = if corners_at_top && matches!(d, Density::Touch) && !matches!(sc, SizeClass::Compact) {
-        d.tray_button().1 + SPACE_3 * 2.0 + SPACE_2
-    } else {
-        SPACE_2
-    };
-
     container(stack_col)
         .width(Length::Fill)
         .height(Length::Fill)
         .padding(Padding {
-            top: SPACE_2,
-            right: SPACE_2,
-            bottom: bottom_pad,
-            left: SPACE_2,
+            top: CHROME_INSET,
+            right: CHROME_INSET,
+            bottom: CHROME_INSET,
+            left: CHROME_INSET,
         })
         .into()
 }
 
 /// Optional open popover layer rendered above the controls and tray.
 pub fn popover_layer<'a>(app: &'a App) -> Option<Element<'a, Message>> {
-    let sc = SizeClass::of(app.window_size.width);
     let d = app.ui.density;
-    let corners_at_top = corners_at_top(app);
+    let chrome = DrawingChrome::for_app(app);
+    let corners_at_top = chrome.controls_at_top;
 
     let (align_x, align_y, card): (Alignment, Alignment, Element<'a, Message>) =
         if app.view.filter_open {
@@ -238,15 +206,16 @@ pub fn popover_layer<'a>(app: &'a App) -> Option<Element<'a, Message>> {
             }
         };
 
-    let show_underlay = app.pages.len() > 1 || app.pages.underlay_label() != "Underlay: None";
-    let bar_offset = if matches!(sc, SizeClass::Compact) {
-        if show_underlay {
-            120.0
-        } else {
-            86.0
-        }
+    let row = if corners_at_top && (app.view.filter_open
+        || app.ui.controls_popover == Some(ControlsPopover::Snap)) {
+        2
+    } else if corners_at_top && app.ui.controls_popover == Some(ControlsPopover::Underlay) {
+        3
+    } else { 1 };
+    let bar_offset = if align_y == Alignment::Start {
+        chrome.top_popover_offset(row)
     } else {
-        56.0
+        chrome.tray_clearance()
     };
     let pad = Padding {
         top: if align_y == Alignment::Start {
@@ -259,8 +228,8 @@ pub fn popover_layer<'a>(app: &'a App) -> Option<Element<'a, Message>> {
         } else {
             SPACE_2
         },
-        left: SPACE_2,
-        right: SPACE_2,
+        left: CHROME_INSET,
+        right: CHROME_INSET,
     };
 
     let positioned = container(opaque(card))
@@ -751,6 +720,17 @@ fn pill_surface<'a>(content: Element<'a, Message>) -> Element<'a, Message> {
                 ..container::Style::default()
             }),
     )
+}
+
+/// A long zoom percentage, pitch, or underlay name may scroll within its own
+/// lane, but can never grow into an adjacent control or the tool tray.
+fn bounded_pill<'a>(content: Element<'a, Message>, max_width: f32, id: &'static str) -> Element<'a, Message> {
+    pill_surface(container(
+        scrollable(content)
+            .id(id)
+            .direction(Direction::Horizontal(Scrollbar::new().width(0).scroller_width(0)))
+            .width(Length::Shrink),
+    ).max_width((max_width - 8.0).max(1.0)).into())
 }
 
 fn chip_toggle<'a>(
