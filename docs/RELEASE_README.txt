@@ -1,4 +1,10 @@
-Sketch Rust 0.3.2 - Windows x64
+Sketch Rust 0.3.3 - Windows x64
+
+0.3.3 adds a grab handle to every row of the Areas and layers list for dragging,
+makes Bold work on area labels (the name starts bold and the button turns it off
+or on), and stops Save As Sketchie from refusing older files: Sketchie 0.2 is
+the only version supported. fallingwater.sketchie, a full example sketch, is
+now in the install folder.
 
 0.3.2 combines Areas and Layers into one list. Each area shows its name with
 its type and size underneath, folders group areas and layers, and every row has
@@ -107,7 +113,9 @@ File > Open accepts Sketchie 0.2 .sketchie.json workfiles and .sketchie
 revision stores, as well as the earlier Sketchy file types. Save writes edits
 to the open workfile. Save As offers Sketchie JSON and Sketchie Store. Copy
 try-sketchie.sketchie.json to Documents, open the copy, move a wall, save,
-and reopen it. See SKETCHY.md for format details.
+and reopen it. fallingwater.sketchie is a full multi-page example sketch;
+open it from the install folder or copy it first. See SKETCHY.md for format
+details.
 
 See LICENSE.txt for the Sketch Rust Free Use License. Paid appraisal work is
 permitted. Selling or monetizing the program or modified versions is prohibited.

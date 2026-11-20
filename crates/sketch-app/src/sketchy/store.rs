@@ -271,7 +271,7 @@ mod tests {
             value["revision"]["content_hash"] = json!(content_hash(&value).unwrap());
             value
         };
-        let first = document("0.1", "first", 1, json!([]));
+        let first = document("0.2", "first", 1, json!([]));
         write(&path, &serde_json::to_vec(&first).unwrap(), None).unwrap();
         let second = document("0.2", "second", 2, json!(["first"]));
         let parent = ("first", first["revision"]["content_hash"].as_str().unwrap());

@@ -883,10 +883,37 @@ fn layer_row<'a>(app: &'a App, r: &LayerRow, kind: RowKind, d: Density) -> Eleme
         ));
     }
 
-    let row_body = row![head, lead, strip, tools]
+    // The grip: a narrow handle at the far left that starts the same drag the
+    // row body does (a wider target on touch screens). It lights up with the
+    // row, and the cursor turns to a grabbing hand while a row is dragged.
+    let grip_w = if touch { 28.0 } else { 14.0 };
+    let grip_color = if dragging {
+        tokens::accent()
+    } else if hovered {
+        tokens::text()
+    } else {
+        tokens::muted()
+    };
+    let grip = mouse_area(
+        container(icons::mono("dots-six-vertical", 14.0, grip_color))
+            .width(Length::Fixed(grip_w))
+            .height(Length::Fixed(row_h))
+            .align_x(Alignment::Center)
+            .align_y(Alignment::Center),
+    )
+    .on_press(Message::LayerPress(id.to_owned()))
+    .on_release(Message::LayerDrop(id.to_owned(), DragPos::Inside))
+    .on_enter(Message::LayerZoneHover(id.to_owned(), DragPos::Inside))
+    .interaction(if app.dock.layer_drag.is_some() {
+        mouse::Interaction::Grabbing
+    } else {
+        mouse::Interaction::Grab
+    });
+
+    let row_body = row![grip, head, lead, strip, tools]
         .spacing(4)
         .padding(Padding {
-            left: 4.0 + r.depth as f32 * 14.0,
+            left: 2.0 + r.depth as f32 * 14.0,
             right: 4.0,
             top: 0.0,
             bottom: 0.0,

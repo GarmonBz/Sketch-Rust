@@ -2,14 +2,13 @@
 
 Use **File > Open** to open a Sketchie 0.2 JSON workfile (`.sketchie.json`) or a
 SQLite revision store (`.sketchie`). Sketch Rust also opens earlier Sketchy
-0.1 and 0.2 workfiles and stores (`.sketchy.json` and `.sketchy`). It recognizes
-both formats by their contents and reports unsupported versions and required
-extensions. [Property Hackers Sketchie draft 0.2](https://github.com/property-hackers/sketchie/blob/a33c0f4dcdfbeb19df743820e2c6b4be72aa13c4/SPEC.md)
+0.2 workfiles and stores (`.sketchy.json` and `.sketchy`). It recognizes
+both formats by their contents and reports unsupported versions (draft 0.1 is no
+longer supported) and required extensions. [Property Hackers Sketchie draft 0.2](https://github.com/property-hackers/sketchie/blob/a33c0f4dcdfbeb19df743820e2c6b4be72aa13c4/SPEC.md)
 
 **Save** writes back to the open file using its original format marker and draft
-version. Use **File > Save As** and choose **Sketchie JSON** or **Sketchie Store**
-for new files or to save a separate Sketchie copy of a Sketchy 0.2 file. Draft 0.1
-files use the legacy Save As options and retain their curve convention.
+version. Use **File > Save As**; it offers **Sketchie Store** (`.sketchie`) first, and **Sketchie JSON**
+for new files or to save a separate Sketchie copy of a Sketchy file.
 Saving changes to a store adds a revision and updates the head and format version
 in a single transaction. Save As creates a separate document linked to the
 original revision.

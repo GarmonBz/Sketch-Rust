@@ -20,10 +20,9 @@ pub const LEGACY_FORMAT: &str = "sketchy";
 
 fn bulge_sign(version: &str) -> Result<f64> {
     match version {
-        "0.1" => Ok(1.0),
         CURRENT_VERSION => Ok(-1.0),
         _ => Err(format!(
-            "unsupported Sketchie version {version}; expected 0.1 or 0.2"
+            "unsupported Sketchie version {version}; Sketch Rust opens Sketchie {CURRENT_VERSION}"
         )),
     }
 }
@@ -1504,7 +1503,7 @@ mod tests {
 
     fn fixture() -> Value {
         json!({
-            "format": "sketchy", "format_version": "0.1", "id": "test-plan",
+            "format": "sketchy", "format_version": "0.2", "id": "test-plan",
             "length_unit": "in", "property": { "address": "100 Example Lane" },
             "structures": [{"id": "house", "position": [240, 120], "rotation": 90,
                 "levels": [{"id": "ground", "grade": "above", "sequence": 1,
@@ -1516,7 +1515,7 @@ mod tests {
                             "shape":{"type":"polygon", "points":[[0,0],[48,0],[48,48],[0,48]]}},
                         {"id":"deduct", "within":"room", "subtract":true,
                             "shape":{"type":"polygon", "points":[[48,48],[60,48],[60,60],[48,60]]}},
-                        {"id":"open", "shape":{"type":"polyline", "points":[[144,0],[180,0]], "bulges":[1]}}
+                        {"id":"open", "shape":{"type":"polyline", "points":[[144,0],[180,0]], "bulges":[-1]}}
                     ],
                     "walls":[{"id":"front", "start":[0,0], "end":[120,0], "thickness":6,"kind":"exterior"}],
                     "openings":[{"id":"front-door","kind":"door","wall":"front","offset":24,"width":36}],
@@ -1869,7 +1868,8 @@ mod tests {
         let (_, requests) = crate::file_dialogs::with_save_path(Some(copy.clone()), || {
             let _ = app.update(Message::SaveFileAs);
         });
-        assert_eq!(requests, ["renamed.sketchy.json"]);
+        // Save As offers the current Sketchie name for a Sketchy 0.2 file.
+        assert_eq!(requests, ["renamed.sketchie"]);
         assert!(std::fs::read(&source).unwrap() == saved);
         let fork: Value = serde_json::from_slice(&std::fs::read(&copy).unwrap()).unwrap();
         assert_ne!(fork["id"], raw["id"]);
@@ -2094,7 +2094,7 @@ mod tests {
         let (_, names) = crate::file_dialogs::with_save_path(Some(json_path.clone()), || {
             let _ = app.update(Message::SaveFileAs);
         });
-        assert_eq!(names, ["original.sketchie.json"]);
+        assert_eq!(names, ["original.sketchie"]);
         let saved: Value = serde_json::from_slice(&std::fs::read(&json_path).unwrap()).unwrap();
         assert_eq!(saved["format"], FORMAT);
         assert_eq!(saved["derived_from"]["document"], source["id"]);

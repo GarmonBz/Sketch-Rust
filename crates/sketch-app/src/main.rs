@@ -5913,7 +5913,11 @@ impl App {
             })
             .all(|p| {
                 match key {
-                    "bold" => p.label_bold,
+                    // The label's first line is bold until set either way.
+                    "bold" => Some(p.label_bold.unwrap_or(
+                        self.drawing.options.auto_post_bold
+                            || self.selection.area_labels.contains(&p.id),
+                    )),
                     "italic" => p.label_italic,
                     "underline" => p.label_underline,
                     _ => None,
@@ -9251,20 +9255,9 @@ impl App {
                 || (self.current_file.is_none() && self.sketchy_backing.is_some())
                 || self.save_as_sketchie;
             let ext = if prefer_sketchy {
-                let store = self.save_as_sketchie
-                    || self
-                        .current_file
-                        .as_ref()
-                        .is_some_and(|file| file.format == SketchFileFormat::SketchyStore);
-                match (
-                    self.sketchy_backing.as_ref().and_then(sketchy::Backing::version),
-                    store,
-                ) {
-                    (Some("0.1"), true) => "sketchy",
-                    (Some("0.1"), false) => "sketchy.json",
-                    (_, true) => "sketchie",
-                    (_, false) => "sketchie.json",
-                }
+                // The Sketchie store is the default; a JSON copy stays one
+                // click away in the dialog's file-type list.
+                "sketchie"
             } else {
                 match sketch_core::skx::write(&model, &Default::default()) {
                     Ok(_) => "skx",

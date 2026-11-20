@@ -773,6 +773,31 @@ fn dragging_a_row_reorders_it_or_drops_it_into_a_folder() {
 }
 
 #[test]
+fn dragging_a_rows_grip_over_another_row_moves_it_there() {
+    let (area, folder, _) = tree_ids();
+    tree_harness!(h);
+    // Rows now read: Layer 1, the folder, the area inside it.
+    h.send(Message::LayerMoveTo(area.clone(), Some(folder.clone())));
+    // The grip of the Layer 1 row (left edge, first row), released over the
+    // middle of the area row: Layer 1 lands after it, in the same folder.
+    h.script(&["press (21, 147)", "move (120, 212)", "release (120, 212)"]);
+    let app = state(h);
+    assert_eq!(
+        app.layers.layer("layer-1").unwrap().parent_id.as_deref(),
+        Some(folder.as_str()),
+        "dropping on a row inside a folder joins that folder"
+    );
+    let order: Vec<&str> = app
+        .layers
+        .flatten_layer_order()
+        .iter()
+        .map(|l| l.id.as_str())
+        .collect();
+    let pos = |id: &str| order.iter().position(|x| *x == id).unwrap();
+    assert!(pos(&area) < pos("layer-1"), "{order:?}");
+}
+
+#[test]
 fn deleting_a_folder_keeps_the_areas_that_were_in_it() {
     let (area, folder, _) = tree_ids();
     tree_harness!(h);

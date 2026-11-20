@@ -453,7 +453,7 @@ pub fn export_svg(
                 0.0
             };
             let y = (index as f64 - (lines.len() as f64 - 1.0) / 2.0) * line_spacing + gap;
-            let bold = (poly.label_bold.unwrap_or(options.auto_post_bold)) || index == 0;
+            let bold = poly.label_bold.unwrap_or(options.auto_post_bold || index == 0);
             let italic = if poly.label_italic.unwrap_or(options.auto_post_italic) {
                 " font-style=\"italic\""
             } else {

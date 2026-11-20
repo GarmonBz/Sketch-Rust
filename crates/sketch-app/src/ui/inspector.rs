@@ -1492,8 +1492,11 @@ fn selected_text_flags(app: &App) -> (bool, bool, bool) {
         app.selection.area_labels.contains(&p.id) || app.selection.area_sizes.contains(&p.id)
     }) {
         let opts = &app.drawing.options;
+        // An area's label draws its first line bold until Bold is set either
+        // way, so that is the state the button shows.
+        let default_bold = opts.auto_post_bold || app.selection.area_labels.contains(&p.id);
         return (
-            p.label_bold.unwrap_or(opts.auto_post_bold),
+            p.label_bold.unwrap_or(default_bold),
             p.label_italic.unwrap_or(false),
             p.label_underline.unwrap_or(false),
         );

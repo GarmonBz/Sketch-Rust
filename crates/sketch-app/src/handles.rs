@@ -213,7 +213,9 @@ pub fn block_line_font(
         11.0
     };
     let size = (base * block.scale as f32 * text_zoom(zoom) as f32).max(9.0);
-    (size, block.bold.unwrap_or(opts.auto_post_bold) || first)
+    // The first line is bold until the user chooses otherwise: an explicit
+    // Bold on or off (the inspector button) wins over that default.
+    (size, block.bold.unwrap_or(opts.auto_post_bold || first))
 }
 
 /// The block's italic flag (`poly.labelItalic ?? options.autoPostItalic`).

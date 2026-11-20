@@ -92,10 +92,6 @@ pub struct Backing {
 }
 
 impl Backing {
-    pub fn version(&self) -> Option<&str> {
-        self.source["format_version"].as_str()
-    }
-
     pub fn revision_id(&self) -> Option<&str> {
         self.source["revision"]["id"].as_str()
     }
@@ -252,12 +248,6 @@ pub fn prepare_save(
         "structures": []
     }));
     if let Some(format) = format.filter(|&format| source["format"] != format) {
-        if format == FORMAT && source["format_version"] != CURRENT_VERSION {
-            return Err(
-                "Save draft 0.1 workfiles with the original .sketchy.json or .sketchy extension."
-                    .into(),
-            );
-        }
         const SKETCHY_SCHEMA: &str =
             "https://property-hackers.github.io/sketchy/schema/0.2/sketchy.schema.json";
         const SKETCHIE_SCHEMA: &str =

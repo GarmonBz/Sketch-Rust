@@ -1,5 +1,11 @@
 # Sketch Rust — STATUS ledger
 
+0.3.3 adds a grab handle to each Areas and layers row, lets an explicit Bold
+choice override the first-line-bold default on area labels (renderer, inspector
+button and exports), removes Sketchie draft 0.1 support (0.2 only, which also
+removes the Save As refusal), and ships examples/fallingwater.sketchie with the
+installer and portable package.
+
 0.3.2 also opens legacy `.axf` sketches. The file is unpacked (raw deflate),
 its areas, arc walls and room labels are mapped into a new untitled sketch
 (area codes, names and factors from the file), and Save As writes `.sketchie`.
