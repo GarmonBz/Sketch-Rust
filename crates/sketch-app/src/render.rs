@@ -1371,12 +1371,25 @@ pub fn draw_symbol_placement_preview(frame: &mut Frame, scene: &Scene, symbol: &
         0.0,
         0.0,
         crate::theme::hex(0x63B3ED),
-        iced::Color::WHITE,
+        crate::canvas_theme::current().bg(),
     );
     frame.pop_transform();
 }
 
+/// Placed symbols' line colour and the colour of their closed shapes' fill:
+/// slate on white for the Light canvas, inverted (light line, canvas-coloured
+/// fill) on Dark and Blue so they stay readable.
+pub(crate) fn symbol_colors() -> (Color, Color) {
+    let canvas = crate::canvas_theme::current();
+    if canvas == crate::canvas_theme::CanvasTheme::Light {
+        (crate::theme::hex(0x334155), Color::WHITE)
+    } else {
+        (crate::theme::hex(0xe2e8f0), canvas.bg())
+    }
+}
+
 fn draw_symbols(frame: &mut Frame, scene: &Scene) {
+    let (symbol_ink, symbol_paper) = symbol_colors();
     let lib = match scene.symbol_lib {
         Some(l) => l,
         None => return,
@@ -1412,8 +1425,8 @@ fn draw_symbols(frame: &mut Frame, scene: &Scene) {
             s as f64,
             0.0,
             0.0,
-            crate::theme::hex(0x334155),
-            iced::Color::WHITE,
+            symbol_ink,
+            symbol_paper,
         );
         // Selection handles for selected symbols.
         if scene.selection.symbols.contains(&sym.id) {
@@ -1422,17 +1435,21 @@ fn draw_symbols(frame: &mut Frame, scene: &Scene) {
             let bh_px =
                 ((def.bounds.max_y - def.bounds.min_y) as f32 * sc * pixel_scale / 12.0).max(12.0);
             let accent = crate::theme::ICON_BLUE;
+            // Around the bounds, not the origin (see `handles::symbol_box`);
+            // this runs inside the flip transform, so x needs no sign here.
+            let mid_x = ((def.bounds.min_x + def.bounds.max_x) as f32 / 2.0) * sc * pixel_scale / 12.0;
+            let mid_y = -((def.bounds.min_y + def.bounds.max_y) as f32 / 2.0) * sc * pixel_scale / 12.0;
             let rect = Path::rectangle(
-                Point::new(-bw_px / 2.0, -bh_px / 2.0),
+                Point::new(mid_x - bw_px / 2.0, mid_y - bh_px / 2.0),
                 iced::Size::new(bw_px, bh_px),
             );
             frame.stroke(&rect, Stroke::default().with_color(accent).with_width(1.0));
             let hs = if scene.touch_handles { 12.0f32 } else { 7.0f32 };
             for (hx, hy) in [
-                (-bw_px / 2.0, -bh_px / 2.0),
-                (bw_px / 2.0, -bh_px / 2.0),
-                (-bw_px / 2.0, bh_px / 2.0),
-                (bw_px / 2.0, bh_px / 2.0),
+                (mid_x - bw_px / 2.0, mid_y - bh_px / 2.0),
+                (mid_x + bw_px / 2.0, mid_y - bh_px / 2.0),
+                (mid_x - bw_px / 2.0, mid_y + bh_px / 2.0),
+                (mid_x + bw_px / 2.0, mid_y + bh_px / 2.0),
             ] {
                 frame.fill_rectangle(
                     Point::new(hx - hs / 2.0, hy - hs / 2.0),
@@ -1440,15 +1457,15 @@ fn draw_symbols(frame: &mut Frame, scene: &Scene) {
                     accent,
                 );
             }
-            let rhandle_y = -bh_px / 2.0 - 30.0;
+            let rhandle_y = mid_y - bh_px / 2.0 - 30.0;
             frame.fill_rectangle(
-                Point::new(-hs / 2.0, rhandle_y - hs / 2.0),
+                Point::new(mid_x - hs / 2.0, rhandle_y - hs / 2.0),
                 iced::Size::new(hs, hs),
                 accent,
             );
             let line = Path::line(
-                Point::new(0.0, -bh_px / 2.0),
-                Point::new(0.0, rhandle_y + hs / 2.0),
+                Point::new(mid_x, mid_y - bh_px / 2.0),
+                Point::new(mid_x, rhandle_y + hs / 2.0),
             );
             frame.stroke(&line, Stroke::default().with_color(accent).with_width(1.0));
         }
@@ -2200,6 +2217,7 @@ fn draw_transform_handles(frame: &mut Frame, scene: &Scene) {
                     Pt::new(sym.x, sym.y),
                     sym.rotation,
                     sym.scale,
+                    sym.flip_h,
                     (
                         def.bounds.min_x,
                         def.bounds.min_y,
@@ -2402,6 +2420,24 @@ pub fn draw_scene_overlay(frame: &mut Frame, scene: &Scene, w: f32, h: f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn symbols_invert_on_dark_and_blue_canvases() {
+        use crate::canvas_theme::{self, CanvasTheme};
+        let was = canvas_theme::current();
+        canvas_theme::set(CanvasTheme::Light);
+        let (ink, paper) = symbol_colors();
+        assert_eq!((ink, paper), (crate::theme::hex(0x334155), Color::WHITE));
+        for theme in [CanvasTheme::Dark, CanvasTheme::Blue] {
+            canvas_theme::set(theme);
+            let (ink, paper) = symbol_colors();
+            assert_eq!(paper, theme.bg(), "closed shapes take the canvas colour");
+            let luma = |c: Color| 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+            assert!(luma(ink) > 0.8, "{theme:?}: the line is light");
+            assert!(luma(ink) - luma(paper) > 0.6, "{theme:?}: and clear of the canvas");
+        }
+        canvas_theme::set(was);
+    }
 
     #[test]
     fn dimension_side_follows_the_path_winding() {

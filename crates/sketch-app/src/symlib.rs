@@ -590,7 +590,7 @@ mod tests {
         assert_eq!(ix.library.symbols.len(), 499);
         assert_eq!(ix.categories.len(), 18);
         assert_eq!(ix.categories[0].key, "caddillo-doors-windows");
-        assert_eq!(ix.categories[0].items.len(), 20);
+        assert_eq!(ix.categories[0].items.len(), 21);
         assert!(ix
             .categories
             .iter()
@@ -609,7 +609,7 @@ mod tests {
         // Retired duplicates are gone; their ids alias the replacements.
         assert!(ix.library.symbol("kitchen/refrigerator-36in").is_none());
         assert!(ix.by_id("kitchen/refrigerator-36in").is_none());
-        assert_eq!(ix.library.aliases.len(), 67, "retired duplicates");
+        assert_eq!(ix.library.aliases.len(), 68, "retired duplicates, plus the old double garage door");
         assert_eq!(
             ix.library.aliases["kitchen/refrigerator-36in"],
             "caddillo/fridge-36"

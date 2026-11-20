@@ -566,11 +566,15 @@ pub struct SymbolBox {
     pub handle: (f64, f64),
 }
 
-/// `bounds` is the definition's `(min_x, min_y, max_x, max_y)`.
+/// `bounds` is the definition's `(min_x, min_y, max_x, max_y)`. The box is
+/// drawn around the bounds, not around the symbol's origin: CADdillo symbols
+/// keep their origin at a corner or edge, so the two differ. `center` stays
+/// the origin, the point the symbol turns and scales about.
 pub fn symbol_box(
     at: Pt,
     rotation: f64,
     scale: f64,
+    flip_h: bool,
     bounds: (f64, f64, f64, f64),
     pan: (f64, f64),
     zoom: f64,
@@ -582,15 +586,19 @@ pub fn symbol_box(
     let radians = rotation.to_radians();
     let (cos, sin) = (radians.cos(), radians.sin());
     let turn = |x: f64, y: f64| (center.0 + x * cos - y * sin, center.1 + x * sin + y * cos);
+    // The bounds' centre in the symbol's own frame: CAD y runs up, the screen's
+    // down, and a horizontal flip mirrors x before the turn.
+    let off_x = (bounds.0 + bounds.2) / 2.0 * pixel_scale * if flip_h { -1.0 } else { 1.0 };
+    let off_y = -(bounds.1 + bounds.3) / 2.0 * pixel_scale;
     SymbolBox {
         center,
         corners: [
-            turn(-bw / 2.0, -bh / 2.0),
-            turn(bw / 2.0, -bh / 2.0),
-            turn(bw / 2.0, bh / 2.0),
-            turn(-bw / 2.0, bh / 2.0),
+            turn(off_x - bw / 2.0, off_y - bh / 2.0),
+            turn(off_x + bw / 2.0, off_y - bh / 2.0),
+            turn(off_x + bw / 2.0, off_y + bh / 2.0),
+            turn(off_x - bw / 2.0, off_y + bh / 2.0),
         ],
-        handle: turn(0.0, -bh / 2.0 - 30.0),
+        handle: turn(off_x, off_y - bh / 2.0 - 30.0),
     }
 }
 
@@ -842,10 +850,51 @@ mod tests {
     }
 
     #[test]
+    fn a_symbols_box_wraps_its_bounds_not_its_origin() {
+        // Door Garage 108 keeps its origin at the opening's left end on the wall
+        // line: bounds -5..113 in x, -8..0 in y (CAD y runs up). At 100% zoom
+        // (20 px/ft) its ink spans x -5..113 in and y 0..8 in below the origin.
+        let bounds = (-5.0, -8.0, 113.0, 0.0);
+        let ps = 20.0 / 12.0;
+        let span = |b: &SymbolBox| {
+            let xs = b.corners.map(|c| c.0 - 100.0);
+            let ys = b.corners.map(|c| c.1 - 100.0);
+            (
+                xs.iter().cloned().fold(f64::MAX, f64::min),
+                xs.iter().cloned().fold(f64::MIN, f64::max),
+                ys.iter().cloned().fold(f64::MAX, f64::min),
+                ys.iter().cloned().fold(f64::MIN, f64::max),
+            )
+        };
+        let close = |a: (f64, f64, f64, f64), e: (f64, f64, f64, f64)| {
+            assert!(
+                (a.0 - e.0).abs() < 1e-6
+                    && (a.1 - e.1).abs() < 1e-6
+                    && (a.2 - e.2).abs() < 1e-6
+                    && (a.3 - e.3).abs() < 1e-6,
+                "{a:?} vs {e:?}"
+            );
+        };
+        let at = Pt::new(0.0, 0.0);
+        let pan = (100.0, 100.0);
+        let b = symbol_box(at, 0.0, 1.0, false, bounds, pan, 1.0);
+        assert_eq!(b.center, (100.0, 100.0), "the pivot stays on the origin");
+        close(span(&b), (-5.0 * ps, 113.0 * ps, 0.0, 8.0 * ps));
+        // The rotation handle sits above the box's top edge, over its middle.
+        assert!((b.handle.0 - 100.0 - 54.0 * ps).abs() < 1e-6 && (b.handle.1 - 100.0 + 30.0).abs() < 1e-6);
+        // Flipped left-right, the box mirrors about the origin.
+        let f = symbol_box(at, 0.0, 1.0, true, bounds, pan, 1.0);
+        close(span(&f), (-113.0 * ps, 5.0 * ps, 0.0, 8.0 * ps));
+        // A quarter turn clockwise turns the whole box about the origin.
+        let r = symbol_box(at, 90.0, 1.0, false, bounds, pan, 1.0);
+        close(span(&r), (-8.0 * ps, 0.0, -5.0 * ps, 113.0 * ps));
+    }
+
+    #[test]
     fn a_symbols_handles_turn_with_it_and_snap_in_steps() {
         // 36 x 12 in definition, 100% zoom (20 px/ft): 60 x 20 px box.
         let bounds = (-18.0, -6.0, 18.0, 6.0);
-        let b = symbol_box(Pt::new(0.0, 0.0), 0.0, 1.0, bounds, (100.0, 100.0), 1.0);
+        let b = symbol_box(Pt::new(0.0, 0.0), 0.0, 1.0, false, bounds, (100.0, 100.0), 1.0);
         assert_eq!(b.center, (100.0, 100.0));
         // The handle is above the top edge (smaller screen y), 30px clear.
         assert!((b.handle.0 - 100.0).abs() < 1e-9 && (b.handle.1 - 60.0).abs() < 1e-9);
@@ -866,7 +915,7 @@ mod tests {
             Some(SymbolHandle::Rotate)
         );
         // A quarter turn clockwise swings the handle to the right.
-        let b = symbol_box(Pt::new(0.0, 0.0), 90.0, 1.0, bounds, (100.0, 100.0), 1.0);
+        let b = symbol_box(Pt::new(0.0, 0.0), 90.0, 1.0, false, bounds, (100.0, 100.0), 1.0);
         assert!((b.handle.0 - 140.0).abs() < 1e-9 && (b.handle.1 - 100.0).abs() < 1e-9);
         // Steps.
         let quarter = std::f64::consts::FRAC_PI_2;

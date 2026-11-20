@@ -8,6 +8,13 @@ Doors & windows category (the CADdillo doors and windows) stays, and so do all
 other categories. `symbols.json` now holds 499 symbols. They can be added back
 to the library later if they are needed.
 
+Doors & windows has two garage doors: **Door Garage 108** (9 ft, CADdillo) and
+**Door Garage 216**, a double door 18 ft wide (216 in). Door Garage 216 is the
+CADdillo 108-inch door with its width doubled (id `custom/door-garage-216`), so
+it is not one of CADdillo's own blocks. It replaces the older Favorites symbol
+Door - Garage-Dbl; sketches that used that symbol open with Door Garage 216 in
+its place.
+
 ## Plain category names and fewer duplicates (0.2.2)
 
 The CADdillo categories now have plain names. Six of them merged into the

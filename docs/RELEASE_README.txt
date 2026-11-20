@@ -1,4 +1,9 @@
-Sketch Rust 0.3.0 - Windows x64
+Sketch Rust 0.3.1 - Windows x64
+
+0.3.1 adds Door Garage 216, an 18 ft double garage door, to Doors & windows in
+place of the old Door - Garage-Dbl. A selected symbol's box and handles now sit
+on the symbol instead of being offset from it, and symbols draw in light ink on
+the Dark and Blue canvases.
 
 0.3.0 gives Layers more room (drag the divider to resize), replaces the page
 tabs with a page switcher that fits the top bar, closes the right-click menu

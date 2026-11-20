@@ -1,5 +1,9 @@
 # Sketch Rust — STATUS ledger
 
+0.3.1 adds the Door Garage 216 symbol (replacing Door - Garage-Dbl), fixes the
+offset selection box and handles on symbols whose origin is not at their
+centre, and draws symbols inverted on Dark and Blue canvases.
+
 0.3.0 adds a resizable Layers area, a page switcher in the top bar, a
 right-click menu that closes on canvas click or Escape, type-following default
 area names, a smaller default area-type and symbol set, and Light/Blue/Dark

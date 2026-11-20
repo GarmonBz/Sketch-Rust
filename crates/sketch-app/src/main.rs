@@ -5711,6 +5711,7 @@ impl App {
                 sketch_core::geometry::Pt::new(sym.x, sym.y),
                 sym.rotation,
                 sym.scale,
+                sym.flip_h,
                 (
                     def.bounds.min_x,
                     def.bounds.min_y,
