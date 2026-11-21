@@ -474,6 +474,19 @@ fn sub_offset(sub: MenuSub, d: Density) -> f32 {
     y
 }
 
+/// Laid-out height of a fly-out with `rows` rows (rows, their 2 px gaps and
+/// the panel padding), matching `actions_list` and the fly-out container.
+fn fly_out_height(rows: usize, d: Density) -> f32 {
+    let n = rows as f32;
+    n * row_h(d) + (n - 1.0).max(0.0) * 2.0 + SPACE_2 * 2.0
+}
+
+/// Where a fly-out starts: level with its row, or higher when that would run
+/// it past the bottom of the space below the top bar (never above the top).
+fn fly_out_top(row_top: f32, fly_h: f32, avail_h: f32) -> f32 {
+    row_top.min(avail_h - fly_h).max(0.0)
+}
+
 fn actions_list<'a>(actions: Vec<SubAction>, d: Density, row: usize) -> Element<'a, Message> {
     let mut col = column![].spacing(2).width(Length::Fill);
     for (i, a) in actions.into_iter().enumerate() {
@@ -533,13 +546,18 @@ fn desktop_dropdown<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
     let mut layout = row![main].spacing(SPACE_1);
     if let Some(sub) = app.ui.menu_sub {
         let actions = sub_actions(app, sub);
-        let fly = container(actions_list(actions, d, app.ui.menu_row))
+        let fly_h = fly_out_height(actions.len(), d);
+        let fly = container(scrollable(actions_list(actions, d, app.ui.menu_row)))
             .padding(SPACE_2)
             .width(Length::Fixed(SUB_W))
+            .max_height(avail_h)
             .style(panel_style);
-        // Search field + its gap + panel padding, then the row's own offset.
-        let top = SPACE_2 + d.field_h() + SPACE_1 * 2.0 + sub_offset(sub, d) - SPACE_2;
-        layout = layout.push(column![Space::new().height(Length::Fixed(top.max(0.0))), fly]);
+        // Search field + its gap + panel padding, then the row's own offset;
+        // raised so a fly-out near the bottom (Help, Recent) stays inside the
+        // window instead of losing its last rows (Help > About) off the edge.
+        let row_top = SPACE_2 + d.field_h() + SPACE_1 * 2.0 + sub_offset(sub, d) - SPACE_2;
+        let top = fly_out_top(row_top, fly_h, avail_h);
+        layout = layout.push(column![Space::new().height(Length::Fixed(top)), fly]);
     }
 
     mouse_area(layout).on_press(Message::Ui(UiMsg::Noop)).into()
@@ -738,5 +756,27 @@ mod tests {
             let (name, fill) = sub.icon();
             let _ = icons::mono_icon(name, fill, 14.0, Color::WHITE);
         }
+    }
+}
+
+#[cfg(test)]
+mod fly_out_tests {
+    use super::*;
+
+    #[test]
+    fn help_fly_out_stays_inside_short_windows() {
+        let d = Density::Comfortable;
+        let help = MenuSub::Help.commands().len();
+        assert_eq!(MenuSub::Help.commands().last().unwrap().0, "about");
+        let fly_h = fly_out_height(help, d);
+        let row_top = SPACE_2 + d.field_h() + SPACE_1 * 2.0 + sub_offset(MenuSub::Help, d) - SPACE_2;
+        for window_h in [600.0_f32, 700.0, 760.0, 900.0] {
+            let avail_h = window_h - d.bar_h() - SPACE_3 * 2.0;
+            let top = fly_out_top(row_top, fly_h, avail_h);
+            assert!(top + fly_h <= avail_h + 0.5, "About cut off at {window_h} px");
+            assert!(top <= row_top);
+        }
+        // Tall enough: it still lines up with its row.
+        assert_eq!(fly_out_top(row_top, fly_h, 5000.0), row_top);
     }
 }
