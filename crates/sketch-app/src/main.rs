@@ -438,19 +438,71 @@ pub enum Message {
         ctrl: bool,
     },
     /// A single-finger touch tap on the canvas (canvas px).
-    CanvasTouchTap { x: f32, y: f32 },
+    CanvasTouchTap {
+        x: f32,
+        y: f32,
+    },
     /// Right press on the canvas (`contextmenu`): the pen lifts first.
     CanvasContext,
     /// Presentational events for the Next shell.
     Ui(ui::Msg),
+    /// A native file dialog resolved: the flow named by the request runs its
+    /// continuation with the picked path (None = the user cancelled).
+    DialogPicked(DialogRequest, Option<std::path::PathBuf>),
+}
+
+/// The flow a native file dialog was opened for. `Message::DialogPicked`
+/// carries it back so the original continuation runs once the picker
+/// resolves (the iced event loop keeps running while the dialog is open).
+#[derive(Debug, Clone)]
+pub enum DialogRequest {
+    /// File > Open: open the picked sketch.
+    OpenSketch,
+    /// Load Image / the Geo popup: load the picked picture as the reference.
+    PhotoImage,
+    /// `importFromFile` (S11-044): merge the picked sketch into this one.
+    ImportSketch,
+    /// Import CAD: convert and append the picked drawing.
+    ImportCad,
+    /// The Layers panel: import the picked layer file.
+    #[cfg_attr(test, allow(dead_code))]
+    ImportLayer,
+    /// File › Export PNG.
+    ExportPng,
+    /// File › Export SVG.
+    ExportSvg,
+    /// File › Export DXF.
+    ExportDxf,
+    /// File › Export PDF.
+    ExportPdf,
+    /// Area Breakdown › Download JSON.
+    BreakdownJson,
+    /// Area Breakdown › Download XML.
+    BreakdownXml,
+    /// File › Save / Save As: write to the picked destination. `ext` is the
+    /// format settled before the dialog (it named the offered file),
+    /// `fallback_toast` is the .skx-fallback notice, and `exit_when_saved`
+    /// closes the app after a successful save (the unsaved-changes prompt).
+    SaveSketch {
+        ext: String,
+        fallback_toast: Option<String>,
+        exit_when_saved: bool,
+    },
+    /// Symbol library › Export (a `None` subset is the whole library).
+    #[cfg_attr(test, allow(dead_code))]
+    ExportLibrary {
+        subset: Option<std::collections::BTreeSet<String>>,
+    },
+    /// Symbol library › Import: merge the picked library file.
+    #[cfg_attr(test, allow(dead_code))]
+    ImportLibrary,
 }
 
 /// The QAT's history button (`list-bullets`): 28x28, at x 20 + 28*3, y 1 —
 /// the undo-history popup anchors under it.
 /// `#file-open-input` / `#file-import-input` `accept=".skx,.apx,.json,.sketch"`.
-const SKETCH_OPEN_EXTENSIONS: &[&str] = &[
-    "skx", "apx", "json", "sketch", "sketchie", "sketchy", "axf",
-];
+const SKETCH_OPEN_EXTENSIONS: &[&str] =
+    &["skx", "apx", "json", "sketch", "sketchie", "sketchy", "axf"];
 
 /// A sketch file named on the command line, opened once the window is up.
 static STARTUP_FILE: std::sync::Mutex<Option<std::path::PathBuf>> = std::sync::Mutex::new(None);
@@ -901,9 +953,20 @@ impl App {
             std::mem::discriminant(&line.kind).hash(&mut hasher);
             line.thickness.map(f64::to_bits).hash(&mut hasher);
         }
-        sketch_core::geometry::area_codes::to_json(self.area_codes.clone())
-            .unwrap_or_default()
-            .hash(&mut hasher);
+        for code in &self.area_codes {
+            code.code.hash(&mut hasher);
+            code.name.hash(&mut hasher);
+            code.description.hash(&mut hasher);
+            code.group.hash(&mut hasher);
+            code.multiplier.to_bits().hash(&mut hasher);
+            code.positive.hash(&mut hasher);
+            code.include_in_gla.hash(&mut hasher);
+            code.color.hash(&mut hasher);
+            code.fill.hash(&mut hasher);
+            code.fill_color.hash(&mut hasher);
+            code.fill_style.hash(&mut hasher);
+            code.fill_opacity.to_bits().hash(&mut hasher);
+        }
         for poly in &self.drawing.polygons {
             poly.id.hash(&mut hasher);
             poly.attributes.get("sketchy.area_rule").hash(&mut hasher);
@@ -1165,10 +1228,7 @@ impl App {
                 app.view.pan = (cw / 2.0, ch / 2.0);
                 app.ui.start.sync_thumbs(&app.recent);
                 app.ui.start.hide_at_launch = ui::start::load_hide_at_launch();
-                let has_startup_file = STARTUP_FILE
-                    .lock()
-                    .ok()
-                    .is_some_and(|file| file.is_some());
+                let has_startup_file = STARTUP_FILE.lock().ok().is_some_and(|file| file.is_some());
                 if std::env::var_os("SKETCH_PERSIST").is_some()
                     && !has_startup_file
                     && !app.ui.start.hide_at_launch
@@ -1652,7 +1712,42 @@ impl App {
                 self.drawing.hover(world, self.draw_ctx());
                 return Task::none();
             }
+            let overlay_or_chrome_only = matches!(
+                &message,
+                Message::CloseHover(_)
+                    | Message::LayerHoverRow(_)
+                    | Message::LayerHoverRowGone(_)
+                    | Message::LayerZoneHover(_, _)
+                    | Message::ToastExpired(_)
+                    | Message::SymbolLibraryMods(_)
+                    | Message::FenceStart(_, _)
+                    | Message::FenceMove(_, _)
+                    | Message::DockDragMove(_, _)
+                    | Message::Ui(
+                        ui::Msg::LedgerHandleHover(_)
+                            | ui::Msg::MenuSub(_)
+                            | ui::Msg::MenuMove(_)
+                            | ui::Msg::MenuQuery(_)
+                            | ui::Msg::MenuSwitchGroup(_)
+                            | ui::Msg::TrayScrolled(_)
+                            | ui::Msg::ToggleMenu
+                            | ui::Msg::CloseMenu
+                    )
+            ) || matches!(&message, Message::PointerMoved(_, _) if self.ui.pad_dragging);
+            if overlay_or_chrome_only {
+                return self.update_inner(message);
+            }
         }
+        let view_only = matches!(
+            &message,
+            Message::PanStart(_, _)
+                | Message::PanMove(_, _)
+                | Message::PanEnd
+                | Message::Wheel { shift: false, .. }
+                | Message::Pinch { .. }
+                | Message::WindowResized(_)
+                | Message::AutoSaveTick
+        );
         self.invalidate_canvas();
         let task = self.update_inner(message);
         // Settle new/deleted areas before the next hover takes the fast path.
@@ -1663,8 +1758,21 @@ impl App {
         // isEntityVisible/isEntityLocked).
         self.gates_cache = self.layer_gates();
         self.pointer_scene_ready = true;
-        self.refresh_dirty_if_due();
+        if !view_only || self.undo.revision() != self.dirty_revision {
+            self.refresh_dirty_if_due();
+        }
         task
+    }
+
+    pub(crate) fn is_interactive_gesture_active(&self) -> bool {
+        self.view.drag.is_some()
+            || self.view.pan_from.is_some()
+            || self.view.fence.is_some()
+            || self.dock.resizing
+            || self.ui.ledger_resizing
+            || self.ui.pad_dragging
+            || self.dock_drag.is_some()
+            || self.dock.layer_drag.is_some()
     }
 
     /// The title bar pill: where the document stands against its file.
@@ -1725,8 +1833,7 @@ impl App {
         {
             let ui_scale = self.ui_scale;
             window::run(id, move |window| {
-                platform::work_area(window)
-                    .map(|(w, h)| Size::new(w / ui_scale, h / ui_scale))
+                platform::work_area(window).map(|(w, h)| Size::new(w / ui_scale, h / ui_scale))
             })
         }
         #[cfg(not(windows))]
@@ -2128,6 +2235,11 @@ impl App {
                     self.ui.ledger_view = view;
                     Task::none()
                 }
+                ui::Msg::ToggleLedgerLayers => {
+                    self.ui.ledger_menu = false;
+                    self.ui.ledger_layers_open = !self.ui.ledger_layers_open;
+                    Task::none()
+                }
                 ui::Msg::ToggleLedgerMenu => {
                     self.ui.menu_open = false;
                     self.ui.menu_sub = None;
@@ -2174,8 +2286,11 @@ impl App {
                 ui::Msg::SetWallLineStyle(style) => {
                     if !self.selection.lines.is_empty() {
                         self.push_undo("Wall Appearance");
-                        self.drawing
-                            .set_selected_line_appearance(&self.selection, Some(style), None);
+                        self.drawing.set_selected_line_appearance(
+                            &self.selection,
+                            Some(style),
+                            None,
+                        );
                         self.sync_canvas();
                     }
                     Task::none()
@@ -2767,8 +2882,7 @@ impl App {
                 if matches!(
                     self.view.mode,
                     view_state::Mode::Freeform | view_state::Mode::Erase
-                )
-                    && !self.bg_image.edit_mode
+                ) && !self.bg_image.edit_mode
                     && !self.bg_image.orient_mode
                     && !self.bg_image.scale_mode
                 {
@@ -3117,10 +3231,15 @@ impl App {
                 };
                 match self.view.drag.clone() {
                     Some(view_state::Drag::Freeform { .. } | view_state::Drag::Erase { .. }) => {}
-                    Some(view_state::Drag::Vertex { handle, origin, grab }) => {
+                    Some(view_state::Drag::Vertex {
+                        handle,
+                        origin,
+                        grab,
+                    }) => {
                         let dx = world.x - grab.x;
                         let dy = world.y - grab.y;
-                        let moved_pointer = dx.hypot(dy) > selection::tolerance(self.view.zoom, 2.0);
+                        let moved_pointer =
+                            dx.hypot(dy) > selection::tolerance(self.view.zoom, 2.0);
                         if self.drag_banked || moved_pointer {
                             let origin = sketch_core::geometry::Pt::new(origin.x, origin.y);
                             let target = if moved_pointer {
@@ -3151,7 +3270,12 @@ impl App {
                                     )
                                 }
                                 handles::VertexHandle::AreaCorner { id, vertex } => {
-                                    transform::move_area_corner(&mut self.drawing, id, vertex, target)
+                                    transform::move_area_corner(
+                                        &mut self.drawing,
+                                        id,
+                                        vertex,
+                                        target,
+                                    )
                                 }
                             };
                             if moved {
@@ -3211,12 +3335,10 @@ impl App {
                             }
                             best.map_or(total, |(_, adj)| (total.0 + adj.0, total.1 + adj.1))
                         };
-                        if let Some((dx, dy)) = self.view.drag_move(
-                            w,
-                            grid.unwrap_or(1.0),
-                            grid.is_some(),
-                            &align,
-                        ) {
+                        if let Some((dx, dy)) =
+                            self.view
+                                .drag_move(w, grid.unwrap_or(1.0), grid.is_some(), &align)
+                        {
                             if (dx != 0.0 || dy != 0.0) && !self.drag_banked {
                                 self.push_undo("Move");
                                 self.drag_banked = true;
@@ -3242,18 +3364,18 @@ impl App {
                             let normal = (world.x - mid.0) * (-dy / chord)
                                 + (world.y - mid.1) * (dx / chord);
                             let delta = normal - start_pointer_normal;
-                            let delta = self.view.edit_grid().map_or(delta, |pitch| {
-                                drawing::js_round(delta / pitch) * pitch
-                            });
+                            let delta = self
+                                .view
+                                .edit_grid()
+                                .map_or(delta, |pitch| drawing::js_round(delta / pitch) * pitch);
                             let threshold = drawing::Drawing::tolerance(1.0, self.view.zoom);
                             if self.drag_banked || delta.abs() > threshold {
                                 if !self.drag_banked {
                                     self.push_undo("Curve Wall");
                                     self.drag_banked = true;
                                 }
-                                let bow = 4.0 * (2.0 * (start_arc_height + delta))
-                                    .atan2(chord)
-                                    .to_degrees();
+                                let bow = 4.0
+                                    * (2.0 * (start_arc_height + delta)).atan2(chord).to_degrees();
                                 self.drawing.set_line_bow(line_id, bow);
                             }
                         }
@@ -3381,7 +3503,9 @@ impl App {
                 let moved = match &self.view.drag {
                     Some(view_state::Drag::Move { .. }) => self.drag_banked,
                     Some(view_state::Drag::Vertex { .. }) => false,
-                    Some(view_state::Drag::Freeform { .. } | view_state::Drag::Erase { .. }) => false,
+                    Some(view_state::Drag::Freeform { .. } | view_state::Drag::Erase { .. }) => {
+                        false
+                    }
                     Some(view_state::Drag::ChainOffset { moved, .. }) => *moved,
                     Some(view_state::Drag::SymbolResize { .. }) => self.drag_banked,
                     Some(view_state::Drag::SymbolRotate { .. }) => self.drag_banked,
@@ -3434,67 +3558,43 @@ impl App {
                 self.autosave_baseline();
                 Task::none()
             }
-            Message::OpenFile => {
-                if let Some(path) = file_dialogs::open_sketch() {
-                    return self.open_requested(path);
-                }
-                Task::none()
-            }
-            Message::SaveFile => self.save_to_file(false),
-            Message::SaveFileAs => self.save_to_file(true),
-            Message::ExportPng => {
-                if let Some(path) = crate::platform::save_file("PNG image", &["png"], format!("{}.png", self.file_name))
-                {
-                    match self.png_export_bytes() {
-                        Some(bytes) => {
-                            let _ = std::fs::write(&path, bytes);
-                        }
-                        None => {
-                            return self
-                                .toasts
-                                .show("Export as PNG could not fit the sketch.".to_string())
-                        }
-                    }
-                }
-                Task::none()
-            }
-            Message::ExportSvg => {
-                let north = self.pages.page().north_angle;
-                let page = exporter::build_export_page(&self.drawing, north, &self.area_codes);
-                let options = exporter::export_options(&self.drawing);
-                let codes = self.area_codes.clone();
-                let library = self
-                    .symbols
-                    .as_ref()
-                    .as_ref()
-                    .ok()
-                    .map(|index| &index.library);
-                if let Some(path) = crate::platform::save_file("SVG image", &["svg"], format!("{}.svg", self.file_name))
-                {
-                    let svg = sketch_core::export_svg::export_svg(&page, &options, &codes, library);
-                    let _ = std::fs::write(&path, svg);
-                }
-                Task::none()
-            }
-            Message::ExportDxf => {
-                let north = self.pages.page().north_angle;
-                let page = exporter::build_export_page(&self.drawing, north, &self.area_codes);
-                let options = exporter::export_options(&self.drawing);
-                let codes = self.area_codes.clone();
-                if let Some(path) = crate::platform::save_file("DXF drawing", &["dxf"], format!("{}.dxf", self.file_name))
-                {
-                    let dxf = sketch_core::export_dxf::export_dxf(&page, &options, &codes);
-                    let _ = std::fs::write(&path, dxf);
-                }
-                Task::none()
-            }
-            Message::ExportPdf => {
-                if let Some(path) = crate::platform::save_file("PDF document", &["pdf"], format!("{}.pdf", self.file_name))
-                {
-                    let _ = std::fs::write(&path, self.report_pdf());
-                }
-                Task::none()
-            }
+            Message::OpenFile => Task::perform(file_dialogs::open_sketch(), |path| {
+                Message::DialogPicked(DialogRequest::OpenSketch, path)
+            }),
+            Message::SaveFile => self.save_to_file(false, false),
+            Message::SaveFileAs => self.save_to_file(true, false),
+            Message::ExportPng => Task::perform(
+                crate::platform::save_file_async(
+                    "PNG image".to_owned(),
+                    vec!["png".to_owned()],
+                    format!("{}.png", self.file_name),
+                ),
+                |path| Message::DialogPicked(DialogRequest::ExportPng, path),
+            ),
+            Message::ExportSvg => Task::perform(
+                crate::platform::save_file_async(
+                    "SVG image".to_owned(),
+                    vec!["svg".to_owned()],
+                    format!("{}.svg", self.file_name),
+                ),
+                |path| Message::DialogPicked(DialogRequest::ExportSvg, path),
+            ),
+            Message::ExportDxf => Task::perform(
+                crate::platform::save_file_async(
+                    "DXF drawing".to_owned(),
+                    vec!["dxf".to_owned()],
+                    format!("{}.dxf", self.file_name),
+                ),
+                |path| Message::DialogPicked(DialogRequest::ExportDxf, path),
+            ),
+            Message::ExportPdf => Task::perform(
+                crate::platform::save_file_async(
+                    "PDF document".to_owned(),
+                    vec!["pdf".to_owned()],
+                    format!("{}.pdf", self.file_name),
+                ),
+                |path| Message::DialogPicked(DialogRequest::ExportPdf, path),
+            ),
             Message::ImportCad => {
                 // `importFromFile` for a DXF: read, scale via the unit
                 // choice, offset by (2, 2) like the original, and append the
@@ -3503,12 +3603,15 @@ impl App {
                 // Import undo step — the port re-banks it as a snapshot).
                 // The picker shows .dxf and .dwg; a .dwg is rejected with the
                 // conversion hint (`runImport`).
-                if let Some(path) = crate::platform::pick_file("CAD drawing", &["dxf", "dwg"])
-                {
-                    return self.import_cad_file(&path);
-                }
-                Task::none()
+                Task::perform(
+                    crate::platform::pick_file_async(
+                        "CAD drawing".to_owned(),
+                        vec!["dxf".to_owned(), "dwg".to_owned()],
+                    ),
+                    |path| Message::DialogPicked(DialogRequest::ImportCad, path),
+                )
             }
+            Message::DialogPicked(request, path) => self.dialog_picked(request, path),
             Message::RotateSketch => self.update(Message::RotateSketchBy(90.0)),
             Message::RotateSelected(degrees) => {
                 // `rotateSelected`: with no wall or area selected it turns
@@ -3882,8 +3985,8 @@ impl App {
                 self.dock.layer_menu = None;
                 self.delete_layer_or_area(&id)
             }
-            Message::LayerSendToBack => self.auto_assign_layer("Send to Back", true),
-            Message::LayerBringToFront => self.auto_assign_layer("Bring to Front", false),
+            Message::LayerSendToBack => self.restack_selection(false),
+            Message::LayerBringToFront => self.restack_selection(true),
             Message::TextLibraryManager(m) => {
                 if matches!(m, text_manager::TextManagerMsg::Close) {
                     self.text_manager.close();
@@ -3967,7 +4070,12 @@ impl App {
                         .iter()
                         .map(|g| g.code.clone())
                         .collect();
-                if self.drawing.polygons.iter().any(|p| p.kind == "UND" || p.kind.is_empty()) {
+                if self
+                    .drawing
+                    .polygons
+                    .iter()
+                    .any(|p| p.kind == "UND" || p.kind.is_empty())
+                {
                     set.insert("UND".to_owned());
                 }
                 self.dock.calcs_collapsed = set;
@@ -4271,7 +4379,9 @@ impl App {
                 self.print_preview.pdf = self.report_pdf();
                 self.print_preview.paper = Some(paper);
                 self.print_preview.rasters = vec![iced::widget::image::Handle::from_rgba(
-                    width, height, vec![255; width as usize * height as usize * 4],
+                    width,
+                    height,
+                    vec![255; width as usize * height as usize * 4],
                 )];
                 self.print_preview.open = true;
                 Task::none()
@@ -4306,11 +4416,16 @@ impl App {
             }
             Message::ImportSketch => {
                 // `importFromFile` (S11-044): the picker, then the merge.
-                if let Some(path) = crate::platform::pick_file("Sketch", SKETCH_OPEN_EXTENSIONS)
-                {
-                    return self.import_sketch_path(&path);
-                }
-                Task::none()
+                Task::perform(
+                    crate::platform::pick_file_async(
+                        "Sketch".to_owned(),
+                        SKETCH_OPEN_EXTENSIONS
+                            .iter()
+                            .map(|ext| (*ext).to_owned())
+                            .collect(),
+                    ),
+                    |path| Message::DialogPicked(DialogRequest::ImportSketch, path),
+                )
             }
             Message::RoomShapePlaceAt(x, y) => {
                 if let Some(pending) = self.pending_shape.take() {
@@ -4448,35 +4563,27 @@ impl App {
                     }
                     BreakdownMsg::DownloadJson => {
                         // AreaBreakdown.toJSON → area-breakdown.json.
-                        let results = self.breakdown_results();
-                        let data = sketch_core::breakdown::to_json(&results, &self.area_codes);
-                        if let Some(path) = crate::platform::save_file("Breakdown JSON", &["json"], "area-breakdown.json")
-                        {
-                            let _ = std::fs::write(
-                                &path,
-                                serde_json::to_vec_pretty(&data).unwrap_or_default(),
-                            );
-                        }
-                        return Task::none();
+                        return Task::perform(
+                            crate::platform::save_file_async(
+                                "Breakdown JSON".to_owned(),
+                                vec!["json".to_owned()],
+                                "area-breakdown.json".to_owned(),
+                            ),
+                            |path| Message::DialogPicked(DialogRequest::BreakdownJson, path),
+                        );
                     }
                     BreakdownMsg::DownloadXml => {
                         // AreaBreakdown.toXml → area-breakdown.xml (the BOM
                         // + CRLF the original writes). The subject line is
                         // the report subject's address.
-                        let results = self.breakdown_results();
-                        let report_subject = exporter::report_subject(&self.subject_info);
-                        let xml = sketch_core::breakdown::to_xml(
-                            &self.file_name,
-                            &report_subject.property_address,
-                            &report_subject.comment_tables,
-                            &results,
-                            &self.area_codes,
+                        return Task::perform(
+                            crate::platform::save_file_async(
+                                "Breakdown XML".to_owned(),
+                                vec!["xml".to_owned()],
+                                "area-breakdown.xml".to_owned(),
+                            ),
+                            |path| Message::DialogPicked(DialogRequest::BreakdownXml, path),
                         );
-                        if let Some(path) = crate::platform::save_file("Breakdown XML", &["xml"], "area-breakdown.xml")
-                        {
-                            let _ = std::fs::write(&path, xml);
-                        }
-                        return Task::none();
                     }
                 }
                 Task::none()
@@ -4651,8 +4758,8 @@ impl App {
                     // sendToBack/bringToFront (S10-037/038): the selection
                     // auto-assigns onto a named layer at the stack's edge
                     // (autoAssignLayer banks its own undo step + toast).
-                    Action::SendToBack => return self.auto_assign_layer("Send to Back", true),
-                    Action::BringToFront => return self.auto_assign_layer("Bring to Front", false),
+                    Action::SendToBack => return self.restack_selection(false),
+                    Action::BringToFront => return self.restack_selection(true),
                     Action::AutoSubtract => {
                         // The undo step holds the state before the toggle.
                         let before = self.snapshot_model("Auto-Subtract");
@@ -4736,8 +4843,13 @@ impl App {
                 }
                 let states = self.undo.undo_to(index, current);
                 if let Some(snap) = states.last() {
-                    let earliest_codes = states.iter().rev().find_map(|s| s.area_codes.as_ref()).cloned();
-                    let earliest_pages = states.iter().rev().find_map(|s| s.pages.as_ref()).cloned();
+                    let earliest_codes = states
+                        .iter()
+                        .rev()
+                        .find_map(|s| s.area_codes.as_ref())
+                        .cloned();
+                    let earliest_pages =
+                        states.iter().rev().find_map(|s| s.pages.as_ref()).cloned();
                     let mut final_snap = snap.clone();
                     if final_snap.area_codes.is_none() {
                         final_snap.area_codes = earliest_codes;
@@ -5148,264 +5260,261 @@ impl App {
                 self.workflow_click(world)
             };
         }
-                // The reference image's modes intercept the click before the
-                // regular logic (canvas-engine.js:740-760).
-                let world = self.world(x, y);
-                if self.bg_image.orient_mode {
-                    return self.update(Message::PhotoOrientClick(world));
-                }
-                if self.bg_image.scale_mode {
-                    return self.update(Message::PhotoScaleClick(world));
-                }
-                // Image Edit Mode: the drag ended (the release clears it).
-                if self.bg_image.edit_mode {
-                    self.photo_drag = None;
-                    return Task::none();
-                }
-                // Place-symbol mode: click commits the symbol.
-                if let Some(symbol_type) = self.placing_symbol.take() {
-                    let world = self.world(x, y);
-                    self.place_symbol_at(world, symbol_type);
-                    return Task::none();
-                }
-                // Place-shape mode: click places the pending room shape.
-                if self.view.mode == view_state::Mode::PlaceShape {
-                    return self.update(Message::RoomShapePlaceAt(x, y));
-                }
-                // Place-text mode: click places the armed label.
-                if let Some(label) = self.placing_text.take() {
-                    let world = self.world(x, y);
-                    self.push_undo("Place Text");
-                    placed_text::place_text_at(&mut self.drawing, world, label);
-                    let _ = self.set_mode(view_state::Mode::Select);
-                    return Task::none();
-                }
-                // Measure mode: click adds a point.
-                if self.view.mode == view_state::Mode::Measure {
-                    let world = self.world(x, y);
-                    self.drawing.measure_points.push(world);
+        // The reference image's modes intercept the click before the
+        // regular logic (canvas-engine.js:740-760).
+        let world = self.world(x, y);
+        if self.bg_image.orient_mode {
+            return self.update(Message::PhotoOrientClick(world));
+        }
+        if self.bg_image.scale_mode {
+            return self.update(Message::PhotoScaleClick(world));
+        }
+        // Image Edit Mode: the drag ended (the release clears it).
+        if self.bg_image.edit_mode {
+            self.photo_drag = None;
+            return Task::none();
+        }
+        // Place-symbol mode: click commits the symbol.
+        if let Some(symbol_type) = self.placing_symbol.take() {
+            let world = self.world(x, y);
+            self.place_symbol_at(world, symbol_type);
+            return Task::none();
+        }
+        // Place-shape mode: click places the pending room shape.
+        if self.view.mode == view_state::Mode::PlaceShape {
+            return self.update(Message::RoomShapePlaceAt(x, y));
+        }
+        // Place-text mode: click places the armed label.
+        if let Some(label) = self.placing_text.take() {
+            let world = self.world(x, y);
+            self.push_undo("Place Text");
+            placed_text::place_text_at(&mut self.drawing, world, label);
+            let _ = self.set_mode(view_state::Mode::Select);
+            return Task::none();
+        }
+        // Measure mode: click adds a point.
+        if self.view.mode == view_state::Mode::Measure {
+            let world = self.world(x, y);
+            self.drawing.measure_points.push(world);
+            self.sync_canvas();
+            return Task::none();
+        }
+        // Insert Vertex: click a wall to split it there.
+        if self.view.mode == view_state::Mode::InsertVertex {
+            let world = self.world(x, y);
+            let before = self.snapshot_model("Insert Vertex");
+            return match self.drawing.insert_vertex(world, self.view.zoom) {
+                Ok(()) => {
+                    self.undo.push(before);
                     self.sync_canvas();
+                    Task::none()
+                }
+                Err(notice) => self.toasts.show(notice.to_string()),
+            };
+        }
+        // Chain-dim mode: click a wall to dimension its full run
+        // (S9-040; `handleChainClick`).
+        if self.view.mode == view_state::Mode::ChainDim {
+            let world = self.world(x, y);
+            return match chains::seed_wall(&self.drawing.lines, world, self.view.zoom) {
+                Some((seed, side)) => {
+                    self.push_undo("Dimension Chain");
+                    self.drawing.add_chain(seed, side);
+                    self.sync_canvas();
+                    Task::none()
+                }
+                None => self
+                    .toasts
+                    .show("Chain dimensions attach to straight walls.".to_string()),
+            };
+        }
+        // Select mode: click to select, Ctrl to add (selectLineAt).
+        if self.view.mode == view_state::Mode::Select {
+            let world = self.world(x, y);
+            if from_touch && !additive {
+                if let Some((handle, _)) = self.vertex_handle(world) {
+                    if let handles::VertexHandle::WallEnd { id, start } = handle {
+                        self.selection.active_endpoint = Some((id, start));
+                    }
                     return Task::none();
                 }
-                // Insert Vertex: click a wall to split it there.
-                if self.view.mode == view_state::Mode::InsertVertex {
-                    let world = self.world(x, y);
-                    let before = self.snapshot_model("Insert Vertex");
-                    return match self.drawing.insert_vertex(world, self.view.zoom) {
-                        Ok(()) => {
-                            self.undo.push(before);
-                            self.sync_canvas();
-                            Task::none()
-                        }
-                        Err(notice) => self.toasts.show(notice.to_string()),
-                    };
+            }
+            // Double-clicking a text label edits its wording.
+            if double {
+                if let Some(t) = self
+                    .drawing
+                    .texts
+                    .iter()
+                    .find(|t| placed_text::point_in_text(t, world, self.view.zoom))
+                {
+                    let (id, current) = (t.id, t.text.clone());
+                    return self.open_dialog(dialog::Dialog::prompt(
+                        "Text:",
+                        &current,
+                        dialog::Action::EditText(id),
+                    ));
                 }
-                // Chain-dim mode: click a wall to dimension its full run
-                // (S9-040; `handleChainClick`).
-                if self.view.mode == view_state::Mode::ChainDim {
-                    let world = self.world(x, y);
-                    return match chains::seed_wall(&self.drawing.lines, world, self.view.zoom) {
-                        Some((seed, side)) => {
-                            self.push_undo("Dimension Chain");
-                            self.drawing.add_chain(seed, side);
-                            self.sync_canvas();
-                            Task::none()
-                        }
-                        None => self
-                            .toasts
-                            .show("Chain dimensions attach to straight walls.".to_string()),
-                    };
+            }
+            if double {
+                let gates = self.layer_gates();
+                if let Some(define_area::Region::Area(id)) =
+                    define_area::resolve(&self.drawing, &gates, &mut self.region_cache, world)
+                {
+                    let origin = self.canvas_origin();
+                    self.workflow.menu_at = Point::new(x + origin.x, y + origin.y);
+                    return self.workflow_msg(area_workflow::Msg::Open(id));
                 }
-                // Select mode: click to select, Ctrl to add (selectLineAt).
-                if self.view.mode == view_state::Mode::Select {
-                    let world = self.world(x, y);
-                    if from_touch && !additive {
-                        if let Some((handle, _)) = self.vertex_handle(world) {
-                            if let handles::VertexHandle::WallEnd { id, start } = handle {
-                                self.selection.active_endpoint = Some((id, start));
-                            }
-                            return Task::none();
-                        }
-                    }
-                    // Double-clicking a text label edits its wording.
-                    if double {
-                        if let Some(t) = self
-                            .drawing
-                            .texts
-                            .iter()
-                            .find(|t| placed_text::point_in_text(t, world, self.view.zoom))
-                        {
-                            let (id, current) = (t.id, t.text.clone());
-                            return self.open_dialog(dialog::Dialog::prompt(
-                                "Text:",
-                                &current,
-                                dialog::Action::EditText(id),
-                            ));
-                        }
-                    }
-                    if double {
-                        let gates = self.layer_gates();
-                        if let Some(define_area::Region::Area(id)) = define_area::resolve(
-                            &self.drawing,
-                            &gates,
-                            &mut self.region_cache,
-                            world,
-                        ) {
-                            let origin = self.canvas_origin();
-                            self.workflow.menu_at = Point::new(x + origin.x, y + origin.y);
-                            return self.workflow_msg(area_workflow::Msg::Open(id));
-                        }
-                    }
-                    // An area's label / size block (`hitTestAt`'s first pass).
-                    if let Some((kind, id)) = self.area_text_at(world) {
-                        if !additive {
-                            self.selection.clear();
-                        }
-                        let set = if kind == handles::TextKind::AreaSize {
-                            &mut self.selection.area_sizes
-                        } else {
-                            &mut self.selection.area_labels
-                        };
-                        if additive && set.contains(&id) {
-                            set.remove(&id);
-                        } else {
-                            set.insert(id);
-                        }
-                        self.sync_edit_tools();
-                        return Task::none();
-                    }
-                    // A dimension chain's tier wins first (S9-035): Ctrl or
-                    // Select more toggles membership; a joined click arms drag.
-                    if let Some(chain_id) = self.drawing.chain_hit(world, self.view.zoom) {
-                        if !additive {
-                            self.selection.clear();
-                        }
-                        if additive && self.selection.chains.contains(&chain_id) {
-                            self.selection.chains.remove(&chain_id);
-                        } else {
-                            self.selection.chains.insert(chain_id);
-                        }
-                        if self.selection.chains.contains(&chain_id) {
-                            let tiers = self
-                                .drawing
-                                .dimension_chains
-                                .iter()
-                                .find(|c| c.id == chain_id)
-                                .and_then(|c| self.chain_tiers(c));
-                            if let Some(t) = tiers {
-                                self.view.drag = Some(view_state::Drag::ChainOffset {
-                                    chain_id,
-                                    run_start: view_state::World {
-                                        x: t.computed.start.x,
-                                        y: t.computed.start.y,
-                                    },
-                                    run_normal: view_state::World {
-                                        x: t.computed.normal.x,
-                                        y: t.computed.normal.y,
-                                    },
-                                    moved: false,
-                                });
-                            }
-                        }
-                        self.sync_edit_tools();
-                        self.sync_canvas();
-                        return Task::none();
-                    }
-                    // Text hit-test takes priority.
-                    let mut text_hit: Option<i64> = None;
-                    for t in &self.drawing.texts {
-                        if placed_text::point_in_text(t, world, self.view.zoom) {
-                            text_hit = Some(t.id);
-                            break;
-                        }
-                    }
-                    if let Some(id) = text_hit {
-                        if !additive {
-                            self.selection.clear();
-                        }
-                        if additive && self.selection.texts.contains(&id) {
-                            self.selection.texts.remove(&id);
-                        } else {
-                            self.selection.texts.insert(id);
-                        }
-                        self.sync_edit_tools();
-                        return Task::none();
-                    }
-                    // Symbol hit-test takes priority (P4: symbols before walls).
-                    let mut symbol_hit: Option<i64> = None;
-                    for sym in &self.drawing.symbols {
-                        let bounds = self.symbols_lib().symbol(&sym.symbol_type).map(|d| {
-                            (
-                                d.bounds.min_x,
-                                d.bounds.min_y,
-                                d.bounds.max_x,
-                                d.bounds.max_y,
-                            )
+            }
+            // An area's label / size block (`hitTestAt`'s first pass).
+            if let Some((kind, id)) = self.area_text_at(world) {
+                if !additive {
+                    self.selection.clear();
+                }
+                let set = if kind == handles::TextKind::AreaSize {
+                    &mut self.selection.area_sizes
+                } else {
+                    &mut self.selection.area_labels
+                };
+                if additive && set.contains(&id) {
+                    set.remove(&id);
+                } else {
+                    set.insert(id);
+                }
+                self.sync_edit_tools();
+                return Task::none();
+            }
+            // A dimension chain's tier wins first (S9-035): Ctrl or
+            // Select more toggles membership; a joined click arms drag.
+            if let Some(chain_id) = self.drawing.chain_hit(world, self.view.zoom) {
+                if !additive {
+                    self.selection.clear();
+                }
+                if additive && self.selection.chains.contains(&chain_id) {
+                    self.selection.chains.remove(&chain_id);
+                } else {
+                    self.selection.chains.insert(chain_id);
+                }
+                if self.selection.chains.contains(&chain_id) {
+                    let tiers = self
+                        .drawing
+                        .dimension_chains
+                        .iter()
+                        .find(|c| c.id == chain_id)
+                        .and_then(|c| self.chain_tiers(c));
+                    if let Some(t) = tiers {
+                        self.view.drag = Some(view_state::Drag::ChainOffset {
+                            chain_id,
+                            run_start: view_state::World {
+                                x: t.computed.start.x,
+                                y: t.computed.start.y,
+                            },
+                            run_normal: view_state::World {
+                                x: t.computed.normal.x,
+                                y: t.computed.normal.y,
+                            },
+                            moved: false,
                         });
-                        if placed_symbol::point_in_symbol(sym, bounds, world, self.view.zoom) {
-                            symbol_hit = Some(sym.id);
-                            break;
-                        }
-                    }
-                    if let Some(id) = symbol_hit {
-                        if !additive {
-                            self.selection.clear();
-                        }
-                        if additive && self.selection.symbols.contains(&id) {
-                            self.selection.symbols.remove(&id);
-                        } else {
-                            self.selection.symbols.insert(id);
-                        }
-                    } else if let Some(id) = self.dimension_hit_at(world) {
-                        // A measurement label: Ctrl / Select more toggles it.
-                        if !additive {
-                            self.selection.clear();
-                        }
-                        if additive && self.selection.dimensions.contains(&id) {
-                            self.selection.dimensions.remove(&id);
-                        } else {
-                            self.selection.dimensions.insert(id);
-                        }
-                        self.sync_edit_tools();
-                        return Task::none();
-                    } else {
-                        if !additive {
-                            self.selection.symbols.clear();
-                        }
-                        let gates = self.layer_gates();
-                        selection::select_at(
-                            &mut self.selection,
-                            world,
-                            &self.drawing.lines,
-                            &self.drawing.polygons,
-                            self.view.zoom,
-                            additive,
-                            &|id| gates.selectable(id),
-                        );
-                    }
-                    self.sync_edit_tools();
-                    return Task::none();
-                }
-                if self.view.mode.is_drawing() {
-                    let world = self.world(x, y);
-                    // `pushUndo('Draw')` before the click changes the model.
-                    self.push_undo("Draw");
-                    let had_areas = !self.drawing.polygons.is_empty();
-                    let previous = self.drawing.lines.last().map(|line| line.id);
-                    self.drawing.click(world, self.draw_ctx());
-                    let closed = self.finish_wall_commit(previous);
-                    if let Some(text) = self.drawing.pending_notice.take() {
-                        return self.toasts.show(text);
-                    }
-                    if double {
-                        self.drawing.pen_up();
-                    }
-                    if closed > 0 {
-                        self.fit_after_first_area(had_areas);
-                        return self.toasts.show("Area closed and ready to define.".into());
                     }
                 }
-                Task::none()
+                self.sync_edit_tools();
+                self.sync_canvas();
+                return Task::none();
+            }
+            // Text hit-test takes priority.
+            let mut text_hit: Option<i64> = None;
+            for t in &self.drawing.texts {
+                if placed_text::point_in_text(t, world, self.view.zoom) {
+                    text_hit = Some(t.id);
+                    break;
+                }
+            }
+            if let Some(id) = text_hit {
+                if !additive {
+                    self.selection.clear();
+                }
+                if additive && self.selection.texts.contains(&id) {
+                    self.selection.texts.remove(&id);
+                } else {
+                    self.selection.texts.insert(id);
+                }
+                self.sync_edit_tools();
+                return Task::none();
+            }
+            // Symbol hit-test takes priority (P4: symbols before walls).
+            let mut symbol_hit: Option<i64> = None;
+            for sym in &self.drawing.symbols {
+                let bounds = self.symbols_lib().symbol(&sym.symbol_type).map(|d| {
+                    (
+                        d.bounds.min_x,
+                        d.bounds.min_y,
+                        d.bounds.max_x,
+                        d.bounds.max_y,
+                    )
+                });
+                if placed_symbol::point_in_symbol(sym, bounds, world, self.view.zoom) {
+                    symbol_hit = Some(sym.id);
+                    break;
+                }
+            }
+            if let Some(id) = symbol_hit {
+                if !additive {
+                    self.selection.clear();
+                }
+                if additive && self.selection.symbols.contains(&id) {
+                    self.selection.symbols.remove(&id);
+                } else {
+                    self.selection.symbols.insert(id);
+                }
+            } else if let Some(id) = self.dimension_hit_at(world) {
+                // A measurement label: Ctrl / Select more toggles it.
+                if !additive {
+                    self.selection.clear();
+                }
+                if additive && self.selection.dimensions.contains(&id) {
+                    self.selection.dimensions.remove(&id);
+                } else {
+                    self.selection.dimensions.insert(id);
+                }
+                self.sync_edit_tools();
+                return Task::none();
+            } else {
+                if !additive {
+                    self.selection.symbols.clear();
+                }
+                let gates = self.layer_gates();
+                selection::select_at(
+                    &mut self.selection,
+                    world,
+                    &self.drawing.lines,
+                    &self.drawing.polygons,
+                    self.view.zoom,
+                    additive,
+                    &|id| gates.selectable(id),
+                );
+            }
+            self.sync_edit_tools();
+            return Task::none();
+        }
+        if self.view.mode.is_drawing() {
+            let world = self.world(x, y);
+            // `pushUndo('Draw')` before the click changes the model.
+            self.push_undo("Draw");
+            let had_areas = !self.drawing.polygons.is_empty();
+            let previous = self.drawing.lines.last().map(|line| line.id);
+            self.drawing.click(world, self.draw_ctx());
+            let closed = self.finish_wall_commit(previous);
+            if let Some(text) = self.drawing.pending_notice.take() {
+                return self.toasts.show(text);
+            }
+            if double {
+                self.drawing.pen_up();
+            }
+            if closed > 0 {
+                self.fit_after_first_area(had_areas);
+                return self.toasts.show("Area closed and ready to define.".into());
+            }
+        }
+        Task::none()
     }
 
     /// `setMode(mode)` plus the toast some modes announce.
@@ -5577,7 +5686,12 @@ impl App {
     }
 
     #[cfg(windows)]
-    fn appraise_it_sketch(&self) -> (Vec<(usize, String)>, Result<appraise_it::UnitAreaTotals, String>) {
+    fn appraise_it_sketch(
+        &self,
+    ) -> (
+        Vec<(usize, String)>,
+        Result<appraise_it::UnitAreaTotals, String>,
+    ) {
         let mut totals = Vec::new();
         let images = exporter::build_export_pages(&self.drawing, &self.pages, &self.area_codes)
             .iter()
@@ -5590,11 +5704,8 @@ impl App {
             })
             .map(|(index, page)| {
                 let drawing = self.drawing_for_report_page(index);
-                let calculated = drawing.recalculate_areas(
-                    &drawing.polygons,
-                    &drawing.lines,
-                    &self.area_codes,
-                );
+                let calculated =
+                    drawing.recalculate_areas(&drawing.polygons, &drawing.lines, &self.area_codes);
                 totals.push(calculated.totals.totals_by_code);
                 let svg = report_sketch::svg(
                     &drawing,
@@ -5767,7 +5878,10 @@ impl App {
                     | view_state::Mode::PlaceSymbol
                     | view_state::Mode::Select
             ) || !self.ui.drawer_pinned)
-                && !matches!(mode, view_state::Mode::PlaceText | view_state::Mode::PlaceSymbol)
+                && !matches!(
+                    mode,
+                    view_state::Mode::PlaceText | view_state::Mode::PlaceSymbol
+                )
             {
                 self.ui.drawer = None;
             }
@@ -7039,9 +7153,7 @@ impl App {
             return Task::none();
         }
         if self.layers.items.iter().filter(|l| !l.is_group).count() <= 1 {
-            return self
-                .toasts
-                .show("Keep at least one layer.".to_string());
+            return self.toasts.show("Keep at least one layer.".to_string());
         }
         self.push_undo("Delete Layer");
         self.delete_layer_contents(id);
@@ -7098,16 +7210,23 @@ impl App {
             .map(|t| t.id)
             .collect();
         self.drawing.lines.retain(|l| !dead_lines.contains(&l.id));
-        self.drawing.polygons.retain(|p| !dead_polys.contains(&p.id));
-        self.drawing.symbols.retain(|s| !dead_symbols.contains(&s.id));
+        self.drawing
+            .polygons
+            .retain(|p| !dead_polys.contains(&p.id));
+        self.drawing
+            .symbols
+            .retain(|s| !dead_symbols.contains(&s.id));
         self.drawing.texts.retain(|t| !dead_texts.contains(&t.id));
         let lines = &self.drawing.lines;
         self.drawing
             .dimension_chains
             .retain(|c| lines.iter().any(|l| l.id == c.seed_line_id));
-        self.drawing
-            .reopened_areas
-            .retain(|r| !r.original.layer_id.as_deref().is_some_and(|l| branch.contains(l)));
+        self.drawing.reopened_areas.retain(|r| {
+            !r.original
+                .layer_id
+                .as_deref()
+                .is_some_and(|l| branch.contains(l))
+        });
         self.selection.clear();
         self.layers.remove(id);
     }
@@ -7120,9 +7239,9 @@ impl App {
             .items
             .iter()
             .filter(|l| {
-                l.area_poly_id.as_deref().is_some_and(|p| {
-                    !self.drawing.polygons.iter().any(|q| q.id.to_string() == p)
-                })
+                l.area_poly_id
+                    .as_deref()
+                    .is_some_and(|p| !self.drawing.polygons.iter().any(|q| q.id.to_string() == p))
             })
             .map(|l| l.id.clone())
             .collect();
@@ -7246,15 +7365,18 @@ impl App {
         grabbed: sketch_core::geometry::Pt,
     ) -> Option<sketch_core::geometry::Pt> {
         let reach = selection::tolerance(self.view.zoom, 10.0);
-        let joined = |p: sketch_core::geometry::Pt| {
-            (p.x - grabbed.x).hypot(p.y - grabbed.y) < 1e-5
-        };
+        let joined = |p: sketch_core::geometry::Pt| (p.x - grabbed.x).hypot(p.y - grabbed.y) < 1e-5;
         let points = self
             .drawing
             .lines
             .iter()
             .flat_map(|l| [l.start, l.end])
-            .chain(self.drawing.polygons.iter().flat_map(|p| p.points.iter().copied()))
+            .chain(
+                self.drawing
+                    .polygons
+                    .iter()
+                    .flat_map(|p| p.points.iter().copied()),
+            )
             .filter(|p| !joined(*p));
         points
             .map(|p| ((p.x - target.x).hypot(p.y - target.y), p))
@@ -7301,11 +7423,23 @@ impl App {
         let Some(pitch) = self.view.edit_grid().filter(|p| *p > 0.0) else {
             return (dx, dy);
         };
+        // JS Math.sign semantics: Math.sign(±0) is 0. Rust's f64::signum
+        // returns 1.0 for +0.0, which invented ten pitches of sideways
+        // motion on every plain arrow key (the zero axis).
+        let sign = |d: f64| {
+            if d > 0.0 {
+                1.0
+            } else if d < 0.0 {
+                -1.0
+            } else {
+                0.0
+            }
+        };
         let scale = |d: f64| {
             if d.abs() >= 1.0 {
-                d.signum() * pitch
+                sign(d) * pitch
             } else {
-                d.signum() * pitch * 10.0
+                sign(d) * pitch * 10.0
             }
         };
         (scale(dx), scale(dy))
@@ -7590,14 +7724,14 @@ impl App {
             Msg::ImportChosen(session, path) => {
                 if self.ui.type_editor.open && session == self.ui.type_editor.session {
                     if let Some(path) = path {
-                        match std::fs::read_to_string(&path).map_err(|e| e.to_string()).and_then(
-                            |body| {
+                        match std::fs::read_to_string(&path)
+                            .map_err(|e| e.to_string())
+                            .and_then(|body| {
                                 sketch_core::geometry::area_codes::from_json(
                                     body.trim_start_matches('\u{feff}'),
                                 )
                                 .map_err(|e| e.to_string())
-                            },
-                        ) {
+                            }) {
                             Ok(codes) => self.ui.type_editor.load_imported_codes(codes),
                             Err(error) => {
                                 return self
@@ -7680,9 +7814,7 @@ impl App {
                     self.drawing.selected_area_name = None;
                 }
                 Some(ui::type_editor::RemapTarget::Updated {
-                    new_code,
-                    new_name,
-                    ..
+                    new_code, new_name, ..
                 }) => {
                     self.workflow.armed = Some(new_code.clone());
                     self.drawing.selected_area_type = Some(new_code.clone());
@@ -7821,66 +7953,87 @@ impl App {
         self.selection.polys.retain(|id| !dead_polys.contains(id));
     }
 
-    /// `autoAssignLayer(name, toBack)` (sketch-app.js:1688): the selection
-    /// moves onto a named top-level layer (created on demand) that is pushed
-    /// to the back or front of the stack, then the entities re-sort within
-    /// their layer segments (`reorderSelectionWithinLayers(!toBack)`).
-    ///
-    /// Labels and symbols keep the legacy numeric `layerId` (0) this port's
-    /// PlacedText/PlacedSymbol carry; in the original they sit on the phantom
-    /// "0" layer — one bottom segment the reorder can't visibly split — so
-    /// assigning/reordering them is a no-op here too.
-    fn auto_assign_layer(&mut self, name: &str, to_back: bool) -> Task<Message> {
+    /// `Send to back` / `Bring to front` for the selection: a RESTACK, never
+    /// a layer. The layers holding selected walls/areas move to the stack's
+    /// back or front, the selected entities slide to the back or front of
+    /// their layer's segment (`reorderSelectionWithinLayers`), and selected
+    /// symbols/labels slide within their own array. The original's
+    /// `autoAssignLayer` minted a layer NAMED after the command ("Send to
+    /// Back", "Bring to Front"), which then read as an area in the list.
+    fn restack_selection(&mut self, to_front: bool) -> Task<Message> {
         if !self.has_selection() {
             return Task::none();
         }
-        self.push_undo("Auto-Assign Layer");
-        let known = self
-            .layers
-            .items
-            .iter()
-            .any(|l| l.name == name && !l.is_group && l.parent_id.is_none());
-        let layer_id = if known {
-            self.layers
-                .items
-                .iter()
-                .find(|l| l.name == name)
-                .map(|l| l.id.clone())
-                .expect("name found")
+        self.push_undo(if to_front {
+            "Bring to Front"
         } else {
-            let id = format!("layer-{}", self.drawing.gen_id());
-            self.layers
-                .create_layer_raw(id.clone(), name.to_string(), false);
-            id
-        };
-        if let Some(l) = self.layers.items.iter_mut().find(|l| l.id == layer_id) {
-            l.visible = true;
-            l.locked = false;
-        }
-        // Restack: [layer, ...others] or [...others, layer].
-        if let Some(i) = self.layers.items.iter().position(|l| l.id == layer_id) {
-            let layer = self.layers.items.remove(i);
-            if to_back {
-                self.layers.items.insert(0, layer);
-            } else {
-                self.layers.items.push(layer);
-            }
-        }
-        // Assign the selected entities onto the layer.
+            "Send to Back"
+        });
         let sel = self.selection.clone();
-        for line in &mut self.drawing.lines {
+        // The layers holding selected walls or areas, in paint order.
+        let mut touched: Vec<String> = Vec::new();
+        let note = |id: String, touched: &mut Vec<String>| {
+            if !touched.contains(&id) {
+                touched.push(id);
+            }
+        };
+        for line in &self.drawing.lines {
             if sel.lines.contains(&line.id) {
-                line.layer_id = Some(layer_id.clone());
+                let id = self.entity_layer_id(line.layer_id.as_deref());
+                note(id, &mut touched);
             }
         }
-        for poly in &mut self.drawing.polygons {
+        for poly in &self.drawing.polygons {
             if sel.polys.contains(&poly.id) {
-                poly.layer_id = Some(layer_id.clone());
+                let id = self.entity_layer_id(poly.layer_id.as_deref());
+                note(id, &mut touched);
             }
         }
-        self.reorder_selection_within_layers(!to_back);
-        let toast = format!("Moved selection to layer {name}.");
-        self.toasts.show(toast)
+        // Only top-level layers restack as a block; one inside a folder keeps
+        // its place in that folder, as the row list shows it.
+        let order: Vec<String> = self
+            .layers
+            .flatten_layer_order()
+            .iter()
+            .map(|l| l.id.clone())
+            .collect();
+        let mut moving: Vec<layers::Layer> = Vec::new();
+        for id in order {
+            let movable = touched.contains(&id)
+                && self
+                    .layers
+                    .layer(&id)
+                    .is_some_and(|l| l.parent_id.is_none());
+            if let Some(i) = movable
+                .then(|| self.layers.items.iter().position(|l| l.id == id))
+                .flatten()
+            {
+                moving.push(self.layers.items.remove(i));
+            }
+        }
+        if to_front {
+            self.layers.items.extend(moving);
+        } else {
+            moving.extend(std::mem::take(&mut self.layers.items));
+            self.layers.items = moving;
+        }
+        self.reorder_selection_within_layers(to_front);
+        // Symbols and labels keep the legacy numeric layer id, so their paint
+        // order is their own array's: slide them to the end (front) or start.
+        let sym_sel = sel.symbols.clone();
+        if !sym_sel.is_empty() {
+            reorder_selected(&mut self.drawing.symbols, &sym_sel, |s| s.id, to_front);
+        }
+        let text_sel = sel.texts.clone();
+        if !text_sel.is_empty() {
+            reorder_selected(&mut self.drawing.texts, &text_sel, |t| t.id, to_front);
+        }
+        let toast = if to_front {
+            "Moved selection to the front."
+        } else {
+            "Moved selection to the back."
+        };
+        self.toasts.show(toast.to_string())
     }
 
     /// `reorderSelectionWithinLayers(toFront)` (sketch-app.js:1727): within
@@ -8398,11 +8551,8 @@ impl App {
             .filter(|(id, _)| *id == line.id)
             .map(|(_, start)| start)
             .unwrap_or(false);
-        let boundary_colors = render::area_boundary_colors(
-            &self.drawing,
-            &self.area_codes,
-            &self.gates_cache,
-        );
+        let boundary_colors =
+            render::area_boundary_colors(&self.drawing, &self.area_codes, &self.gates_cache);
         Some(ui::inspector::EditToolsData {
             endpoint_label: if at_start {
                 "Length · Start handle"
@@ -8750,15 +8900,9 @@ impl App {
             // not apply to a desktop window.
             Action::OpenDropped(path) => return self.open_requested(path),
             // Save, then close only if the save really happened (the file
-            // picker can be cancelled, the write can fail).
-            Action::SaveAndExit => {
-                let task = self.save_to_file(false);
-                self.refresh_dirty();
-                if !self.dirty {
-                    return self.exit();
-                }
-                return task;
-            }
+            // picker can be cancelled, the write can fail). The exit check
+            // rides in the save request, so it also covers the dialog path.
+            Action::SaveAndExit => return self.save_to_file(false, true),
             Action::PhotoRemove => {
                 self.bg_image = reference_image::BgImage::default();
                 self.ui.inspector_image_adjust = false;
@@ -8980,22 +9124,12 @@ impl App {
 
     /// `loadBgImage(file)`: the picker reads the image; the fresh state is
     /// visible/centered/auto-fit to ~60 feet, flips reset, the 50
-    /// intensity.
+    /// intensity. The dialog runs on its own thread and the continuation
+    /// lands in `DialogPicked(PhotoImage, ..)`.
     fn photo_load(&mut self) -> Task<Message> {
-        if let Some(path) = file_dialogs::open_image()
-        {
-            if let Ok(bytes) = std::fs::read(&path) {
-                let size = reference_image::image_size(&bytes);
-                let handle = iced::widget::image::Handle::from_bytes(bytes);
-                self.bg_image = match size {
-                    Some((w, h)) => reference_image::BgImage::load(handle, w, h),
-                    // A format the header scan can't size: load at the
-                    // natural 1x1 scale assumption (the user rescales).
-                    None => reference_image::BgImage::load(handle, 1, 1),
-                };
-            }
-        }
-        Task::none()
+        Task::perform(file_dialogs::open_image(), |path| {
+            Message::DialogPicked(DialogRequest::PhotoImage, path)
+        })
     }
 
     /// `resetToBlank()` (sketch-app.js:5306): drop every page and return to
@@ -9153,12 +9287,7 @@ impl App {
         };
 
         match symlib::try_edit_library(|lib| {
-            sketch_core::symbol_edit::replace_geometry(
-                lib,
-                &session.symbol_id,
-                &entities,
-                bounds,
-            )
+            sketch_core::symbol_edit::replace_geometry(lib, &session.symbol_id, &entities, bounds)
         }) {
             Ok(_) => {
                 self.rebuild_symbols();
@@ -9176,7 +9305,8 @@ impl App {
                             .show("Saved for this user only (library file is read-only).".into()),
                     ]);
                 }
-                self.toasts.show("Could not locate symbol to update.".into())
+                self.toasts
+                    .show("Could not locate symbol to update.".into())
             }
             Err((err, false)) => {
                 if let Some(sym) = self.symbol_changes.custom.get_mut(&session.symbol_id) {
@@ -9256,6 +9386,14 @@ impl App {
 
     /// Build a save model mirroring buildSaveModel (refs/sketch-app.js:5211).
     fn build_save_model(&mut self) -> serde_json::Value {
+        let mut model = self.build_save_model_without_backing();
+        if let Some(backing) = &self.sketchy_backing {
+            model["sketchyBacking"] = serde_json::json!(backing);
+        }
+        model
+    }
+
+    pub(crate) fn build_save_model_without_backing(&mut self) -> serde_json::Value {
         // saveCurrentPage()
         self.save_current_page();
         let pages: Vec<serde_json::Value> = self
@@ -9297,7 +9435,7 @@ impl App {
             "options": options,
             "customSymbols": self.portable_custom_symbols(),
         });
-        let mut model = serde_json::json!({
+        serde_json::json!({
             "version": "Sketch-Web",
             "areaModelVersion": 1,
             "fileName": self.file_name,
@@ -9313,11 +9451,7 @@ impl App {
             "extendedData": self.extended_data,
             "settings": settings,
             "savedAt": iso_now(),
-        });
-        if let Some(backing) = &self.sketchy_backing {
-            model["sketchyBacking"] = serde_json::json!(backing);
-        }
-        model
+        })
     }
 
     /// The saved entity `layerId` is a layer NAME; the placed
@@ -9483,7 +9617,8 @@ impl App {
             self.view.center_and_fit(self.sketch_view_bounds());
             if omitted {
                 return self.toasts.show(
-                    "Some Sketchie details are hidden in this view and retained in the file.".into(),
+                    "Some Sketchie details are hidden in this view and retained in the file."
+                        .into(),
                 );
             }
         }
@@ -9515,59 +9650,107 @@ impl App {
     }
 
     /// Save overwrites the bound file. First save and Save As choose a path.
-    /// Commit the new target only after a successful atomic write.
-    fn save_to_file(&mut self, save_as: bool) -> Task<Message> {
-        let mut model = self.build_save_model();
-        let mut fallback_toast = None;
-        let target = if let Some(target) = self.current_file.clone().filter(|_| !save_as) {
-            target
-        } else {
-            let prefer_sketchy = self
-                .current_file
-                .as_ref()
-                .is_some_and(|file| file.format.is_sketchy())
-                || (self.current_file.is_none() && self.sketchy_backing.is_some())
-                || self.save_as_sketchie;
-            let ext = if prefer_sketchy {
-                // The Sketchie store is the default; a JSON copy stays one
-                // click away in the dialog's file-type list.
-                "sketchie"
-            } else {
-                match sketch_core::skx::write(&model, &Default::default()) {
-                    Ok(_) => "skx",
-                    Err(e) => {
-                        fallback_toast = Some(format!(
-                            "Could not write .skx ({e}) - saved as JSON instead."
-                        ));
-                        "json"
-                    }
+    /// Commit the new target only after a successful atomic write. With
+    /// `exit_when_saved` (the unsaved-changes prompt's Save), the app closes
+    /// once the save really happened: a cancelled picker or a failed write
+    /// leaves it open.
+    fn save_to_file(&mut self, save_as: bool, exit_when_saved: bool) -> Task<Message> {
+        if let Some(target) = self.current_file.clone().filter(|_| !save_as) {
+            let task = self.write_save_target(target, None);
+            if exit_when_saved {
+                self.refresh_dirty();
+                if !self.dirty {
+                    return self.exit();
                 }
-            };
-            let name = self
-                .current_file
-                .as_ref()
-                .filter(|file| file.format.is_sketchy())
-                .map(|file| sketchy_file_stem(&file.path))
-                .filter(|stem| !stem.is_empty())
-                .unwrap_or(&self.file_name);
-            let Some(path) = file_dialogs::save_sketch(&format!("{name}.{ext}"), ext) else {
-                return Task::none();
-            };
-            let path = match std::path::absolute(path) {
-                Ok(path) => path,
-                Err(e) => return self.toasts.show(format!("Could not save sketch: {e}")),
-            };
-            let same = self
-                .current_file
-                .as_ref()
-                .filter(|file| same_sketch_path(&file.path, &path));
-            let (path, format) = if let Some(file) = same {
-                (path, file.format)
-            } else {
-                sketch_destination(path, ext)
-            };
-            CurrentFile { path, format }
+            }
+            return task;
+        }
+        let prefer_sketchy = self
+            .current_file
+            .as_ref()
+            .is_some_and(|file| file.format.is_sketchy())
+            || (self.current_file.is_none() && self.sketchy_backing.is_some())
+            || self.save_as_sketchie;
+        let mut fallback_toast = None;
+        let ext = if prefer_sketchy {
+            // The Sketchie store is the default; a JSON copy stays one
+            // click away in the dialog's file-type list.
+            "sketchie"
+        } else {
+            match sketch_core::skx::write(&self.build_save_model(), &Default::default()) {
+                Ok(_) => "skx",
+                Err(e) => {
+                    fallback_toast = Some(format!(
+                        "Could not write .skx ({e}) - saved as JSON instead."
+                    ));
+                    "json"
+                }
+            }
         };
+        let name = self
+            .current_file
+            .as_ref()
+            .filter(|file| file.format.is_sketchy())
+            .map(|file| sketchy_file_stem(&file.path))
+            .filter(|stem| !stem.is_empty())
+            .unwrap_or(&self.file_name);
+        Task::perform(
+            file_dialogs::save_sketch(format!("{name}.{ext}"), ext.to_owned()),
+            move |path| {
+                Message::DialogPicked(
+                    DialogRequest::SaveSketch {
+                        ext: ext.to_owned(),
+                        fallback_toast,
+                        exit_when_saved,
+                    },
+                    path,
+                )
+            },
+        )
+    }
+
+    /// The Save continuation once the picker resolved a destination: turn
+    /// the picked path into the save target (keeping the already-bound
+    /// format when it is the same file), write it, and honour the exit
+    /// request when the save cleared the dirty flag.
+    fn save_picked(
+        &mut self,
+        ext: String,
+        fallback_toast: Option<String>,
+        exit_when_saved: bool,
+        path: std::path::PathBuf,
+    ) -> Task<Message> {
+        let path = match std::path::absolute(path) {
+            Ok(path) => path,
+            Err(e) => return self.toasts.show(format!("Could not save sketch: {e}")),
+        };
+        let same = self
+            .current_file
+            .as_ref()
+            .filter(|file| same_sketch_path(&file.path, &path));
+        let (path, format) = if let Some(file) = same {
+            (path, file.format)
+        } else {
+            sketch_destination(path, &ext)
+        };
+        let task = self.write_save_target(CurrentFile { path, format }, fallback_toast);
+        if exit_when_saved {
+            self.refresh_dirty();
+            if !self.dirty {
+                return self.exit();
+            }
+        }
+        task
+    }
+
+    /// Write the model to `target` and commit it as the current file;
+    /// `fallback_toast` is the .skx-fallback notice from the format probe.
+    fn write_save_target(
+        &mut self,
+        target: CurrentFile,
+        fallback_toast: Option<String>,
+    ) -> Task<Message> {
+        let mut model = self.build_save_model();
         let same_target = self
             .current_file
             .as_ref()
@@ -9674,6 +9857,107 @@ impl App {
         match fallback_toast.filter(|_| json_fallback) {
             Some(toast) => self.toasts.show(toast),
             None => Task::none(),
+        }
+    }
+
+    /// A native file dialog resolved: run the flow's continuation with the
+    /// picked path. A cancelled dialog (None) does nothing, exactly like
+    /// the `if let Some(..)` it replaces.
+    fn dialog_picked(
+        &mut self,
+        request: DialogRequest,
+        path: Option<std::path::PathBuf>,
+    ) -> Task<Message> {
+        let Some(path) = path else {
+            return Task::none();
+        };
+        match request {
+            DialogRequest::OpenSketch => self.open_requested(path),
+            DialogRequest::PhotoImage => {
+                if let Ok(bytes) = std::fs::read(&path) {
+                    let size = reference_image::image_size(&bytes);
+                    let handle = iced::widget::image::Handle::from_bytes(bytes);
+                    self.bg_image = match size {
+                        Some((w, h)) => reference_image::BgImage::load(handle, w, h),
+                        // A format the header scan can't size: load at the
+                        // natural 1x1 scale assumption (the user rescales).
+                        None => reference_image::BgImage::load(handle, 1, 1),
+                    };
+                }
+                Task::none()
+            }
+            DialogRequest::ImportSketch => self.import_sketch_path(&path),
+            DialogRequest::ImportCad => self.import_cad_file(&path),
+            DialogRequest::ImportLayer => self.import_layer_path(path),
+            DialogRequest::ExportPng => match self.png_export_bytes() {
+                Some(bytes) => {
+                    let _ = std::fs::write(&path, bytes);
+                    Task::none()
+                }
+                None => self
+                    .toasts
+                    .show("Export as PNG could not fit the sketch.".to_string()),
+            },
+            DialogRequest::ExportSvg => {
+                let north = self.pages.page().north_angle;
+                let page = exporter::build_export_page(&self.drawing, north, &self.area_codes);
+                let options = exporter::export_options(&self.drawing);
+                let codes = self.area_codes.clone();
+                let library = self
+                    .symbols
+                    .as_ref()
+                    .as_ref()
+                    .ok()
+                    .map(|index| &index.library);
+                let svg = sketch_core::export_svg::export_svg(&page, &options, &codes, library);
+                let _ = std::fs::write(&path, svg);
+                Task::none()
+            }
+            DialogRequest::ExportDxf => {
+                let north = self.pages.page().north_angle;
+                let page = exporter::build_export_page(&self.drawing, north, &self.area_codes);
+                let options = exporter::export_options(&self.drawing);
+                let codes = self.area_codes.clone();
+                let dxf = sketch_core::export_dxf::export_dxf(&page, &options, &codes);
+                let _ = std::fs::write(&path, dxf);
+                Task::none()
+            }
+            DialogRequest::ExportPdf => {
+                let _ = std::fs::write(&path, self.report_pdf());
+                Task::none()
+            }
+            DialogRequest::BreakdownJson => {
+                // AreaBreakdown.toJSON → area-breakdown.json.
+                let results = self.breakdown_results();
+                let data = sketch_core::breakdown::to_json(&results, &self.area_codes);
+                let _ = std::fs::write(&path, serde_json::to_vec_pretty(&data).unwrap_or_default());
+                Task::none()
+            }
+            DialogRequest::BreakdownXml => {
+                // AreaBreakdown.toXml → area-breakdown.xml (the BOM + CRLF
+                // the original writes). The subject line is the report
+                // subject's address.
+                let results = self.breakdown_results();
+                let report_subject = exporter::report_subject(&self.subject_info);
+                let xml = sketch_core::breakdown::to_xml(
+                    &self.file_name,
+                    &report_subject.property_address,
+                    &report_subject.comment_tables,
+                    &results,
+                    &self.area_codes,
+                );
+                let _ = std::fs::write(&path, xml);
+                Task::none()
+            }
+            DialogRequest::SaveSketch {
+                ext,
+                fallback_toast,
+                exit_when_saved,
+            } => self.save_picked(ext, fallback_toast, exit_when_saved, path),
+            DialogRequest::ExportLibrary { subset } => {
+                ui::symbol_library::export_library_file(self, &path, subset.as_ref())
+            }
+            DialogRequest::ImportLibrary => ui::symbol_library::import_library_file(self, &path),
         }
     }
 
@@ -10130,28 +10414,68 @@ impl App {
         let fixed = Length::Fixed;
         column![
             row![
-                zone(fixed(CORNER), fixed(EDGE), D::NorthWest, I::ResizingDiagonallyDown),
+                zone(
+                    fixed(CORNER),
+                    fixed(EDGE),
+                    D::NorthWest,
+                    I::ResizingDiagonallyDown
+                ),
                 zone(Length::Fill, fixed(EDGE), D::North, I::ResizingVertically),
-                zone(fixed(CORNER), fixed(EDGE), D::NorthEast, I::ResizingDiagonallyUp),
+                zone(
+                    fixed(CORNER),
+                    fixed(EDGE),
+                    D::NorthEast,
+                    I::ResizingDiagonallyUp
+                ),
             ],
             row![
                 column![
-                    zone(fixed(EDGE), fixed(CORNER - EDGE), D::NorthWest, I::ResizingDiagonallyDown),
+                    zone(
+                        fixed(EDGE),
+                        fixed(CORNER - EDGE),
+                        D::NorthWest,
+                        I::ResizingDiagonallyDown
+                    ),
                     zone(fixed(EDGE), Length::Fill, D::West, I::ResizingHorizontally),
-                    zone(fixed(EDGE), fixed(CORNER - EDGE), D::SouthWest, I::ResizingDiagonallyUp),
+                    zone(
+                        fixed(EDGE),
+                        fixed(CORNER - EDGE),
+                        D::SouthWest,
+                        I::ResizingDiagonallyUp
+                    ),
                 ],
                 Space::new().width(Length::Fill),
                 column![
-                    zone(fixed(EDGE), fixed(CORNER - EDGE), D::NorthEast, I::ResizingDiagonallyUp),
+                    zone(
+                        fixed(EDGE),
+                        fixed(CORNER - EDGE),
+                        D::NorthEast,
+                        I::ResizingDiagonallyUp
+                    ),
                     zone(fixed(EDGE), Length::Fill, D::East, I::ResizingHorizontally),
-                    zone(fixed(EDGE), fixed(CORNER - EDGE), D::SouthEast, I::ResizingDiagonallyDown),
+                    zone(
+                        fixed(EDGE),
+                        fixed(CORNER - EDGE),
+                        D::SouthEast,
+                        I::ResizingDiagonallyDown
+                    ),
                 ],
             ]
             .height(Length::Fill),
             row![
-                zone(fixed(CORNER), fixed(EDGE), D::SouthWest, I::ResizingDiagonallyUp),
+                zone(
+                    fixed(CORNER),
+                    fixed(EDGE),
+                    D::SouthWest,
+                    I::ResizingDiagonallyUp
+                ),
                 zone(Length::Fill, fixed(EDGE), D::South, I::ResizingVertically),
-                zone(fixed(CORNER), fixed(EDGE), D::SouthEast, I::ResizingDiagonallyDown),
+                zone(
+                    fixed(CORNER),
+                    fixed(EDGE),
+                    D::SouthEast,
+                    I::ResizingDiagonallyDown
+                ),
             ],
         ]
         .width(Length::Fill)
@@ -10271,7 +10595,8 @@ impl App {
             None => iced::widget::Space::new().into(),
         };
         let context_layer: Element<'_, Message> =
-            context_menu::layer(&self.context, self.window_size, self.ui.density).unwrap_or_else(|| iced::widget::Space::new().into());
+            context_menu::layer(&self.context, self.window_size, self.ui.density)
+                .unwrap_or_else(|| iced::widget::Space::new().into());
         let select_layer: Element<'_, Message> = select_menu::layer(&self.select_menu)
             .unwrap_or_else(|| iced::widget::Space::new().into());
         let popup_layer: Element<'_, Message> = popup_menu::layer(
@@ -10320,17 +10645,14 @@ impl App {
                 || self.workflow.menu.is_some()
                 || self.view.mode == view_state::Mode::DefineArea);
         let management_modal = self.symbol_manager.open || self.autosave_prompt;
-        let next_menu_open =
-            self.ui.menu_open && self.dialog.is_none();
+        let next_menu_open = self.ui.menu_open && self.dialog.is_none();
         // While search text is typed, Left and Right move the text cursor
         // instead of opening and closing fly-outs.
         let menu_query_empty = self.ui.menu_query.is_empty();
         let next_color_open = self.color.open;
         let next_type_editor_open = self.ui.type_editor.open && !self.color.open;
         let next_symbol_library_open = self.ui.symbol_library.open;
-        let next_modal_escape = if self.dialog.is_none()
-            && !self.shortcuts.open
-            && !self.guide.open
+        let next_modal_escape = if self.dialog.is_none() && !self.shortcuts.open && !self.guide.open
         {
             if self.options_dialog.open {
                 Some(Message::Options(options_dialog::OptMsg::Cancel))
@@ -10384,7 +10706,9 @@ impl App {
                 Key::Named(Named::Escape) if next_modal_escape.is_some() => {
                     next_modal_escape.clone()
                 }
-                Key::Named(Named::Escape) if next_menu_open => Some(Message::Ui(ui::Msg::CloseMenu)),
+                Key::Named(Named::Escape) if next_menu_open => {
+                    Some(Message::Ui(ui::Msg::CloseMenu))
+                }
                 Key::Named(Named::ArrowDown) if next_menu_open => {
                     Some(Message::Ui(ui::Msg::MenuMove(1)))
                 }
@@ -10397,9 +10721,7 @@ impl App {
                 Key::Named(Named::ArrowRight) if next_menu_open && menu_query_empty => {
                     Some(Message::Ui(ui::Msg::MenuSwitchGroup(1)))
                 }
-                Key::Named(Named::Enter) if next_menu_open => {
-                    Some(Message::Ui(ui::Msg::MenuEnter))
-                }
+                Key::Named(Named::Enter) if next_menu_open => Some(Message::Ui(ui::Msg::MenuEnter)),
                 Key::Named(Named::Escape) if workflow_escape || management_modal => {
                     Some(Message::Key(input::KeyCmd::Escape))
                 }
@@ -10424,9 +10746,7 @@ impl App {
         }
         if self.guide.open {
             tap = tap.on_escape(Message::Guide(guide::GuideMsg::Close));
-        } else if self.ui.has_open_overlays()
-            || self.history.open.is_some()
-            || self.pages_nav_open
+        } else if self.ui.has_open_overlays() || self.history.open.is_some() || self.pages_nav_open
         {
             tap = tap.on_escape(Message::Ui(ui::Msg::CloseOverlays));
         }
@@ -10494,6 +10814,27 @@ fn reorder_within_layers<T>(
     out
 }
 
+/// Stable-partitions `items` on a selection set with no layer segments of its
+/// own (symbols and labels): the selected ones slide to the end (front) or the
+/// start (back) of the array, which is their paint order.
+fn reorder_selected<T>(
+    items: &mut Vec<T>,
+    selected: &std::collections::HashSet<i64>,
+    id: impl Fn(&T) -> i64,
+    to_front: bool,
+) {
+    let (sel, unsel): (Vec<T>, Vec<T>) = std::mem::take(items)
+        .into_iter()
+        .partition(|item| selected.contains(&id(item)));
+    if to_front {
+        items.extend(unsel);
+        items.extend(sel);
+    } else {
+        items.extend(sel);
+        items.extend(unsel);
+    }
+}
+
 /// One segment's stable partition (the original's spread expression).
 fn flush_segment<T>(
     seg: &mut Vec<T>,
@@ -10556,42 +10897,38 @@ fn program(
     let (min_w, min_h) = (window_state::NEXT_MIN_W, window_state::NEXT_MIN_H);
     // Reopen where the window was left; `App::boot` reads the same file.
     let placement = window_state::load_with_min(ui_scale, system_scale(), min_w, min_h);
-    iced::application(
-        move || App::boot(ui_scale),
-        App::update,
-        App::view,
-    )
-    // Present frames without waiting for the display refresh: with
-    // vsync the wall being drawn trails the mouse cursor by a frame or
-    // two. Frames are only drawn in response to input, so this does not
-    // spin the GPU. `ICED_PRESENT_MODE=vsync` in the environment turns
-    // it back on. Must come before the calls below, which edit settings.
-    .settings(iced::Settings {
-        vsync: false,
-        fonts: ui::fonts::ALL_FONTS
-            .iter()
-            .map(|b| std::borrow::Cow::Borrowed(*b))
-            .collect(),
-        ..iced::Settings::default()
-    })
-    .title(App::window_title)
-    .subscription(App::subscription)
-    .scale_factor(|app: &App| app.ui_scale)
-    .default_font(theme::SEGOE)
-    .theme(|_: &App| iced::Theme::Dark)
-    .window(window::Settings {
-        size: placement.map_or(Size::new(WINDOW_W, WINDOW_H), |p| p.size()),
-        maximized: placement.is_some_and(|p| p.maximized),
-        // `min_size` is in OS-logical px: undo the app's own scale.
-        min_size: Some(Size::new(min_w * ui_scale, min_h * ui_scale)),
-        decorations: false,
-        exit_on_close_request: false,
-        position: placement
-            .and_then(|p| p.restore_position(ui_scale))
-            .map_or(window::Position::Centered, window::Position::Specific),
-        icon: Some(app_icon()),
-        ..window::Settings::default()
-    })
+    iced::application(move || App::boot(ui_scale), App::update, App::view)
+        // Present frames without waiting for the display refresh: with
+        // vsync the wall being drawn trails the mouse cursor by a frame or
+        // two. Frames are only drawn in response to input, so this does not
+        // spin the GPU. `ICED_PRESENT_MODE=vsync` in the environment turns
+        // it back on. Must come before the calls below, which edit settings.
+        .settings(iced::Settings {
+            vsync: false,
+            fonts: ui::fonts::ALL_FONTS
+                .iter()
+                .map(|b| std::borrow::Cow::Borrowed(*b))
+                .collect(),
+            ..iced::Settings::default()
+        })
+        .title(App::window_title)
+        .subscription(App::subscription)
+        .scale_factor(|app: &App| app.ui_scale)
+        .default_font(theme::SEGOE)
+        .theme(|_: &App| iced::Theme::Dark)
+        .window(window::Settings {
+            size: placement.map_or(Size::new(WINDOW_W, WINDOW_H), |p| p.size()),
+            maximized: placement.is_some_and(|p| p.maximized),
+            // `min_size` is in OS-logical px: undo the app's own scale.
+            min_size: Some(Size::new(min_w * ui_scale, min_h * ui_scale)),
+            decorations: false,
+            exit_on_close_request: false,
+            position: placement
+                .and_then(|p| p.restore_position(ui_scale))
+                .map_or(window::Position::Centered, window::Position::Specific),
+            icon: Some(app_icon()),
+            ..window::Settings::default()
+        })
 }
 
 fn apply_type_remaps_to_polygons(
@@ -10695,7 +11032,11 @@ fn main() -> iced::Result {
             const EDIT: &str = "Package check: edited area";
             area.name = EDIT.into();
             let _ = app.update(Message::SaveFile);
-            let mut saved: serde_json::Value = if app.current_file.as_ref().is_some_and(|file| file.format == SketchFileFormat::SketchyStore) {
+            let mut saved: serde_json::Value = if app
+                .current_file
+                .as_ref()
+                .is_some_and(|file| file.format == SketchFileFormat::SketchyStore)
+            {
                 sketchy::store::read(&sample)?
             } else {
                 let bytes = std::fs::read(&sample).map_err(|e| e.to_string())?;
@@ -10850,7 +11191,8 @@ mod tests {
         let (mut app, dir) = direct_save_fixture();
         let path = dir.join("recent-source.skx");
         let (_, requests) = file_dialogs::with_save_path(Some(path.clone()), || {
-            let _ = app.update(Message::SaveFile);
+            let task = app.update(Message::SaveFile);
+            file_dialogs::drive(&mut app, task);
         });
         assert_eq!(requests.len(), 1);
         let recent = recent::parse(&serde_json::to_string(&app.recent).unwrap());
@@ -10877,7 +11219,8 @@ mod tests {
         assert_eq!(reopened.current_file.as_ref().unwrap().path, path);
         reopened.pages.pages[0].north_angle = 270.;
         let (_, requests) = file_dialogs::with_save_path(None, || {
-            let _ = reopened.update(Message::Key(input::KeyCmd::Save));
+            let task = reopened.update(Message::Key(input::KeyCmd::Save));
+            file_dialogs::drive(&mut reopened, task);
         });
         assert!(requests.is_empty(), "Ctrl+S route must not open a picker");
         let saved = sketch_core::skx::read(&std::fs::read(path).unwrap())
@@ -10902,7 +11245,8 @@ mod tests {
         let _ = app.recover_autosave(true);
         assert!(app.current_file.is_none());
         let (_, requests) = file_dialogs::with_save_path(None, || {
-            let _ = app.update(Message::SaveFile);
+            let task = app.update(Message::SaveFile);
+            file_dialogs::drive(&mut app, task);
         });
         assert_eq!(requests, ["Recovered sketch.skx"]);
         assert_eq!(app.drawing.lines.len(), 4);
@@ -10925,7 +11269,8 @@ mod tests {
         std::fs::write(&recovery, b"recovery").unwrap();
         app.autosave.path = Some(recovery.clone());
         let (_, requests) = file_dialogs::with_save_path(None, || {
-            let _ = app.update(Message::SaveFile);
+            let task = app.update(Message::SaveFile);
+            file_dialogs::drive(&mut app, task);
         });
         assert!(requests.is_empty());
         assert_eq!(app.current_file.as_ref(), Some(&target));

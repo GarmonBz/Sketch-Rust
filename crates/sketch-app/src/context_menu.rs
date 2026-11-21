@@ -354,7 +354,9 @@ mod tests {
         let it = items(&v);
         assert_ne!(it.first(), Some(&Item::Sep));
         assert_ne!(it.last(), Some(&Item::Sep));
-        assert!(it.windows(2).all(|w| !(w[0] == Item::Sep && w[1] == Item::Sep)));
+        assert!(it
+            .windows(2)
+            .all(|w| !(w[0] == Item::Sep && w[1] == Item::Sep)));
     }
 
     #[test]

@@ -96,7 +96,6 @@ impl Hud {
         }
         self.down = down;
     }
-
 }
 
 /// JS `Number.prototype.toFixed(d)`. Rust formats the exact binary value
@@ -1743,11 +1742,20 @@ mod tests {
             (dy.atan2(dx).to_degrees() * 100.0).round() / 100.0
         };
         let at_5 = bearing(5.0);
-        assert!((at_5 / 5.0 - (at_5 / 5.0).round()).abs() < 1e-6, "5 degree steps: {at_5}");
+        assert!(
+            (at_5 / 5.0 - (at_5 / 5.0).round()).abs() < 1e-6,
+            "5 degree steps: {at_5}"
+        );
         let at_45 = bearing(45.0);
-        assert!((at_45 / 45.0 - (at_45 / 45.0).round()).abs() < 1e-6, "45 degree steps: {at_45}");
+        assert!(
+            (at_45 / 45.0 - (at_45 / 45.0).round()).abs() < 1e-6,
+            "45 degree steps: {at_45}"
+        );
         let at_90 = bearing(90.0);
-        assert!((at_90 / 90.0 - (at_90 / 90.0).round()).abs() < 1e-6, "90 degree steps: {at_90}");
+        assert!(
+            (at_90 / 90.0 - (at_90 / 90.0).round()).abs() < 1e-6,
+            "90 degree steps: {at_90}"
+        );
         assert_ne!(at_5, at_45, "the setting changes the result");
         // Off: the angle is whatever the pointer says, on the grid only.
         let free = bearing(0.0);
@@ -2320,7 +2328,16 @@ mod edit_tools_tests {
     #[test]
     fn a_bad_length_is_rejected() {
         let mut d = wall();
-        for input in ["0", "-5", "abc", "12.3.4", "12 in extra", "3' -2", "NaN", "inf"] {
+        for input in [
+            "0",
+            "-5",
+            "abc",
+            "12.3.4",
+            "12 in extra",
+            "3' -2",
+            "NaN",
+            "inf",
+        ] {
             assert_eq!(parse_wall_length(input), None, "{input}");
         }
         assert!(!d.set_selected_line_length(&selected(true), 0.0));
@@ -2329,7 +2346,15 @@ mod edit_tools_tests {
 
     #[test]
     fn wall_length_accepts_decimal_feet_and_inches() {
-        for input in ["10.5", "126\"", "126 in", "126 INCHES", "10' 6\"", "10′ 6″", "10'6"] {
+        for input in [
+            "10.5",
+            "126\"",
+            "126 in",
+            "126 INCHES",
+            "10' 6\"",
+            "10′ 6″",
+            "10'6",
+        ] {
             assert_eq!(parse_wall_length(input), Some(10.5), "{input}");
         }
         assert_eq!(parse_wall_length("6.5\""), Some(6.5 / 12.0));

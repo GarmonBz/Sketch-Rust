@@ -11,7 +11,9 @@ use iced::widget::{
     button, checkbox, column, container, mouse_area, opaque, pick_list, row, scrollable, slider,
     stack, text, text_input, Space,
 };
-use iced::{Alignment, Background, Border, Color, Element, Length, Padding, Point, Rectangle, Size};
+use iced::{
+    Alignment, Background, Border, Color, Element, Length, Padding, Point, Rectangle, Size,
+};
 use sketch_core::geometry::{area_codes, AreaCode};
 
 use super::fonts::{BARLOW, BARLOW_MEDIUM, BARLOW_SEMIBOLD, BSC_MEDIUM};
@@ -129,7 +131,12 @@ pub struct TypeEditor {
 }
 
 impl TypeEditor {
-    pub fn open_list(&mut self, codes: &[AreaCode], counts: BTreeMap<String, usize>, select: Option<&str>) {
+    pub fn open_list(
+        &mut self,
+        codes: &[AreaCode],
+        counts: BTreeMap<String, usize>,
+        select: Option<&str>,
+    ) {
         self.reset_state(codes, counts);
         if let Some(target) = select {
             if let Some(idx) = self.drafts.iter().position(|d| d.area.code == target) {
@@ -157,7 +164,11 @@ impl TypeEditor {
         self.session = self.session.wrapping_add(1);
         self.open = true;
         self.initial = codes.to_vec();
-        self.drafts = codes.iter().cloned().map(DraftEntry::from_existing).collect();
+        self.drafts = codes
+            .iter()
+            .cloned()
+            .map(DraftEntry::from_existing)
+            .collect();
         self.selected = 0;
         self.search.clear();
         self.compact_showing_form = false;
@@ -279,11 +290,8 @@ impl TypeEditor {
 
     pub fn build_save_outcome(&self) -> Result<SaveOutcome, String> {
         let codes = self.validated_codes()?;
-        let initial_by_code: BTreeMap<&str, &AreaCode> = self
-            .initial
-            .iter()
-            .map(|c| (c.code.as_str(), c))
-            .collect();
+        let initial_by_code: BTreeMap<&str, &AreaCode> =
+            self.initial.iter().map(|c| (c.code.as_str(), c)).collect();
         let mut by_origin: BTreeMap<String, &AreaCode> = BTreeMap::new();
         for (draft, clean) in self.drafts.iter().zip(&codes) {
             if let Some(orig) = &draft.origin_code {
@@ -469,7 +477,8 @@ impl TypeEditor {
                 self.confirm = Some(ConfirmKind::RestoreDefaults);
             }
             Msg::ConfirmRestoreDefaults => {
-                let orig_set: BTreeSet<String> = self.initial.iter().map(|c| c.code.clone()).collect();
+                let orig_set: BTreeSet<String> =
+                    self.initial.iter().map(|c| c.code.clone()).collect();
                 self.drafts = area_codes::default_area_codes()
                     .into_iter()
                     .map(|area| {
@@ -752,23 +761,21 @@ pub fn layer<'a>(
     )
     .on_press(send(Msg::RequestCancel));
 
-    let centered = container(
-        opaque(
-            container(card)
-                .width(Length::Fixed(modal_w))
-                .height(Length::Fixed(modal_h))
-                .style(|_| container::Style {
-                    background: Some(Background::Color(tokens::panel())),
-                    border: Border {
-                        color: tokens::rule(),
-                        width: 1.0,
-                        radius: RADIUS_DIALOG.into(),
-                    },
-                    shadow: tokens::floating_shadow(),
-                    ..container::Style::default()
-                }),
-        ),
-    )
+    let centered = container(opaque(
+        container(card)
+            .width(Length::Fixed(modal_w))
+            .height(Length::Fixed(modal_h))
+            .style(|_| container::Style {
+                background: Some(Background::Color(tokens::panel())),
+                border: Border {
+                    color: tokens::rule(),
+                    width: 1.0,
+                    radius: RADIUS_DIALOG.into(),
+                },
+                shadow: tokens::floating_shadow(),
+                ..container::Style::default()
+            }),
+    ))
     .width(Length::Fill)
     .height(Length::Fill)
     .align_x(Alignment::Center)
@@ -777,17 +784,22 @@ pub fn layer<'a>(
     Some(stack![backdrop, centered].into())
 }
 
-fn modal_view<'a>(editor: &'a TypeEditor, size_class: SizeClass, d: Density) -> Element<'a, Message> {
+fn modal_view<'a>(
+    editor: &'a TypeEditor,
+    size_class: SizeClass,
+    d: Density,
+) -> Element<'a, Message> {
     let left_w = if size_class == SizeClass::Wide {
         296.0
     } else {
         252.0
     };
     let header = dialog_header(d, false);
-    let v_sep = container(Space::new().width(1.0).height(Length::Fill)).style(|_| container::Style {
-        background: Some(Background::Color(tokens::rule())),
-        ..container::Style::default()
-    });
+    let v_sep =
+        container(Space::new().width(1.0).height(Length::Fill)).style(|_| container::Style {
+            background: Some(Background::Color(tokens::rule())),
+            ..container::Style::default()
+        });
     let body = row![
         container(list_pane(editor, d))
             .width(Length::Fixed(left_w))
@@ -968,9 +980,14 @@ fn list_pane<'a>(editor: &'a TypeEditor, d: Density) -> Element<'a, Message> {
     column![
         container(search_bar).padding([SPACE_2, SPACE_3]),
         kit::divider(),
-        scrollable(container(list_col).padding([SPACE_1, SPACE_2]).width(Length::Fill)).id("area-types-list")
-            .width(Length::Fill)
-            .height(Length::Fill),
+        scrollable(
+            container(list_col)
+                .padding([SPACE_1, SPACE_2])
+                .width(Length::Fill)
+        )
+        .id("area-types-list")
+        .width(Length::Fill)
+        .height(Length::Fill),
     ]
     .width(Length::Fill)
     .height(Length::Fill)
@@ -1008,7 +1025,11 @@ fn type_list_row<'a>(
         }),
         column![
             text(title)
-                .font(if selected { BARLOW_SEMIBOLD } else { BARLOW_MEDIUM })
+                .font(if selected {
+                    BARLOW_SEMIBOLD
+                } else {
+                    BARLOW_MEDIUM
+                })
                 .size(TEXT_13)
                 .color(tokens::text()),
             text(if used > 0 {
@@ -1061,7 +1082,11 @@ fn type_list_row<'a>(
                 background: Some(Background::Color(bg)),
                 text_color: tokens::text(),
                 border: Border {
-                    color: if selected { tokens::accent() } else { Color::TRANSPARENT },
+                    color: if selected {
+                        tokens::accent()
+                    } else {
+                        Color::TRANSPARENT
+                    },
                     width: if selected { 1.0 } else { 0.0 },
                     radius: RADIUS_CONTROL.into(),
                 },
@@ -1093,10 +1118,14 @@ fn form_pane<'a>(editor: &'a TypeEditor, d: Density, compact: bool) -> Element<'
     let used = editor.usage_for_entry(entry);
 
     let origin_badge = container(
-        text(if is_builtin { "Built in" } else { "Added by you" })
-            .font(BARLOW_MEDIUM)
-            .size(TEXT_11)
-            .color(tokens::text()),
+        text(if is_builtin {
+            "Built in"
+        } else {
+            "Added by you"
+        })
+        .font(BARLOW_MEDIUM)
+        .size(TEXT_11)
+        .color(tokens::text()),
     )
     .padding([2, 8])
     .style(|_| container::Style {
@@ -1306,10 +1335,18 @@ fn form_pane<'a>(editor: &'a TypeEditor, d: Density, compact: bool) -> Element<'
         compact,
     );
 
-    let line_col = parse_hex(area.color.trim()).unwrap_or_else(|| Color::from_rgb8(0x31, 0x82, 0xCE));
+    let line_col =
+        parse_hex(area.color.trim()).unwrap_or_else(|| Color::from_rgb8(0x31, 0x82, 0xCE));
     let line_color_row = form_field(
         "Line colour",
-        color_picker_row("Pick line colour", line_col, &area.color, Msg::PickLineColor, Msg::LineHex, d),
+        color_picker_row(
+            "Pick line colour",
+            line_col,
+            &area.color,
+            Msg::PickLineColor,
+            Msg::LineHex,
+            d,
+        ),
         compact,
     );
 
@@ -1777,7 +1814,9 @@ impl canvas::Program<Message> for TypePreview {
 
         frame.stroke(
             &rect_path,
-            Stroke::default().with_color(self.line_color).with_width(2.0),
+            Stroke::default()
+                .with_color(self.line_color)
+                .with_width(2.0),
         );
 
         let center = Point::new(bounds.width * 0.5, bounds.height * 0.5);
@@ -1813,7 +1852,11 @@ mod tests {
     #[test]
     fn duplicate_and_new_type_create_unique_codes() {
         let mut ed = TypeEditor::default();
-        ed.open_list(&area_codes::default_area_codes(), BTreeMap::new(), Some("GAR"));
+        ed.open_list(
+            &area_codes::default_area_codes(),
+            BTreeMap::new(),
+            Some("GAR"),
+        );
         let orig_len = ed.drafts.len();
         ed.apply_local(Msg::Duplicate);
         assert_eq!(ed.drafts.len(), orig_len + 1);
@@ -1864,7 +1907,11 @@ mod tests {
         ed.apply_local(Msg::RequestDelete);
         assert!(ed.drafts.iter().any(|d| d.area.code == "UND"));
 
-        let gla2 = ed.drafts.iter().position(|d| d.area.code == "GLA2").unwrap();
+        let gla2 = ed
+            .drafts
+            .iter()
+            .position(|d| d.area.code == "GLA2")
+            .unwrap();
         ed.apply_local(Msg::Select(gla2));
         ed.apply_local(Msg::MoveUp(gla2));
         assert_eq!(ed.drafts[0].area.code, "GLA2");

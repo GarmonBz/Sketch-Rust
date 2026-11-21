@@ -1,4 +1,4 @@
-﻿//! The Options dialog (Screen 11, S11-001..032): `UIManager.showOptions`
+//! The Options dialog (Screen 11, S11-001..032): `UIManager.showOptions`
 //! (refs/ui-manager.js:2570). A six-tab card â€” General / Display /
 //! Hardware / System / Fonts / Drawing â€” over the flat `Options` model
 //! (options.rs). OK applies the draft through `applyOptions`
@@ -219,4 +219,3 @@ pub(crate) fn fmt_num(v: f64) -> String {
         format!("{}", v)
     }
 }
-

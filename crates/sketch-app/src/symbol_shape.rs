@@ -21,7 +21,10 @@ use crate::placed_text::PlacedText;
 use crate::selection::Selection;
 
 fn quant_pt(p: Pt) -> (i64, i64) {
-    ((p.x * 10_000.0).round() as i64, (p.y * 10_000.0).round() as i64)
+    (
+        (p.x * 10_000.0).round() as i64,
+        (p.y * 10_000.0).round() as i64,
+    )
 }
 
 fn to_inches(p: Pt, origin: Pt) -> Point {
@@ -78,7 +81,8 @@ fn bulge_to_bow(bulge: f64) -> f64 {
 }
 
 fn line_to_entity(line: &SketchLine, origin: Pt) -> Entity {
-    if let Some((center, radius, apex)) = curve_circle_and_apex(line.start, line.end, line.bow_angle)
+    if let Some((center, radius, apex)) =
+        curve_circle_and_apex(line.start, line.end, line.bow_angle)
     {
         let c_in = to_inches(center, origin);
         let r_in = radius * 12.0;
@@ -395,10 +399,7 @@ pub fn from_selection(
     }
     let temp = lines_and_texts_to_entities(&lines, &texts, Pt::new(0.0, 0.0));
     let b0 = compute_bounds(&temp);
-    let origin = Pt::new(
-        (b0.min_x + b0.max_x) / 24.0,
-        (b0.min_y + b0.max_y) / 24.0,
-    );
+    let origin = Pt::new((b0.min_x + b0.max_x) / 24.0, (b0.min_y + b0.max_y) / 24.0);
     let entities = lines_and_texts_to_entities(&lines, &texts, origin);
     let bounds = compute_bounds(&entities);
     Ok((entities, bounds))

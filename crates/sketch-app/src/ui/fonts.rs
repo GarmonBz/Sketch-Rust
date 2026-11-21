@@ -10,8 +10,7 @@ use crate::Message;
 
 pub const BARLOW_REGULAR_BYTES: &[u8] =
     include_bytes!("../../../../assets/fonts/Barlow-Regular.ttf");
-pub const BARLOW_MEDIUM_BYTES: &[u8] =
-    include_bytes!("../../../../assets/fonts/Barlow-Medium.ttf");
+pub const BARLOW_MEDIUM_BYTES: &[u8] = include_bytes!("../../../../assets/fonts/Barlow-Medium.ttf");
 pub const BARLOW_SEMIBOLD_BYTES: &[u8] =
     include_bytes!("../../../../assets/fonts/Barlow-SemiBold.ttf");
 pub const BSC_MEDIUM_BYTES: &[u8] =

@@ -9,7 +9,7 @@ use crate::icons;
 use crate::input::KeyCmd;
 use crate::ui::fonts::{BARLOW_MEDIUM, BARLOW_SEMIBOLD, BSC_MEDIUM, BSC_SEMIBOLD};
 use crate::ui::kit;
-use crate::ui::layout::{COMPACT_SHEET_H, SizeClass};
+use crate::ui::layout::{SizeClass, COMPACT_SHEET_H};
 use crate::ui::tokens::{
     self, RADIUS_CONTROL, RADIUS_DIALOG, RADIUS_TRAY, SPACE_1, SPACE_2, TEXT_11, TEXT_12, TEXT_13,
 };
@@ -27,13 +27,21 @@ pub const FLOAT_H: f32 = 434.0;
 
 /// True when the active tool benefits from automatic Pad visibility in Touch density.
 pub fn is_drawing_tool(mode: Mode) -> bool {
-    matches!(mode, Mode::DrawExterior | Mode::DrawInterior | Mode::Measure)
+    matches!(
+        mode,
+        Mode::DrawExterior | Mode::DrawInterior | Mode::Measure
+    )
 }
 
 /// Top-left anchor for the floating Pad on Wide & Medium viewports.
 pub fn floating_origin(app: &App) -> Point {
     let win = app.window_size;
-    let h = FLOAT_H + if app.ui.pad_popover.is_some() { 48.0 } else { 0.0 };
+    let h = FLOAT_H
+        + if app.ui.pad_popover.is_some() {
+            48.0
+        } else {
+            0.0
+        };
     let min_x = 12.0;
     let min_y = app.ui.density.bar_h() + 12.0;
     let max_x = (win.width - FLOAT_W - 12.0).max(min_x);
@@ -93,7 +101,12 @@ pub fn layer<'a>(app: &'a App) -> Option<Element<'a, Message>> {
         });
     children.push(positioned.into());
 
-    Some(iced::widget::Stack::with_children(children).width(Length::Fill).height(Length::Fill).into())
+    Some(
+        iced::widget::Stack::with_children(children)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into(),
+    )
 }
 
 /// Docked bottom Pad replacing the Compact bottom sheet above the Compact toolbar.
@@ -256,12 +269,14 @@ fn pad_body<'a>(app: &'a App, compact: bool) -> Element<'a, Message> {
     })
     .on_press(close_msg);
 
-    let more_msg = Message::Ui(UiMsg::PadPopover(Some(if app.ui.pad_popover == Some(PadPopover::More) {
-        // Re-holding toggles cleanly
-        PadPopover::More
-    } else {
-        PadPopover::More
-    })));
+    let more_msg = Message::Ui(UiMsg::PadPopover(Some(
+        if app.ui.pad_popover == Some(PadPopover::More) {
+            // Re-holding toggles cleanly
+            PadPopover::More
+        } else {
+            PadPopover::More
+        },
+    )));
     let close_area_key = kit::context_press(close_btn, more_msg);
 
     let grid = column![r1, r2, r3, r4, r5].spacing(gap);
@@ -403,12 +418,7 @@ fn readout_bar<'a>(app: &'a App, compact: bool) -> Element<'a, Message> {
         r = r.push(ok);
     }
 
-    r = r.push(
-        text(state_txt)
-            .font(BSC_SEMIBOLD)
-            .size(TEXT_11)
-            .color(ink),
-    );
+    r = r.push(text(state_txt).font(BSC_SEMIBOLD).size(TEXT_11).color(ink));
 
     container(r)
         .width(Length::Fill)

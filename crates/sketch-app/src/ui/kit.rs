@@ -48,11 +48,7 @@ struct SurfaceSpec {
     radius: f32,
 }
 
-fn apply_surface_style(
-    spec: SurfaceSpec,
-    focused: bool,
-    status: button::Status,
-) -> button::Style {
+fn apply_surface_style(spec: SurfaceSpec, focused: bool, status: button::Status) -> button::Style {
     let (bg, fg, is_disabled) = match status {
         button::Status::Active => (spec.bg, spec.fg, false),
         button::Status::Hovered => (spec.hover_bg, spec.fg, false),
@@ -177,10 +173,15 @@ pub fn text_button_with<'a>(
         radius: RADIUS_CONTROL,
     };
     let mut btn = button(
-        container(text(label.into()).font(BARLOW_MEDIUM).size(TEXT_13).color(label_color))
-            .align_y(Alignment::Center)
-            .align_x(Alignment::Center)
-            .height(Length::Fixed(density.min_target())),
+        container(
+            text(label.into())
+                .font(BARLOW_MEDIUM)
+                .size(TEXT_13)
+                .color(label_color),
+        )
+        .align_y(Alignment::Center)
+        .align_x(Alignment::Center)
+        .height(Length::Fixed(density.min_target())),
     )
     .padding([0, 12])
     .style(move |_, status| apply_surface_style(spec, focused, status));
@@ -230,10 +231,15 @@ pub fn primary_button_with<'a>(
         radius: RADIUS_CONTROL,
     };
     let mut btn = button(
-        container(text(label.into()).font(BARLOW_SEMIBOLD).size(TEXT_13).color(fg))
-            .align_y(Alignment::Center)
-            .align_x(Alignment::Center)
-            .height(Length::Fixed(density.min_target())),
+        container(
+            text(label.into())
+                .font(BARLOW_SEMIBOLD)
+                .size(TEXT_13)
+                .color(fg),
+        )
+        .align_y(Alignment::Center)
+        .align_x(Alignment::Center)
+        .height(Length::Fixed(density.min_target())),
     )
     .padding([0, 14])
     .style(move |_, status| apply_surface_style(spec, focused, status));
@@ -266,7 +272,11 @@ pub fn lit_icon_button<'a>(
     on_press: Option<Message>,
     density: Density,
 ) -> Element<'a, Message> {
-    let fg = if lit { tokens::text() } else { tokens::disabled() };
+    let fg = if lit {
+        tokens::text()
+    } else {
+        tokens::disabled()
+    };
     let size = density.min_target();
     let spec = SurfaceSpec {
         bg: Color::TRANSPARENT,
@@ -336,10 +346,10 @@ pub fn icon_button_with<'a>(
         } else {
             icons::tinted(icon_name, false, icon_px, fg)
         })
-            .width(Length::Fixed(size))
-            .height(Length::Fixed(size))
-            .align_x(Alignment::Center)
-            .align_y(Alignment::Center),
+        .width(Length::Fixed(size))
+        .height(Length::Fixed(size))
+        .align_x(Alignment::Center)
+        .align_y(Alignment::Center),
     )
     .padding(0)
     .style(move |_, status| apply_surface_style(spec, focused, status));
@@ -369,14 +379,10 @@ pub fn field<'a>(props: FieldProps<'_, 'a>, density: Density) -> Element<'a, Mes
     let mut input = text_input(props.placeholder, props.value)
         .font(BARLOW)
         .size(TEXT_13)
-        .padding([
-            ((density.field_h() - 18.0).max(4.0)) * 0.5,
-            SPACE_2 + 2.0,
-        ])
+        .padding([((density.field_h() - 18.0).max(4.0)) * 0.5, SPACE_2 + 2.0])
         .width(Length::Fill)
         .style(move |_, status| {
-            let is_focused = props.focused
-                || matches!(status, text_input::Status::Focused { .. });
+            let is_focused = props.focused || matches!(status, text_input::Status::Focused { .. });
             let border_color = match status {
                 text_input::Status::Disabled => tokens::rule(),
                 _ if is_focused => tokens::accent(),
@@ -579,7 +585,11 @@ pub fn segmented<'a>(segments: Vec<Segment<'a>>, density: Density) -> Element<'a
         let mut btn = button(
             container(
                 text(seg.label)
-                    .font(if seg.selected { BARLOW_SEMIBOLD } else { BARLOW_MEDIUM })
+                    .font(if seg.selected {
+                        BARLOW_SEMIBOLD
+                    } else {
+                        BARLOW_MEDIUM
+                    })
                     .size(TEXT_12)
                     .color(fg),
             )
@@ -666,7 +676,11 @@ pub fn chip_with<'a>(
     let mut btn = button(
         container(
             text(label.into())
-                .font(if selected { BARLOW_SEMIBOLD } else { BARLOW_MEDIUM })
+                .font(if selected {
+                    BARLOW_SEMIBOLD
+                } else {
+                    BARLOW_MEDIUM
+                })
                 .size(TEXT_12)
                 .color(fg),
         )
@@ -784,19 +798,18 @@ fn list_row_with<'a>(
 
     content = content.push(
         text(title)
-            .font(if selected { BARLOW_SEMIBOLD } else { BARLOW_MEDIUM })
+            .font(if selected {
+                BARLOW_SEMIBOLD
+            } else {
+                BARLOW_MEDIUM
+            })
             .size(TEXT_13)
             .color(title_color)
             .width(Length::Fill),
     );
 
     if let Some(val) = value {
-        content = content.push(
-            text(val)
-                .font(BSC_MEDIUM)
-                .size(TEXT_13)
-                .color(value_color),
-        );
+        content = content.push(text(val).font(BSC_MEDIUM).size(TEXT_13).color(value_color));
     }
 
     let spec = SurfaceSpec {
@@ -969,10 +982,7 @@ pub fn tile<'a>(
         } else {
             icons::tinted(icon_name, false, density.icon_size(), fg)
         },
-        text(label.into())
-            .font(BSC_MEDIUM)
-            .size(TEXT_11)
-            .color(fg),
+        text(label.into()).font(BSC_MEDIUM).size(TEXT_11).color(fg),
     ]
     .spacing(3)
     .align_x(Alignment::Center);
@@ -1052,16 +1062,11 @@ pub fn menu<'a>(entries: Vec<MenuEntry<'a>>, width: f32, density: Density) -> El
                         .width(Length::Fill),
                 );
                 if let Some(key) = shortcut {
-                    r = r.push(
-                        text(key)
-                            .font(BSC_MEDIUM)
-                            .size(TEXT_12)
-                            .color(if disabled {
-                                tokens::disabled()
-                            } else {
-                                tokens::muted()
-                            }),
-                    );
+                    r = r.push(text(key).font(BSC_MEDIUM).size(TEXT_12).color(if disabled {
+                        tokens::disabled()
+                    } else {
+                        tokens::muted()
+                    }));
                 }
 
                 let spec = SurfaceSpec {
@@ -1112,10 +1117,7 @@ pub fn menu<'a>(entries: Vec<MenuEntry<'a>>, width: f32, density: Density) -> El
 // ---------------------------------------------------------------------------
 
 /// Elevated floating card used for inspector popovers, palette menus, and Pad shell.
-pub fn popover<'a>(
-    content: impl Into<Element<'a, Message>>,
-    radius: f32,
-) -> Element<'a, Message> {
+pub fn popover<'a>(content: impl Into<Element<'a, Message>>, radius: f32) -> Element<'a, Message> {
     container(content)
         .padding(SPACE_3)
         .style(move |_| container::Style {
@@ -1170,9 +1172,11 @@ pub fn sheet_handle<'a>(
             ..container::Style::default()
         });
 
-    let mut col = column![container(pill).width(Length::Fill).align_x(Alignment::Center)]
-        .spacing(SPACE_1)
-        .width(Length::Fill);
+    let mut col = column![container(pill)
+        .width(Length::Fill)
+        .align_x(Alignment::Center)]
+    .spacing(SPACE_1)
+    .width(Length::Fill);
 
     if !title.is_empty() {
         col = col.push(
@@ -1234,18 +1238,23 @@ pub fn tooltip<'a>(
     if label.is_empty() {
         return content;
     }
-    let body = container(text(label.clone()).font(BARLOW_MEDIUM).size(TEXT_12).color(tokens::text()))
-        .padding([4, 8])
-        .style(|_| container::Style {
-            background: Some(Background::Color(tokens::bar())),
-            border: Border {
-                color: tokens::rule(),
-                width: 1.0,
-                radius: RADIUS_CONTROL.into(),
-            },
-            shadow: tokens::floating_shadow(),
-            ..container::Style::default()
-        });
+    let body = container(
+        text(label.clone())
+            .font(BARLOW_MEDIUM)
+            .size(TEXT_12)
+            .color(tokens::text()),
+    )
+    .padding([4, 8])
+    .style(|_| container::Style {
+        background: Some(Background::Color(tokens::bar())),
+        border: Border {
+            color: tokens::rule(),
+            width: 1.0,
+            radius: RADIUS_CONTROL.into(),
+        },
+        shadow: tokens::floating_shadow(),
+        ..container::Style::default()
+    });
 
     let tip_widget = iced_tooltip(content, body, position)
         .delay(TOOLTIP_DELAY)
@@ -1331,7 +1340,8 @@ impl Widget<Message, iced::Theme, iced::Renderer> for LongPressArea<'_> {
         match event {
             Event::Touch(touch::Event::FingerPressed { id, position }) => {
                 let over = cursor.is_over(layout.bounds())
-                    || (cursor == mouse::Cursor::Unavailable && layout.bounds().contains(*position));
+                    || (cursor == mouse::Cursor::Unavailable
+                        && layout.bounds().contains(*position));
                 if over {
                     let now = Instant::now();
                     *st = HoldState {

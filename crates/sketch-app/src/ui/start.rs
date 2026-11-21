@@ -11,7 +11,9 @@ use std::collections::HashMap;
 
 use iced::widget::canvas::{self, Frame, Geometry, Path, Stroke};
 use iced::widget::{button, column, container, opaque, row, scrollable, text, Canvas, Space};
-use iced::{Alignment, Background, Border, Color, Element, Length, Point, Rectangle, Renderer, Size, Theme};
+use iced::{
+    Alignment, Background, Border, Color, Element, Length, Point, Rectangle, Renderer, Size, Theme,
+};
 
 use crate::recent::{display_time, RecentFile};
 use crate::ui::fonts::{BARLOW, BARLOW_MEDIUM, BARLOW_SEMIBOLD, BSC_MEDIUM};
@@ -155,7 +157,11 @@ fn parse_thumb(raw: &str) -> RecentThumb {
                 }
             }
             if ring.len() >= 3 {
-                let kind = p.get("type").or_else(|| p.get("kind")).and_then(|v| v.as_str()).unwrap_or("");
+                let kind = p
+                    .get("type")
+                    .or_else(|| p.get("kind"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 let counts_gla = codes
                     .iter()
                     .find(|c| c.code == kind)
@@ -297,8 +303,12 @@ pub fn update(app: &mut App, msg: Msg) -> iced::Task<Message> {
         }
         Msg::ShowAtLaunch(show) => {
             app.ui.start.hide_at_launch = !show;
-            if crate::persist::write_json(PREFS_FILE, &StartPrefs { show_at_launch: show })
-                == Some(false)
+            if crate::persist::write_json(
+                PREFS_FILE,
+                &StartPrefs {
+                    show_at_launch: show,
+                },
+            ) == Some(false)
             {
                 return app
                     .toasts
@@ -373,9 +383,10 @@ impl canvas::Program<Message> for ThumbCanvas {
             let rect = Path::rectangle(Point::new(x, y), Size::new(pw, ph));
             frame.stroke(
                 &rect,
-                Stroke::default()
-                    .with_width(1.2)
-                    .with_color(Color { a: 0.45, ..self.muted }),
+                Stroke::default().with_width(1.2).with_color(Color {
+                    a: 0.45,
+                    ..self.muted
+                }),
             );
             let notch = Path::line(
                 Point::new(x + pw * 0.55, y),
@@ -383,9 +394,10 @@ impl canvas::Program<Message> for ThumbCanvas {
             );
             frame.stroke(
                 &notch,
-                Stroke::default()
-                    .with_width(1.0)
-                    .with_color(Color { a: 0.35, ..self.muted }),
+                Stroke::default().with_width(1.0).with_color(Color {
+                    a: 0.35,
+                    ..self.muted
+                }),
             );
             return vec![frame.into_geometry()];
         }
@@ -403,7 +415,10 @@ impl canvas::Program<Message> for ThumbCanvas {
                 b.close();
             });
             frame.fill(&path, self.fill);
-            frame.stroke(&path, Stroke::default().with_width(1.2).with_color(self.accent));
+            frame.stroke(
+                &path,
+                Stroke::default().with_width(1.2).with_color(self.accent),
+            );
         }
         for &(a, b) in &self.thumb.lines {
             frame.stroke(
@@ -757,7 +772,11 @@ fn recent_card<'a>(app: &'a App, index: usize, rec: &RecentFile) -> Element<'a, 
                     tokens::panel()
                 })),
                 border: Border {
-                    color: if hov { tokens::accent() } else { tokens::rule() },
+                    color: if hov {
+                        tokens::accent()
+                    } else {
+                        tokens::rule()
+                    },
                     width: 1.0,
                     radius: RADIUS_TILE.into(),
                 },

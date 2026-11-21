@@ -901,7 +901,10 @@ fn unsaved_changes_are_tracked_against_the_last_save() {
     let dir = std::env::temp_dir().join(format!("sketch-dirty-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let file = dir.join("Dirty.skx");
-    let _ = file_dialogs::with_save_path(Some(file.clone()), || a.update(Message::SaveFile));
+    let _ = file_dialogs::with_save_path(Some(file.clone()), || {
+        let task = a.update(Message::SaveFile);
+        file_dialogs::drive(&mut a, task);
+    });
     assert!(file.exists());
     assert!(!a.dirty);
     assert_eq!(a.save_state(), "Saved");
@@ -930,9 +933,8 @@ fn close_asks_only_when_there_is_unsaved_work() {
     assert_eq!(a.extended_data, "unsaved");
     // Save with the picker cancelled: nothing was written, so stay open.
     let _ = a.update(Message::Close);
-    let (task, _) = file_dialogs::with_save_path(None, || {
-        a.update(Message::Dialog(dialog::DialogMsg::Ok))
-    });
+    let (task, _) =
+        file_dialogs::with_save_path(None, || a.update(Message::Dialog(dialog::DialogMsg::Ok)));
     assert!(!exits(task), "a cancelled save must not close the app");
     // Don't save closes.
     let _ = a.update(Message::Close);
@@ -945,7 +947,10 @@ fn a_dropped_sketch_opens_and_other_files_are_refused() {
     let file = dir.join("Dropped.skx");
     let mut source = app();
     source.extended_data = "from the dropped file".into();
-    let _ = file_dialogs::with_save_path(Some(file.clone()), || source.update(Message::SaveFile));
+    let _ = file_dialogs::with_save_path(Some(file.clone()), || {
+        let task = source.update(Message::SaveFile);
+        file_dialogs::drive(&mut source, task);
+    });
 
     let mut a = app();
     let _ = a.update(Message::FileDropped(dir.join("photo.png")));
@@ -1123,4 +1128,28 @@ fn dragging_library_openings_rehosts_and_removes_the_old_cutout() {
         a.move_selection(0., 2.);
         assert!((a.drawing.symbols[0].y - 8.0).abs() < 1e-9);
     }
+}
+
+#[test]
+fn interactive_gestures_and_chrome_hovers_skip_expensive_dirty_rehash() {
+    let mut a = app();
+    let _ = a.update(Message::Noop);
+    assert!(a.pointer_scene_ready);
+
+    // Chrome hover / fence move / pan move messages must not mark the
+    // document dirty or stall on full save-model serialization mid-gesture.
+    a.extended_data = "pending".into();
+    let _ = a.update(Message::LayerHoverRow("Default".into()));
+    assert!(!a.dirty, "chrome hover takes the fast path");
+    let _ = a.update(Message::PanStart(10.0, 10.0));
+    let _ = a.update(Message::PanMove(25.0, 35.0));
+    assert!(!a.dirty, "active pan skips dirty rehash");
+    let _ = a.update(Message::PanEnd);
+
+    // Explicit refresh_dirty sees the change and clears again when reverted.
+    a.refresh_dirty();
+    assert!(a.dirty);
+    a.extended_data.clear();
+    a.refresh_dirty();
+    assert!(!a.dirty);
 }

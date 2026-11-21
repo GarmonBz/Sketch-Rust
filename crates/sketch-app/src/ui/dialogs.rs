@@ -30,7 +30,9 @@ use super::Msg as UiMsg;
 use crate::area_dialog::{self, AreaDialog, AreaDialogMsg, PostSwitch};
 use crate::attr_dialog::{AttrDialog, AttrMsg, ATTRS};
 use crate::breakdown_dialog::{self, BreakdownDialog, BreakdownMsg};
-use crate::color_dialog::{self, Area as ColorArea, ColorDialog, ColorMsg, RgbField, Tab as ColorTab};
+use crate::color_dialog::{
+    self, Area as ColorArea, ColorDialog, ColorMsg, RgbField, Tab as ColorTab,
+};
 use crate::dialog::{Action, Dialog, DialogMsg};
 use crate::disto::{Disto, DistoMsg, Phase as DistoPhase};
 use crate::guide::{Block as GuideBlock, Guide, GuideMsg, INTEGRATION_TOPIC, TOPICS};
@@ -95,11 +97,7 @@ impl fmt::Display for FormChoice {
 }
 
 /// Returns all currently open Next-shell modal dialog layers in z-order.
-pub fn layers<'a>(
-    app: &'a App,
-    size_class: SizeClass,
-    d: Density,
-) -> Vec<Element<'a, Message>> {
+pub fn layers<'a>(app: &'a App, size_class: SizeClass, d: Density) -> Vec<Element<'a, Message>> {
     let mut out = Vec::new();
     let win = app.window_size;
 
@@ -210,12 +208,7 @@ fn dialog_frame<'a>(
     .width(Length::Fill);
 
     if let Some(sub) = frame.subtitle {
-        title_col = title_col.push(
-            text(sub)
-                .font(BARLOW)
-                .size(TEXT_12)
-                .color(tokens::muted()),
-        );
+        title_col = title_col.push(text(sub).font(BARLOW).size(TEXT_12).color(tokens::muted()));
     }
     header_row = header_row.push(title_col);
 
@@ -234,13 +227,13 @@ fn dialog_frame<'a>(
         })
         .width(Length::Fill);
 
-    let mut card_col = column![header, kit::divider()]
-        .width(Length::Fill)
-        .height(if is_compact || frame.preferred_h.is_some() {
+    let mut card_col = column![header, kit::divider()].width(Length::Fill).height(
+        if is_compact || frame.preferred_h.is_some() {
             Length::Fill
         } else {
             Length::Shrink
-        });
+        },
+    );
 
     card_col = card_col.push(
         container(frame.body)
@@ -293,7 +286,10 @@ fn dialog_frame<'a>(
     card = if is_compact {
         card.width(Length::Fill).height(Length::Fill)
     } else {
-        let w = frame.preferred_w.min(max_w).min((win.width - margin * 2.0).max(280.0));
+        let w = frame
+            .preferred_w
+            .min(max_w)
+            .min((win.width - margin * 2.0).max(280.0));
         let card = card.width(Length::Fixed(w));
         if let Some(ph) = frame.preferred_h {
             card.height(Length::Fixed(ph.min(max_h)))
@@ -357,10 +353,7 @@ fn section_box<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Mess
         .into()
 }
 
-fn pick_style(
-    _: &Theme,
-    status: pick_list::Status,
-) -> pick_list::Style {
+fn pick_style(_: &Theme, status: pick_list::Status) -> pick_list::Style {
     let border_col = match status {
         pick_list::Status::Hovered | pick_list::Status::Opened { .. } => tokens::accent(),
         pick_list::Status::Active => tokens::rule(),
@@ -393,10 +386,7 @@ fn pick_menu_style(_: &Theme) -> iced::overlay::menu::Style {
     }
 }
 
-fn editor_style(
-    _: &Theme,
-    status: text_editor::Status,
-) -> text_editor::Style {
+fn editor_style(_: &Theme, status: text_editor::Status) -> text_editor::Style {
     let focused = matches!(status, text_editor::Status::Focused { .. });
     let border_col = match status {
         text_editor::Status::Disabled => tokens::rule(),
@@ -520,7 +510,10 @@ fn footer_pair<'a>(
     compact: bool,
 ) -> Element<'a, Message> {
     if compact {
-        column![right, left].spacing(SPACE_2).width(Length::Fill).into()
+        column![right, left]
+            .spacing(SPACE_2)
+            .width(Length::Fill)
+            .into()
     } else {
         row![left, Space::new().width(Length::Fill), right]
             .spacing(SPACE_2)
@@ -583,11 +576,7 @@ fn alert_dialog_layer<'a>(
     let save_close = dlg.on_ok == Action::SaveAndExit;
     let mut actions = row![Space::new().width(Length::Fill)].spacing(SPACE_2);
     if dlg.has_cancel {
-        actions = actions.push(kit::text_button(
-            "Cancel",
-            Some(msg(DialogMsg::Cancel)),
-            d,
-        ));
+        actions = actions.push(kit::text_button("Cancel", Some(msg(DialogMsg::Cancel)), d));
     }
     if save_close {
         actions = actions.push(kit::text_button(
@@ -695,7 +684,12 @@ fn opt_bool<'a>(
     key: BoolKey,
     d: Density,
 ) -> Element<'a, Message> {
-    check_row(label, draft.get_bool(key), move |_| opt_msg(OptMsg::Toggle(key)), d)
+    check_row(
+        label,
+        draft.get_bool(key),
+        move |_| opt_msg(OptMsg::Toggle(key)),
+        d,
+    )
 }
 
 fn owned_field<'a>(
@@ -746,7 +740,13 @@ fn opt_num<'a>(
     d: Density,
 ) -> Element<'a, Message> {
     let val = dlg.num_text(key);
-    owned_field(label, &val, "", move |s| opt_msg(OptMsg::NumTyped(key, s)), d)
+    owned_field(
+        label,
+        &val,
+        "",
+        move |s| opt_msg(OptMsg::NumTyped(key, s)),
+        d,
+    )
 }
 
 fn opt_str<'a>(
@@ -818,11 +818,7 @@ fn opt_num_pick<'a>(
     .into()
 }
 
-fn opt_font_pick<'a>(
-    label: &'static str,
-    key: StrKey,
-    current: &str,
-) -> Element<'a, Message> {
+fn opt_font_pick<'a>(label: &'static str, key: StrKey, current: &str) -> Element<'a, Message> {
     let opts: Vec<StringChoice> = FONTS
         .iter()
         .map(|f| StringChoice((*f).to_string(), (*f).to_string()))
@@ -834,9 +830,9 @@ fn opt_font_pick<'a>(
         .or_else(|| opts.first().cloned());
     column![
         label_text(label),
-        pick_list(opts, selected, move |c: StringChoice| opt_msg(
-            OptMsg::Str(key, c.0)
-        ))
+        pick_list(opts, selected, move |c: StringChoice| opt_msg(OptMsg::Str(
+            key, c.0
+        )))
         .width(Length::Fill)
         .text_size(TEXT_13)
         .font(BARLOW)
@@ -910,7 +906,10 @@ fn opt_columns<'a>(
             right = right.push(sec);
         }
     }
-    row![left, right].spacing(SPACE_3).align_y(Alignment::Start).into()
+    row![left, right]
+        .spacing(SPACE_3)
+        .align_y(Alignment::Start)
+        .into()
 }
 
 /// Interface theme, drawing background and density. These used to be
@@ -1012,115 +1011,157 @@ fn options_dialog_layer<'a>(
             compact,
             1,
             vec![
-            section_box(
-                column![
-                    label_text("Input"),
-                    opt_choice_pick("Input mode", INPUT_MODES, StrKey::InputMode, &draft.input_mode),
-                    opt_num_pick(
-                        "Ink recognition pause (s)",
-                        INK_RECOGNITIONS,
-                        NumKey::InkRecognition,
-                        draft.ink_recognition,
-                    ),
-                    two_up(
-                        opt_bool("Confirm ink before placing", draft, BoolKey::InkConfirmation, d),
-                        opt_bool("Prompt on deletion", draft, BoolKey::PromptOnDeletion, d),
-                        compact,
-                    ),
-                ]
-                .spacing(SPACE_2),
-            ),
-            section_box(
-                column![
-                    label_text("Units & Dimensions"),
-                    row![
-                        radio_row("Imperial (ft / in)", false, Some(draft.units.metric), |m| opt_msg(OptMsg::UnitMetric(m))),
-                        radio_row("Metric (m / cm)", true, Some(draft.units.metric), |m| opt_msg(OptMsg::UnitMetric(m))),
-                    ]
-                    .spacing(SPACE_4),
-                    two_up(
-                        opt_num_pick(
-                            "Decimal precision",
-                            PRECISIONS,
-                            NumKey::DecimalPrecision,
-                            draft.units.decimal_precision,
+                section_box(
+                    column![
+                        label_text("Input"),
+                        opt_choice_pick(
+                            "Input mode",
+                            INPUT_MODES,
+                            StrKey::InputMode,
+                            &draft.input_mode
                         ),
-                        opt_str("Area suffix", draft, StrKey::AreaLabelSuffix, d),
-                        compact,
-                    ),
-                    check_row(
-                        "Strip trailing zeroes",
-                        draft.units.strip_trailing_zeroes,
-                        |_| opt_msg(OptMsg::ToggleStripZeroes),
-                        d,
-                    ),
-                    row![
-                        label_text("Step unit:"),
-                        radio_row("Whole", "whole", Some(draft.step_unit.as_str()), |v| opt_msg(OptMsg::Str(StrKey::StepUnit, v.into()))),
-                        radio_row("Half", "half", Some(draft.step_unit.as_str()), |v| opt_msg(OptMsg::Str(StrKey::StepUnit, v.into()))),
-                        radio_row("Tenths", "tenths", Some(draft.step_unit.as_str()), |v| opt_msg(OptMsg::Str(StrKey::StepUnit, v.into()))),
+                        opt_num_pick(
+                            "Ink recognition pause (s)",
+                            INK_RECOGNITIONS,
+                            NumKey::InkRecognition,
+                            draft.ink_recognition,
+                        ),
+                        two_up(
+                            opt_bool(
+                                "Confirm ink before placing",
+                                draft,
+                                BoolKey::InkConfirmation,
+                                d
+                            ),
+                            opt_bool("Prompt on deletion", draft, BoolKey::PromptOnDeletion, d),
+                            compact,
+                        ),
                     ]
-                    .spacing(SPACE_3)
-                    .wrap(),
-                    two_up(
-                        opt_num("Dimension scale factor", dlg, NumKey::DimensionOption, d),
-                        opt_num("Ortho snap angle (deg)", dlg, NumKey::OrthoAngle, d),
-                        compact,
-                    ),
-                    two_up(
-                        opt_bool("Auto-place dimensions", draft, BoolKey::AutoPlacement, d),
-                        opt_bool("Dimension matches wall colour", draft, BoolKey::SameColorAsLine, d),
-                        compact,
-                    ),
-                ]
-                .spacing(SPACE_2),
-            ),
-        ]),
+                    .spacing(SPACE_2),
+                ),
+                section_box(
+                    column![
+                        label_text("Units & Dimensions"),
+                        row![
+                            radio_row("Imperial (ft / in)", false, Some(draft.units.metric), |m| {
+                                opt_msg(OptMsg::UnitMetric(m))
+                            }),
+                            radio_row("Metric (m / cm)", true, Some(draft.units.metric), |m| {
+                                opt_msg(OptMsg::UnitMetric(m))
+                            }),
+                        ]
+                        .spacing(SPACE_4),
+                        two_up(
+                            opt_num_pick(
+                                "Decimal precision",
+                                PRECISIONS,
+                                NumKey::DecimalPrecision,
+                                draft.units.decimal_precision,
+                            ),
+                            opt_str("Area suffix", draft, StrKey::AreaLabelSuffix, d),
+                            compact,
+                        ),
+                        check_row(
+                            "Strip trailing zeroes",
+                            draft.units.strip_trailing_zeroes,
+                            |_| opt_msg(OptMsg::ToggleStripZeroes),
+                            d,
+                        ),
+                        row![
+                            label_text("Step unit:"),
+                            radio_row("Whole", "whole", Some(draft.step_unit.as_str()), |v| {
+                                opt_msg(OptMsg::Str(StrKey::StepUnit, v.into()))
+                            }),
+                            radio_row("Half", "half", Some(draft.step_unit.as_str()), |v| opt_msg(
+                                OptMsg::Str(StrKey::StepUnit, v.into())
+                            )),
+                            radio_row("Tenths", "tenths", Some(draft.step_unit.as_str()), |v| {
+                                opt_msg(OptMsg::Str(StrKey::StepUnit, v.into()))
+                            }),
+                        ]
+                        .spacing(SPACE_3)
+                        .wrap(),
+                        two_up(
+                            opt_num("Dimension scale factor", dlg, NumKey::DimensionOption, d),
+                            opt_num("Ortho snap angle (deg)", dlg, NumKey::OrthoAngle, d),
+                            compact,
+                        ),
+                        two_up(
+                            opt_bool("Auto-place dimensions", draft, BoolKey::AutoPlacement, d),
+                            opt_bool(
+                                "Dimension matches wall colour",
+                                draft,
+                                BoolKey::SameColorAsLine,
+                                d
+                            ),
+                            compact,
+                        ),
+                    ]
+                    .spacing(SPACE_2),
+                ),
+            ],
+        ),
 
         OptTab::Display => opt_columns(
             compact,
             2,
             vec![
-            appearance_section(d),
-            section_box(
-                column![
-                    label_text("Guides & Indicators"),
-                    two_up(
-                        opt_bool("Alignment lines", draft, BoolKey::AlignmentLines, d),
-                        opt_bool("Alignment points", draft, BoolKey::AlignmentPoints, d),
-                        compact,
-                    ),
-                    two_up(
-                        opt_bool("Close-corner indicators", draft, BoolKey::TestCloseIndicators, d),
-                        opt_bool("Show background grid", draft, BoolKey::GridEnabled, d),
-                        compact,
-                    ),
-                    two_up(
-                        opt_str("Alignment line colour", draft, StrKey::AlignmentColor, d),
-                        opt_choice_pick("Alignment line style", ALIGNMENT_STYLES, StrKey::AlignmentStyle, &draft.alignment_style),
-                        compact,
-                    ),
-                ]
-                .spacing(SPACE_2),
-            ),
-            section_box(
-                column![
-                    label_text("Filtering & Selection"),
-                    two_up(
-                        opt_bool("Minimum dimension filter", draft, BoolKey::MinimumDimensionEnabled, d),
-                        opt_num("Minimum dimension length", dlg, NumKey::MinimumDimension, d),
-                        compact,
-                    ),
-                    two_up(
-                        opt_bool("Auto-shade closed areas", draft, BoolKey::AutoShade, d),
-                        opt_num("Auto-shade opacity (%)", dlg, NumKey::AutoShadePercent, d),
-                        compact,
-                    ),
-                    opt_bool("Highlight selection", draft, BoolKey::SelectionHighlight, d),
-                ]
-                .spacing(SPACE_2),
-            ),
-        ]),
+                appearance_section(d),
+                section_box(
+                    column![
+                        label_text("Guides & Indicators"),
+                        two_up(
+                            opt_bool("Alignment lines", draft, BoolKey::AlignmentLines, d),
+                            opt_bool("Alignment points", draft, BoolKey::AlignmentPoints, d),
+                            compact,
+                        ),
+                        two_up(
+                            opt_bool(
+                                "Close-corner indicators",
+                                draft,
+                                BoolKey::TestCloseIndicators,
+                                d
+                            ),
+                            opt_bool("Show background grid", draft, BoolKey::GridEnabled, d),
+                            compact,
+                        ),
+                        two_up(
+                            opt_str("Alignment line colour", draft, StrKey::AlignmentColor, d),
+                            opt_choice_pick(
+                                "Alignment line style",
+                                ALIGNMENT_STYLES,
+                                StrKey::AlignmentStyle,
+                                &draft.alignment_style
+                            ),
+                            compact,
+                        ),
+                    ]
+                    .spacing(SPACE_2),
+                ),
+                section_box(
+                    column![
+                        label_text("Filtering & Selection"),
+                        two_up(
+                            opt_bool(
+                                "Minimum dimension filter",
+                                draft,
+                                BoolKey::MinimumDimensionEnabled,
+                                d
+                            ),
+                            opt_num("Minimum dimension length", dlg, NumKey::MinimumDimension, d),
+                            compact,
+                        ),
+                        two_up(
+                            opt_bool("Auto-shade closed areas", draft, BoolKey::AutoShade, d),
+                            opt_num("Auto-shade opacity (%)", dlg, NumKey::AutoShadePercent, d),
+                            compact,
+                        ),
+                        opt_bool("Highlight selection", draft, BoolKey::SelectionHighlight, d),
+                    ]
+                    .spacing(SPACE_2),
+                ),
+            ],
+        ),
 
         OptTab::Hardware => column![section_box(
             column![
@@ -1129,8 +1170,18 @@ fn options_dialog_layer<'a>(
                     column![
                         label_text("Discovery"),
                         row![
-                            radio_row("Automatic", "automatic", Some(draft.disto_discovery.as_str()), |v| opt_msg(OptMsg::Str(StrKey::DistoDiscovery, v.into()))),
-                            radio_row("Manual", "manual", Some(draft.disto_discovery.as_str()), |v| opt_msg(OptMsg::Str(StrKey::DistoDiscovery, v.into()))),
+                            radio_row(
+                                "Automatic",
+                                "automatic",
+                                Some(draft.disto_discovery.as_str()),
+                                |v| opt_msg(OptMsg::Str(StrKey::DistoDiscovery, v.into()))
+                            ),
+                            radio_row(
+                                "Manual",
+                                "manual",
+                                Some(draft.disto_discovery.as_str()),
+                                |v| opt_msg(OptMsg::Str(StrKey::DistoDiscovery, v.into()))
+                            ),
                         ]
                         .spacing(SPACE_3),
                     ]
@@ -1140,8 +1191,18 @@ fn options_dialog_layer<'a>(
                     compact,
                 ),
                 two_up(
-                    opt_choice_pick("Measurement rounding", ROUNDING_MODES, StrKey::DistoRounding, &draft.disto_rounding),
-                    opt_choice_pick("Drawing mode", DRAWING_MODES, StrKey::DistoDrawingMode, &draft.disto_drawing_mode),
+                    opt_choice_pick(
+                        "Measurement rounding",
+                        ROUNDING_MODES,
+                        StrKey::DistoRounding,
+                        &draft.disto_rounding
+                    ),
+                    opt_choice_pick(
+                        "Drawing mode",
+                        DRAWING_MODES,
+                        StrKey::DistoDrawingMode,
+                        &draft.disto_drawing_mode
+                    ),
                     compact,
                 ),
             ]
@@ -1154,212 +1215,329 @@ fn options_dialog_layer<'a>(
             compact,
             1,
             vec![
-            section_box(
-                column![
-                    label_text("Autosave & Recovery"),
-                    two_up(
-                        opt_bool("Enable automatic recovery snapshots", draft, BoolKey::AutoSaveEnabled, d),
-                        opt_num("Autosave interval (min)", dlg, NumKey::AutoSaveInterval, d),
-                        compact,
-                    ),
-                    two_up(
-                        opt_bool("Auto-heal loaded files", draft, BoolKey::AutoHealFiles, d),
-                        opt_bool("Hide video tutorial links", draft, BoolKey::DisableVideoTutorial, d),
-                        compact,
-                    ),
-                ]
-                .spacing(SPACE_2),
-            ),
-            section_box(
-                column![
-                    label_text("Export Image Defaults"),
-                    two_up(
-                        {
-                            let list = crate::options_dialog::size_list();
-                            let opts: Vec<StringChoice> = list
-                                .iter()
-                                .map(|&(v, l)| StringChoice(v.to_string(), l.to_string()))
-                                .collect();
-                            let sel = opts
-                                .iter()
-                                .find(|c| c.0 == draft.image_size)
-                                .cloned()
-                                .or_else(|| opts.first().cloned());
-                            column![
-                                label_text("Image dimensions"),
-                                pick_list(opts, sel, |c: StringChoice| opt_msg(OptMsg::Str(StrKey::ImageSize, c.0)))
+                section_box(
+                    column![
+                        label_text("Autosave & Recovery"),
+                        two_up(
+                            opt_bool(
+                                "Enable automatic recovery snapshots",
+                                draft,
+                                BoolKey::AutoSaveEnabled,
+                                d
+                            ),
+                            opt_num("Autosave interval (min)", dlg, NumKey::AutoSaveInterval, d),
+                            compact,
+                        ),
+                        two_up(
+                            opt_bool("Auto-heal loaded files", draft, BoolKey::AutoHealFiles, d),
+                            opt_bool(
+                                "Hide video tutorial links",
+                                draft,
+                                BoolKey::DisableVideoTutorial,
+                                d
+                            ),
+                            compact,
+                        ),
+                    ]
+                    .spacing(SPACE_2),
+                ),
+                section_box(
+                    column![
+                        label_text("Export Image Defaults"),
+                        two_up(
+                            {
+                                let list = crate::options_dialog::size_list();
+                                let opts: Vec<StringChoice> = list
+                                    .iter()
+                                    .map(|&(v, l)| StringChoice(v.to_string(), l.to_string()))
+                                    .collect();
+                                let sel = opts
+                                    .iter()
+                                    .find(|c| c.0 == draft.image_size)
+                                    .cloned()
+                                    .or_else(|| opts.first().cloned());
+                                column![
+                                    label_text("Image dimensions"),
+                                    pick_list(opts, sel, |c: StringChoice| opt_msg(OptMsg::Str(
+                                        StrKey::ImageSize,
+                                        c.0
+                                    )))
                                     .width(Length::Fill)
                                     .text_size(TEXT_13)
                                     .font(BARLOW)
                                     .padding([6, 10])
                                     .style(pick_style)
                                     .menu_style(pick_menu_style),
+                                ]
+                                .spacing(SPACE_1)
+                                .into()
+                            },
+                            column![
+                                label_text("Colour depth"),
+                                row![
+                                    radio_row("8-bit", 8i32, Some(draft.image_depth as i32), |v| {
+                                        opt_msg(OptMsg::NumPicked(
+                                            NumKey::ImageDepth,
+                                            NumChoice(f64::from(v)),
+                                        ))
+                                    }),
+                                    radio_row(
+                                        "24-bit",
+                                        24i32,
+                                        Some(draft.image_depth as i32),
+                                        |v| opt_msg(OptMsg::NumPicked(
+                                            NumKey::ImageDepth,
+                                            NumChoice(f64::from(v))
+                                        ))
+                                    ),
+                                ]
+                                .spacing(SPACE_3),
                             ]
                             .spacing(SPACE_1)
-                            .into()
-                        },
-                        column![
-                            label_text("Colour depth"),
-                            row![
-                                radio_row("8-bit", 8i32, Some(draft.image_depth as i32), |v| opt_msg(OptMsg::NumPicked(NumKey::ImageDepth, NumChoice(f64::from(v))))),
-                                radio_row("24-bit", 24i32, Some(draft.image_depth as i32), |v| opt_msg(OptMsg::NumPicked(NumKey::ImageDepth, NumChoice(f64::from(v))))),
-                            ]
-                            .spacing(SPACE_3),
+                            .into(),
+                            compact,
+                        ),
+                        opt_bool(
+                            "Append page number to image exports",
+                            draft,
+                            BoolKey::AppendPageNumber,
+                            d
+                        ),
+                        row![
+                            label_text("Formats:"),
+                            check_row(
+                                "PNG",
+                                draft.format_enabled(FormatKey::Png),
+                                |_| opt_msg(OptMsg::ToggleFormat(FormatKey::Png)),
+                                d
+                            ),
+                            check_row(
+                                "JPG",
+                                draft.format_enabled(FormatKey::Jpg),
+                                |_| opt_msg(OptMsg::ToggleFormat(FormatKey::Jpg)),
+                                d
+                            ),
+                            check_row(
+                                "BMP",
+                                draft.format_enabled(FormatKey::Bmp),
+                                |_| opt_msg(OptMsg::ToggleFormat(FormatKey::Bmp)),
+                                d
+                            ),
                         ]
-                        .spacing(SPACE_1)
-                        .into(),
-                        compact,
-                    ),
-                    opt_bool("Append page number to image exports", draft, BoolKey::AppendPageNumber, d),
-                    row![
-                        label_text("Formats:"),
-                        check_row("PNG", draft.format_enabled(FormatKey::Png), |_| opt_msg(OptMsg::ToggleFormat(FormatKey::Png)), d),
-                        check_row("JPG", draft.format_enabled(FormatKey::Jpg), |_| opt_msg(OptMsg::ToggleFormat(FormatKey::Jpg)), d),
-                        check_row("BMP", draft.format_enabled(FormatKey::Bmp), |_| opt_msg(OptMsg::ToggleFormat(FormatKey::Bmp)), d),
+                        .spacing(SPACE_3)
+                        .align_y(Alignment::Center)
+                        .wrap(),
                     ]
-                    .spacing(SPACE_3)
-                    .align_y(Alignment::Center)
-                    .wrap(),
-                ]
-                .spacing(SPACE_2),
-            ),
-        ]),
+                    .spacing(SPACE_2),
+                ),
+            ],
+        ),
 
         OptTab::Fonts => opt_columns(
             compact,
             2,
             vec![
-            section_box(
-                column![
-                    label_text("Dimension Labels"),
-                    two_up(
-                        opt_font_pick("Font family", StrKey::DimensionFont, &draft.dimension_font),
-                        opt_num_pick("Font size", FONT_SIZES, NumKey::DimensionFontSize, draft.dimension_font_size),
-                        compact,
-                    ),
-                    row![
-                        opt_bool("Bold", draft, BoolKey::DimensionBold, d),
-                        opt_bool("Italic", draft, BoolKey::DimensionItalic, d),
-                        opt_bool("Underline", draft, BoolKey::DimensionUnderline, d),
+                section_box(
+                    column![
+                        label_text("Dimension Labels"),
+                        two_up(
+                            opt_font_pick(
+                                "Font family",
+                                StrKey::DimensionFont,
+                                &draft.dimension_font
+                            ),
+                            opt_num_pick(
+                                "Font size",
+                                FONT_SIZES,
+                                NumKey::DimensionFontSize,
+                                draft.dimension_font_size
+                            ),
+                            compact,
+                        ),
+                        row![
+                            opt_bool("Bold", draft, BoolKey::DimensionBold, d),
+                            opt_bool("Italic", draft, BoolKey::DimensionItalic, d),
+                            opt_bool("Underline", draft, BoolKey::DimensionUnderline, d),
+                        ]
+                        .spacing(SPACE_3)
+                        .wrap(),
                     ]
-                    .spacing(SPACE_3)
-                    .wrap(),
-                ]
-                .spacing(SPACE_2),
-            ),
-            section_box(
-                column![
-                    label_text("Room & Note Text"),
-                    three_up(
-                        opt_font_pick("Font family", StrKey::TextFont, &draft.text_font),
-                        opt_num_pick("Font size", FONT_SIZES, NumKey::TextFontSize, draft.text_font_size),
-                        opt_str("Text colour", draft, StrKey::TextColor, d),
-                        compact,
-                    ),
-                    row![
-                        opt_bool("Bold", draft, BoolKey::TextBold, d),
-                        opt_bool("Italic", draft, BoolKey::TextItalic, d),
-                        opt_bool("Underline", draft, BoolKey::TextUnderline, d),
+                    .spacing(SPACE_2),
+                ),
+                section_box(
+                    column![
+                        label_text("Room & Note Text"),
+                        three_up(
+                            opt_font_pick("Font family", StrKey::TextFont, &draft.text_font),
+                            opt_num_pick(
+                                "Font size",
+                                FONT_SIZES,
+                                NumKey::TextFontSize,
+                                draft.text_font_size
+                            ),
+                            opt_str("Text colour", draft, StrKey::TextColor, d),
+                            compact,
+                        ),
+                        row![
+                            opt_bool("Bold", draft, BoolKey::TextBold, d),
+                            opt_bool("Italic", draft, BoolKey::TextItalic, d),
+                            opt_bool("Underline", draft, BoolKey::TextUnderline, d),
+                        ]
+                        .spacing(SPACE_3)
+                        .wrap(),
+                        two_up(
+                            opt_str("Label backdrop colour", draft, StrKey::TextBackground, d),
+                            opt_num(
+                                "Backdrop opacity (%)",
+                                dlg,
+                                NumKey::TextBackgroundOpacity,
+                                d
+                            ),
+                            compact,
+                        ),
                     ]
-                    .spacing(SPACE_3)
-                    .wrap(),
-                    two_up(
-                        opt_str("Label backdrop colour", draft, StrKey::TextBackground, d),
-                        opt_num("Backdrop opacity (%)", dlg, NumKey::TextBackgroundOpacity, d),
-                        compact,
-                    ),
-                ]
-                .spacing(SPACE_2),
-            ),
-            section_box(
-                column![
-                    label_text("Auto-Post Area Labels"),
-                    two_up(
-                        opt_font_pick("Font family", StrKey::AutoPostFont, &draft.auto_post_font),
-                        opt_num_pick("Font size", FONT_SIZES, NumKey::AutoPostFontSize, draft.auto_post_font_size),
-                        compact,
-                    ),
-                    row![
-                        opt_bool("Bold", draft, BoolKey::AutoPostBold, d),
-                        opt_bool("Italic", draft, BoolKey::AutoPostItalic, d),
-                        opt_bool("Underline", draft, BoolKey::AutoPostUnderline, d),
-                        opt_bool("Circle area totals", draft, BoolKey::CircleAreaCalcs, d),
+                    .spacing(SPACE_2),
+                ),
+                section_box(
+                    column![
+                        label_text("Auto-Post Area Labels"),
+                        two_up(
+                            opt_font_pick(
+                                "Font family",
+                                StrKey::AutoPostFont,
+                                &draft.auto_post_font
+                            ),
+                            opt_num_pick(
+                                "Font size",
+                                FONT_SIZES,
+                                NumKey::AutoPostFontSize,
+                                draft.auto_post_font_size
+                            ),
+                            compact,
+                        ),
+                        row![
+                            opt_bool("Bold", draft, BoolKey::AutoPostBold, d),
+                            opt_bool("Italic", draft, BoolKey::AutoPostItalic, d),
+                            opt_bool("Underline", draft, BoolKey::AutoPostUnderline, d),
+                            opt_bool("Circle area totals", draft, BoolKey::CircleAreaCalcs, d),
+                        ]
+                        .spacing(SPACE_3)
+                        .wrap(),
                     ]
-                    .spacing(SPACE_3)
-                    .wrap(),
-                ]
-                .spacing(SPACE_2),
-            ),
-        ]),
+                    .spacing(SPACE_2),
+                ),
+            ],
+        ),
 
         OptTab::Drawing => opt_columns(
             compact,
             2,
             vec![
-            section_box(
-                column![
-                    label_text("Walls"),
-                    three_up(
-                        opt_str("Exterior colour", draft, StrKey::ExteriorColor, d),
-                        opt_num("Exterior width (px)", dlg, NumKey::ExteriorWidth, d),
-                        opt_num("Exterior thickness (in)", dlg, NumKey::ExteriorThickness, d),
-                        compact,
-                    ),
-                    three_up(
-                        opt_str("Interior colour", draft, StrKey::InteriorColor, d),
-                        opt_num("Interior width (px)", dlg, NumKey::InteriorWidth, d),
-                        opt_num("Interior thickness (in)", dlg, NumKey::InteriorThickness, d),
-                        compact,
-                    ),
-                    opt_bool("Fill wall solids", draft, BoolKey::WallSolids, d),
-                ]
-                .spacing(SPACE_2),
-            ),
-            section_box(
-                column![
-                    label_text("Witness & Labels"),
-                    three_up(
-                        opt_str("Witness base colour", draft, StrKey::WitnessBaseColor, d),
-                        opt_str("Witness interior colour", draft, StrKey::WitnessInteriorColor, d),
-                        opt_str("Witness curve colour", draft, StrKey::WitnessCurveColor, d),
-                        compact,
-                    ),
-                    two_up(
-                        opt_num("Area label opacity (%)", dlg, NumKey::LabelOpacity, d),
-                        opt_num_pick("Crosshair pointer size (px)", POINTERS, NumKey::PointerSize, draft.pointer_size),
-                        compact,
-                    ),
-                ]
-                .spacing(SPACE_2),
-            ),
-            section_box(
-                column![
-                    label_text("Behaviour"),
-                    two_up(
-                        opt_bool("Define area after closing", draft, BoolKey::DisplayOnClose, d),
-                        opt_bool("Define area before drawing", draft, BoolKey::DefineFirst, d),
-                        compact,
-                    ),
-                    two_up(
-                        opt_bool("Auto-subtract overlapping areas", draft, BoolKey::AutoSubtractOverlapped, d),
-                        opt_bool("Quick shape auto-define", draft, BoolKey::QuickShapeDefine, d),
-                        compact,
-                    ),
-                    two_up(
-                        opt_bool("Allow redefine closed areas", draft, BoolKey::Redefine, d),
-                        opt_bool("Split walls at T-junctions", draft, BoolKey::SplitWallsAtJunctions, d),
-                        compact,
-                    ),
-                    two_up(
-                        opt_bool("Allow pan/zoom during delete", draft, BoolKey::PanZoomDelete, d),
-                        opt_bool("Embed reference photo in .skx", draft, BoolKey::SaveImageWithSketch, d),
-                        compact,
-                    ),
-                    opt_num("Embedded image quality (%)", dlg, NumKey::ImageQuality, d),
-                ]
-                .spacing(SPACE_2),
-            ),
-        ]),
+                section_box(
+                    column![
+                        label_text("Walls"),
+                        three_up(
+                            opt_str("Exterior colour", draft, StrKey::ExteriorColor, d),
+                            opt_num("Exterior width (px)", dlg, NumKey::ExteriorWidth, d),
+                            opt_num("Exterior thickness (in)", dlg, NumKey::ExteriorThickness, d),
+                            compact,
+                        ),
+                        three_up(
+                            opt_str("Interior colour", draft, StrKey::InteriorColor, d),
+                            opt_num("Interior width (px)", dlg, NumKey::InteriorWidth, d),
+                            opt_num("Interior thickness (in)", dlg, NumKey::InteriorThickness, d),
+                            compact,
+                        ),
+                        opt_bool("Fill wall solids", draft, BoolKey::WallSolids, d),
+                    ]
+                    .spacing(SPACE_2),
+                ),
+                section_box(
+                    column![
+                        label_text("Witness & Labels"),
+                        three_up(
+                            opt_str("Witness base colour", draft, StrKey::WitnessBaseColor, d),
+                            opt_str(
+                                "Witness interior colour",
+                                draft,
+                                StrKey::WitnessInteriorColor,
+                                d
+                            ),
+                            opt_str("Witness curve colour", draft, StrKey::WitnessCurveColor, d),
+                            compact,
+                        ),
+                        two_up(
+                            opt_num("Area label opacity (%)", dlg, NumKey::LabelOpacity, d),
+                            opt_num_pick(
+                                "Crosshair pointer size (px)",
+                                POINTERS,
+                                NumKey::PointerSize,
+                                draft.pointer_size
+                            ),
+                            compact,
+                        ),
+                    ]
+                    .spacing(SPACE_2),
+                ),
+                section_box(
+                    column![
+                        label_text("Behaviour"),
+                        two_up(
+                            opt_bool(
+                                "Define area after closing",
+                                draft,
+                                BoolKey::DisplayOnClose,
+                                d
+                            ),
+                            opt_bool("Define area before drawing", draft, BoolKey::DefineFirst, d),
+                            compact,
+                        ),
+                        two_up(
+                            opt_bool(
+                                "Auto-subtract overlapping areas",
+                                draft,
+                                BoolKey::AutoSubtractOverlapped,
+                                d
+                            ),
+                            opt_bool(
+                                "Quick shape auto-define",
+                                draft,
+                                BoolKey::QuickShapeDefine,
+                                d
+                            ),
+                            compact,
+                        ),
+                        two_up(
+                            opt_bool("Allow redefine closed areas", draft, BoolKey::Redefine, d),
+                            opt_bool(
+                                "Split walls at T-junctions",
+                                draft,
+                                BoolKey::SplitWallsAtJunctions,
+                                d
+                            ),
+                            compact,
+                        ),
+                        two_up(
+                            opt_bool(
+                                "Allow pan/zoom during delete",
+                                draft,
+                                BoolKey::PanZoomDelete,
+                                d
+                            ),
+                            opt_bool(
+                                "Embed reference photo in .skx",
+                                draft,
+                                BoolKey::SaveImageWithSketch,
+                                d
+                            ),
+                            compact,
+                        ),
+                        opt_num("Embedded image quality (%)", dlg, NumKey::ImageQuality, d),
+                    ]
+                    .spacing(SPACE_2),
+                ),
+            ],
+        ),
     };
 
     let nav_items: Element<'a, Message> = if compact {
@@ -1372,14 +1550,12 @@ fn options_dialog_layer<'a>(
                 d,
             ));
         }
-        scrollable(
-            container(r).padding(Padding {
-                top: 0.0,
-                right: 0.0,
-                bottom: 12.0,
-                left: 0.0,
-            }),
-        )
+        scrollable(container(r).padding(Padding {
+            top: 0.0,
+            right: 0.0,
+            bottom: 12.0,
+            left: 0.0,
+        }))
         .direction(scrollable::Direction::Horizontal(
             scrollable::Scrollbar::new().width(4).scroller_width(4),
         ))
@@ -1408,7 +1584,9 @@ fn options_dialog_layer<'a>(
         column![
             nav_items,
             kit::divider(),
-            scrollable(tab_body).height(Length::Fill).width(Length::Fill),
+            scrollable(tab_body)
+                .height(Length::Fill)
+                .width(Length::Fill),
         ]
         .spacing(SPACE_2)
         .height(Length::Fill)
@@ -1435,7 +1613,11 @@ fn options_dialog_layer<'a>(
     };
 
     let footer_left = row![
-        kit::text_button("Restore Defaults", Some(opt_msg(OptMsg::RestoreDefaults)), d),
+        kit::text_button(
+            "Restore Defaults",
+            Some(opt_msg(OptMsg::RestoreDefaults)),
+            d
+        ),
         kit::text_button("Save as Default", Some(opt_msg(OptMsg::SaveDefaults)), d),
     ]
     .spacing(SPACE_2)
@@ -1449,11 +1631,17 @@ fn options_dialog_layer<'a>(
     Some(dialog_frame(
         DialogFrame {
             title: "Preferences".into(),
-            subtitle: Some("General, display, laser hardware, system, fonts, and wall drawing defaults".into()),
+            subtitle: Some(
+                "General, display, laser hardware, system, fonts, and wall drawing defaults".into(),
+            ),
             preferred_w: 1120.0,
             preferred_h: Some(720.0),
             body,
-            footer: Some(footer_pair(footer_left.into(), footer_right.into(), compact)),
+            footer: Some(footer_pair(
+                footer_left.into(),
+                footer_right.into(),
+                compact,
+            )),
             on_close: Some(opt_msg(OptMsg::Cancel)),
         },
         win,
@@ -1482,9 +1670,24 @@ fn subject_info_layer<'a>(
     let compact = size_class == SizeClass::Compact;
 
     let tabs = row![
-        kit::chip("Parcel Info", dlg.tab == SubjectTab::Parcel, Some(subj_msg(SubjectMsg::Tab(SubjectTab::Parcel))), d),
-        kit::chip("General Comments", dlg.tab == SubjectTab::Comments, Some(subj_msg(SubjectMsg::Tab(SubjectTab::Comments))), d),
-        kit::chip("Comment Tables", dlg.tab == SubjectTab::Tables, Some(subj_msg(SubjectMsg::Tab(SubjectTab::Tables))), d),
+        kit::chip(
+            "Parcel Info",
+            dlg.tab == SubjectTab::Parcel,
+            Some(subj_msg(SubjectMsg::Tab(SubjectTab::Parcel))),
+            d
+        ),
+        kit::chip(
+            "General Comments",
+            dlg.tab == SubjectTab::Comments,
+            Some(subj_msg(SubjectMsg::Tab(SubjectTab::Comments))),
+            d
+        ),
+        kit::chip(
+            "Comment Tables",
+            dlg.tab == SubjectTab::Tables,
+            Some(subj_msg(SubjectMsg::Tab(SubjectTab::Tables))),
+            d
+        ),
     ]
     .spacing(SPACE_2)
     .wrap();
@@ -1503,7 +1706,11 @@ fn subject_info_layer<'a>(
             ]
             .spacing(2)
             .width(Length::Fill),
-            kit::text_button("Auto-Fill from Report", Some(subj_msg(SubjectMsg::AutoFill)), d),
+            kit::text_button(
+                "Auto-Fill from Report",
+                Some(subj_msg(SubjectMsg::AutoFill)),
+                d
+            ),
         ]
         .spacing(SPACE_3)
         .align_y(Alignment::Center),
@@ -1569,7 +1776,11 @@ fn subject_info_layer<'a>(
                 } else {
                     let i0 = indices[0];
                     let i1 = indices[1];
-                    let ph1 = if i1 == IDX_INSPECTION { "YYYY-MM-DD" } else { "" };
+                    let ph1 = if i1 == IDX_INSPECTION {
+                        "YYYY-MM-DD"
+                    } else {
+                        ""
+                    };
                     rows_col = rows_col.push(two_up(
                         owned_field(
                             SUBJECT_FIELDS[i0],
@@ -1623,8 +1834,20 @@ fn subject_info_layer<'a>(
                 .spacing(SPACE_2);
                 for (i, (k, v)) in dlg.extra.iter().enumerate() {
                     ex_col = ex_col.push(two_up(
-                        labelled_field("", k, "Name", move |s| subj_msg(SubjectMsg::ExtraName(i, s)), d),
-                        labelled_field("", v, "Value", move |s| subj_msg(SubjectMsg::ExtraValue(i, s)), d),
+                        labelled_field(
+                            "",
+                            k,
+                            "Name",
+                            move |s| subj_msg(SubjectMsg::ExtraName(i, s)),
+                            d,
+                        ),
+                        labelled_field(
+                            "",
+                            v,
+                            "Value",
+                            move |s| subj_msg(SubjectMsg::ExtraValue(i, s)),
+                            d,
+                        ),
                         compact,
                     ));
                 }
@@ -1746,9 +1969,11 @@ fn page_layout_layer<'a>(
 
     let paper_pick = column![
         label_text("Paper size"),
-        pick_list(papers, Some(PaperChoice(dlg.draft.paper_size)), move |p: PaperChoice| {
-            lay(LayoutMsg::SetPaper(p.0))
-        })
+        pick_list(
+            papers,
+            Some(PaperChoice(dlg.draft.paper_size)),
+            move |p: PaperChoice| { lay(LayoutMsg::SetPaper(p.0)) }
+        )
         .width(Length::Fill)
         .text_size(TEXT_13)
         .font(BARLOW)
@@ -1817,7 +2042,8 @@ fn page_layout_layer<'a>(
     };
     let body = scrollable(content).height(Length::Fill);
 
-    let footer_left = kit::text_button("Restore Defaults", Some(lay(LayoutMsg::RestoreDefaults)), d);
+    let footer_left =
+        kit::text_button("Restore Defaults", Some(lay(LayoutMsg::RestoreDefaults)), d);
     let footer_right = row![
         kit::text_button("Cancel", Some(lay(LayoutMsg::Cancel)), d),
         kit::primary_button("Apply", Some(lay(LayoutMsg::Apply)), d),
@@ -1922,9 +2148,7 @@ fn print_preview_layer<'a>(
     Some(dialog_frame(
         DialogFrame {
             title: "Print Preview".into(),
-            subtitle: preview
-                .paper
-                .map(|p| format!("Paper: {}", paper_label(p))),
+            subtitle: preview.paper.map(|p| format!("Paper: {}", paper_label(p))),
             preferred_w: 840.0,
             preferred_h: Some(dialog_h),
             body: body.into(),
@@ -1959,19 +2183,24 @@ fn breakdown_layer<'a>(
         .size(TEXT_12)
         .color(tokens::text());
 
-    let report_box = container(scrollable(report_text).id("breakdown-list").height(Length::Fill).width(Length::Fill))
-        .padding(SPACE_3)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .style(|_| container::Style {
-            background: Some(Background::Color(tokens::field())),
-            border: Border {
-                color: tokens::rule(),
-                width: 1.0,
-                radius: RADIUS_TILE.into(),
-            },
-            ..container::Style::default()
-        });
+    let report_box = container(
+        scrollable(report_text)
+            .id("breakdown-list")
+            .height(Length::Fill)
+            .width(Length::Fill),
+    )
+    .padding(SPACE_3)
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .style(|_| container::Style {
+        background: Some(Background::Color(tokens::field())),
+        border: Border {
+            color: tokens::rule(),
+            width: 1.0,
+            radius: RADIUS_TILE.into(),
+        },
+        ..container::Style::default()
+    });
 
     let preview_box = container(
         column![
@@ -2061,7 +2290,8 @@ fn attr_dialog_layer<'a>(
                 value: &dlg.values[i],
                 placeholder: "",
                 on_input: dlg.editable.then(|| {
-                    let f: Box<dyn Fn(String) -> Message> = Box::new(move |s| am(AttrMsg::Value(i, s)));
+                    let f: Box<dyn Fn(String) -> Message> =
+                        Box::new(move |s| am(AttrMsg::Value(i, s)));
                     f
                 }),
                 on_submit: None,
@@ -2138,9 +2368,8 @@ fn area_dialog_layer<'a>(
         .iter()
         .map(|&s| StringChoice(s.to_string(), s.to_string()))
         .collect();
-    let cur_measure_lbl = area_dialog::measure_label(
-        dlg.props.measure_to.as_deref().unwrap_or("center"),
-    );
+    let cur_measure_lbl =
+        area_dialog::measure_label(dlg.props.measure_to.as_deref().unwrap_or("center"));
     let cur_measure = StringChoice(cur_measure_lbl.to_string(), cur_measure_lbl.to_string());
     let measure_pick = column![
         label_text("Measure to"),
@@ -2167,11 +2396,23 @@ fn area_dialog_layer<'a>(
         column![
             two_up(
                 code_pick.into(),
-                labelled_field("Name", &dlg.props.name, "", move |s| ad(AreaDialogMsg::Name(s)), d),
+                labelled_field(
+                    "Name",
+                    &dlg.props.name,
+                    "",
+                    move |s| ad(AreaDialogMsg::Name(s)),
+                    d
+                ),
                 compact,
             ),
             two_up(
-                labelled_field("Factor", &dlg.factor_text, "1", move |s| ad(AreaDialogMsg::Factor(s)), d),
+                labelled_field(
+                    "Factor",
+                    &dlg.factor_text,
+                    "1",
+                    move |s| ad(AreaDialogMsg::Factor(s)),
+                    d
+                ),
                 measure_pick.into(),
                 compact,
             ),
@@ -2179,14 +2420,22 @@ fn area_dialog_layer<'a>(
                 column![
                     label_text("Area Sign & Auto-Subtract"),
                     row![
-                        radio_row("Positive (+)", true, Some(dlg.positive), move |v| ad(AreaDialogMsg::Positive(v))),
-                        radio_row("Negative (-)", false, Some(dlg.positive), move |v| ad(AreaDialogMsg::Positive(v))),
+                        radio_row("Positive (+)", true, Some(dlg.positive), move |v| ad(
+                            AreaDialogMsg::Positive(v)
+                        )),
+                        radio_row("Negative (-)", false, Some(dlg.positive), move |v| ad(
+                            AreaDialogMsg::Positive(v)
+                        )),
                     ]
                     .spacing(SPACE_4),
                     row![
                         label_text("Auto-subtract:"),
-                        radio_row("Automatic", "Automatic", Some(auto_sub), move |v| ad(AreaDialogMsg::AutoSubtract(v.into()))),
-                        radio_row("Manual", "Manual", Some(auto_sub), move |v| ad(AreaDialogMsg::AutoSubtract(v.into()))),
+                        radio_row("Automatic", "Automatic", Some(auto_sub), move |v| ad(
+                            AreaDialogMsg::AutoSubtract(v.into())
+                        )),
+                        radio_row("Manual", "Manual", Some(auto_sub), move |v| ad(
+                            AreaDialogMsg::AutoSubtract(v.into())
+                        )),
                     ]
                     .spacing(SPACE_3)
                     .wrap(),
@@ -2197,16 +2446,52 @@ fn area_dialog_layer<'a>(
                 column![
                     label_text("Auto-Post Label Parts"),
                     row![
-                        check_row("Code", post.code, move |b| ad(AreaDialogMsg::Post(PostSwitch::Code, b)), d),
-                        check_row("Name", post.name, move |b| ad(AreaDialogMsg::Post(PostSwitch::Name, b)), d),
-                        check_row("Dimensions", post.dims, move |b| ad(AreaDialogMsg::Post(PostSwitch::Dims, b)), d),
-                        check_row("Math", post.calcs, move |b| ad(AreaDialogMsg::Post(PostSwitch::Calcs, b)), d),
-                        check_row("Base", post.base, move |b| ad(AreaDialogMsg::Post(PostSwitch::Base, b)), d),
-                        check_row("Factor", post.factor, move |b| ad(AreaDialogMsg::Post(PostSwitch::Factor, b)), d),
+                        check_row(
+                            "Code",
+                            post.code,
+                            move |b| ad(AreaDialogMsg::Post(PostSwitch::Code, b)),
+                            d
+                        ),
+                        check_row(
+                            "Name",
+                            post.name,
+                            move |b| ad(AreaDialogMsg::Post(PostSwitch::Name, b)),
+                            d
+                        ),
+                        check_row(
+                            "Dimensions",
+                            post.dims,
+                            move |b| ad(AreaDialogMsg::Post(PostSwitch::Dims, b)),
+                            d
+                        ),
+                        check_row(
+                            "Math",
+                            post.calcs,
+                            move |b| ad(AreaDialogMsg::Post(PostSwitch::Calcs, b)),
+                            d
+                        ),
+                        check_row(
+                            "Base",
+                            post.base,
+                            move |b| ad(AreaDialogMsg::Post(PostSwitch::Base, b)),
+                            d
+                        ),
+                        check_row(
+                            "Factor",
+                            post.factor,
+                            move |b| ad(AreaDialogMsg::Post(PostSwitch::Factor, b)),
+                            d
+                        ),
                     ]
                     .spacing(SPACE_3)
                     .wrap(),
-                    labelled_field("Suffix", &dlg.suffix_text, "sf", move |s| ad(AreaDialogMsg::Suffix(s)), d),
+                    labelled_field(
+                        "Suffix",
+                        &dlg.suffix_text,
+                        "sf",
+                        move |s| ad(AreaDialogMsg::Suffix(s)),
+                        d
+                    ),
                 ]
                 .spacing(SPACE_2),
             ),
@@ -2260,7 +2545,9 @@ impl canvas::Program<Message> for CursorProgram {
         let mut frame = Frame::new(renderer, bounds.size());
         frame.stroke(
             &Path::circle(self.point, 5.5),
-            Stroke::default().with_width(2.0).with_color(Color::from_rgba(0.0, 0.0, 0.0, 0.7)),
+            Stroke::default()
+                .with_width(2.0)
+                .with_color(Color::from_rgba(0.0, 0.0, 0.0, 0.7)),
         );
         frame.stroke(
             &Path::circle(self.point, 4.5),
@@ -2322,8 +2609,18 @@ fn color_dialog_layer<'a>(
     let compact = size_class == SizeClass::Compact;
 
     let tabs = row![
-        kit::chip("Standard", dlg.tab == ColorTab::Standard, Some(cm(ColorMsg::Tab(ColorTab::Standard))), d),
-        kit::chip("Custom", dlg.tab == ColorTab::Custom, Some(cm(ColorMsg::Tab(ColorTab::Custom))), d),
+        kit::chip(
+            "Standard",
+            dlg.tab == ColorTab::Standard,
+            Some(cm(ColorMsg::Tab(ColorTab::Standard))),
+            d
+        ),
+        kit::chip(
+            "Custom",
+            dlg.tab == ColorTab::Custom,
+            Some(cm(ColorMsg::Tab(ColorTab::Custom))),
+            d
+        ),
     ]
     .spacing(SPACE_2);
 
@@ -2392,7 +2689,9 @@ fn color_dialog_layer<'a>(
                 swatches = swatches.push(r);
             }
             column![
-                row![wheel, preview].spacing(SPACE_4).align_y(Alignment::Center),
+                row![wheel, preview]
+                    .spacing(SPACE_4)
+                    .align_y(Alignment::Center),
                 swatches,
             ]
             .spacing(SPACE_3)
@@ -2414,13 +2713,33 @@ fn color_dialog_layer<'a>(
                 ColorArea::Hue,
             );
             let rgb_col = three_up(
-                labelled_field("Red", &dlg.rgb[0], "0", move |s| cm(ColorMsg::Rgb(RgbField::R, s)), d),
-                labelled_field("Green", &dlg.rgb[1], "0", move |s| cm(ColorMsg::Rgb(RgbField::G, s)), d),
-                labelled_field("Blue", &dlg.rgb[2], "0", move |s| cm(ColorMsg::Rgb(RgbField::B, s)), d),
+                labelled_field(
+                    "Red",
+                    &dlg.rgb[0],
+                    "0",
+                    move |s| cm(ColorMsg::Rgb(RgbField::R, s)),
+                    d,
+                ),
+                labelled_field(
+                    "Green",
+                    &dlg.rgb[1],
+                    "0",
+                    move |s| cm(ColorMsg::Rgb(RgbField::G, s)),
+                    d,
+                ),
+                labelled_field(
+                    "Blue",
+                    &dlg.rgb[2],
+                    "0",
+                    move |s| cm(ColorMsg::Rgb(RgbField::B, s)),
+                    d,
+                ),
                 compact,
             );
             column![
-                row![sv, hue, preview].spacing(SPACE_3).align_y(Alignment::Center),
+                row![sv, hue, preview]
+                    .spacing(SPACE_3)
+                    .align_y(Alignment::Center),
                 rgb_col,
             ]
             .spacing(SPACE_3)
@@ -2670,19 +2989,23 @@ fn text_manager_layer<'a>(
         }
     }
 
-    let list_box = container(scrollable(list_col).id("room-labels-list").height(Length::Fill))
-        .height(Length::Fixed(240.0))
-        .width(Length::Fill)
-        .padding(SPACE_2)
-        .style(|_| container::Style {
-            background: Some(Background::Color(tokens::field())),
-            border: Border {
-                color: tokens::rule(),
-                width: 1.0,
-                radius: RADIUS_TILE.into(),
-            },
-            ..container::Style::default()
-        });
+    let list_box = container(
+        scrollable(list_col)
+            .id("room-labels-list")
+            .height(Length::Fill),
+    )
+    .height(Length::Fixed(240.0))
+    .width(Length::Fill)
+    .padding(SPACE_2)
+    .style(|_| container::Style {
+        background: Some(Background::Color(tokens::field())),
+        border: Border {
+            color: tokens::rule(),
+            width: 1.0,
+            radius: RADIUS_TILE.into(),
+        },
+        ..container::Style::default()
+    });
 
     let input = kit::field(
         FieldProps {
@@ -2697,14 +3020,12 @@ fn text_manager_layer<'a>(
     );
 
     let body = column![
-        scrollable(
-            container(chips).padding(Padding {
-                top: 0.0,
-                right: 0.0,
-                bottom: 12.0,
-                left: 0.0,
-            }),
-        )
+        scrollable(container(chips).padding(Padding {
+            top: 0.0,
+            right: 0.0,
+            bottom: 12.0,
+            left: 0.0,
+        }),)
         .direction(scrollable::Direction::Horizontal(
             scrollable::Scrollbar::new().width(4).scroller_width(4),
         ))
@@ -2718,7 +3039,9 @@ fn text_manager_layer<'a>(
         kit::text_button("Add", Some(tmm(TextManagerMsg::Add)), d),
         kit::text_button(
             "Replace",
-            tm.selected.is_some().then_some(tmm(TextManagerMsg::Replace)),
+            tm.selected
+                .is_some()
+                .then_some(tmm(TextManagerMsg::Replace)),
             d,
         ),
         kit::text_button(
@@ -3020,16 +3343,19 @@ fn guide_layer<'a>(
     let topic_nav: Element<'a, Message> = if compact {
         let mut r = row![].spacing(SPACE_1);
         for (i, t) in TOPICS.iter().enumerate() {
-            r = r.push(kit::chip(t.title, i == current, Some(gm(GuideMsg::Topic(i))), d));
+            r = r.push(kit::chip(
+                t.title,
+                i == current,
+                Some(gm(GuideMsg::Topic(i))),
+                d,
+            ));
         }
-        scrollable(
-            container(r).padding(Padding {
-                top: 0.0,
-                right: 0.0,
-                bottom: 12.0,
-                left: 0.0,
-            }),
-        )
+        scrollable(container(r).padding(Padding {
+            top: 0.0,
+            right: 0.0,
+            bottom: 12.0,
+            left: 0.0,
+        }))
         .direction(scrollable::Direction::Horizontal(
             scrollable::Scrollbar::new().width(4).scroller_width(4),
         ))
@@ -3145,7 +3471,8 @@ fn guide_layer<'a>(
     let article_scroll = scrollable(container(article).padding(Padding {
         right: SPACE_2,
         ..Padding::ZERO
-    })).id("guide-article-list")
+    }))
+    .id("guide-article-list")
     .height(Length::Fill)
     .width(Length::Fill);
 
@@ -3178,7 +3505,9 @@ fn guide_layer<'a>(
     Some(dialog_frame(
         DialogFrame {
             title: "User Guide".into(),
-            subtitle: Some("Workspace navigation, drawing workflows, and report integration".into()),
+            subtitle: Some(
+                "Workspace navigation, drawing workflows, and report integration".into(),
+            ),
             preferred_w: 840.0,
             preferred_h: Some(640.0),
             body,
@@ -3271,12 +3600,17 @@ fn geo_menu_layer<'a>(
 
 #[cfg(not(test))]
 pub async fn pick_codes_import() -> Option<std::path::PathBuf> {
-    crate::platform::pick_file_async("Area types JSON", &["json"]).await
+    crate::platform::pick_file_async("Area types JSON".to_owned(), vec!["json".to_owned()]).await
 }
 
 #[cfg(not(test))]
 pub async fn pick_codes_export() -> Option<std::path::PathBuf> {
-    crate::platform::save_file_async("Area types JSON", &["json"], "sketch-area-types.json").await
+    crate::platform::save_file_async(
+        "Area types JSON".to_owned(),
+        vec!["json".to_owned()],
+        "sketch-area-types.json".to_owned(),
+    )
+    .await
 }
 
 #[cfg(test)]

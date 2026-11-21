@@ -1136,21 +1136,39 @@ impl GeometryEngine {
             return self.polygon_centroid(&ring);
         }
         let centroid = self.polygon_centroid(&ring);
+        let mut min_x = f64::INFINITY;
+        let mut max_x = f64::NEG_INFINITY;
+        let mut min_y = f64::INFINITY;
+        let mut max_y = f64::NEG_INFINITY;
+        for point in &ring {
+            min_x = min_x.min(point.x);
+            max_x = max_x.max(point.x);
+            min_y = min_y.min(point.y);
+            max_y = max_y.max(point.y);
+        }
+        let max_possible_pole_distance = ((max_x - min_x).min(max_y - min_y)) * 0.5;
+        let centroid_clearance = if self.point_in_polygon(centroid, &ring) {
+            self.boundary_distance(centroid, &ring)
+        } else {
+            0.0
+        };
+        // Any interior point has boundary distance at most min(width, height) / 2.
+        // When the centroid already clears at least half of that upper bound,
+        // centroid_clearance < pole.distance * 0.5 can never hold, so we can
+        // return the centroid directly without running polylabel cell refinement.
+        if max_possible_pole_distance > 0.0
+            && centroid_clearance >= max_possible_pole_distance * 0.5
+        {
+            return centroid;
+        }
         let pole = self.pole_of_inaccessibility(&ring, 0.05);
         let mut anchor = centroid;
         if let Some(pole) = pole {
-            if pole.distance > 1e-9 {
-                let centroid_clearance = if self.point_in_polygon(centroid, &ring) {
-                    self.boundary_distance(centroid, &ring)
-                } else {
-                    0.0
+            if pole.distance > 1e-9 && centroid_clearance < pole.distance * 0.5 {
+                anchor = Pt {
+                    x: pole.x,
+                    y: pole.y,
                 };
-                if centroid_clearance < pole.distance * 0.5 {
-                    anchor = Pt {
-                        x: pole.x,
-                        y: pole.y,
-                    };
-                }
             }
         }
         anchor
@@ -1182,7 +1200,9 @@ impl GeometryEngine {
             min_y = min_y.min(point.y);
             max_y = max_y.max(point.y);
         }
-        let size = (max_x - min_x).min(max_y - min_y);
+        let width = max_x - min_x;
+        let height = max_y - min_y;
+        let size = width.min(height);
         // JS: if (!(size > 0)) return null — negation transcribed literally
         // so a NaN size also yields None.
         #[allow(clippy::neg_cmp_op_on_partial_ord)]
@@ -1216,16 +1236,22 @@ impl GeometryEngine {
                 max: d + half * std::f64::consts::SQRT_2,
             }
         };
-        let half = size / 2.0;
+        let max_span = width.max(height);
+        let step = if max_span / size > 64.0 {
+            max_span / 64.0
+        } else {
+            size
+        };
+        let half = step / 2.0;
         let mut queue: Vec<Cell> = Vec::new();
         let mut x = min_x;
         while x < max_x {
             let mut y = min_y;
             while y < max_y {
                 queue.push(cell(x + half, y + half, half));
-                y += size;
+                y += step;
             }
-            x += size;
+            x += step;
         }
         let centroid = self.polygon_centroid(ring);
         let mut best = cell(centroid.x, centroid.y, 0.0);
@@ -1233,8 +1259,9 @@ impl GeometryEngine {
         if box_center.d > best.d {
             best = box_center;
         }
+        let effective_precision = precision.max(size * 1e-4);
         let mut guard = 0usize;
-        while !queue.is_empty() && guard < 20000 {
+        while !queue.is_empty() && guard < 2000 {
             guard += 1;
             let mut index = 0usize;
             for i in 1..queue.len() {
@@ -1242,7 +1269,7 @@ impl GeometryEngine {
                     index = i;
                 }
             }
-            let current = queue.remove(index);
+            let current = queue.swap_remove(index);
             if current.d > best.d {
                 best = Cell {
                     x: current.x,
@@ -1252,7 +1279,7 @@ impl GeometryEngine {
                     max: current.max,
                 };
             }
-            if current.max - best.d <= precision {
+            if current.max - best.d <= effective_precision {
                 continue;
             }
             let h = current.half / 2.0;
@@ -2635,9 +2662,9 @@ mod tests {
         let codes = area_codes::default_area_codes();
         let actual_codes: Vec<&str> = codes.iter().map(|c| c.code.as_str()).collect();
         let expected_codes = [
-            "GLA1", "GLA2", "GLA3", "GLA4", "GBA1", "GBA2", "GBA3", "GBA4", "GAR", "CPT",
-            "BSMT", "BSMT2", "OFP", "SFP", "EFP", "PAT", "PORCH", "DK", "BAL", "POOL", "SHED",
-            "LAND", "SITE", "OTH", "NCA", "UND",
+            "GLA1", "GLA2", "GLA3", "GLA4", "GBA1", "GBA2", "GBA3", "GBA4", "GAR", "CPT", "BSMT",
+            "BSMT2", "OFP", "SFP", "EFP", "PAT", "PORCH", "DK", "BAL", "POOL", "SHED", "LAND",
+            "SITE", "OTH", "NCA", "UND",
         ];
         assert_eq!(actual_codes, expected_codes);
         let gla: Vec<(&str, &str, &str)> = codes

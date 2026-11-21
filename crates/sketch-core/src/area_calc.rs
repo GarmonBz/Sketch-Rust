@@ -277,12 +277,7 @@ pub fn uses_native_net(p: &Polygon) -> bool {
 /// Natively calculated areas use signed multipliers independently of the code table and
 /// deduct the child's recursively calculated net, including its own factor.
 fn apply_native_calculations(polys: &mut [CalcPoly], originals: &[Polygon]) -> Vec<String> {
-    let native: Vec<bool> = originals
-        .iter()
-        .map(|p| {
-            uses_native_net(p)
-        })
-        .collect();
+    let native: Vec<bool> = originals.iter().map(uses_native_net).collect();
     for (i, calc) in polys.iter_mut().enumerate() {
         if native[i] {
             let multiplier = calc.factor_override.unwrap_or(calc.factor * calc.sign);
@@ -580,10 +575,9 @@ fn rollup(polys: &[CalcPoly], code_table: &[AreaCode], originals: &[Polygon]) ->
         // deducting it from its container already cuts the hole.
         if calc.subtracted_from_id.is_some()
             && calc.net <= 0.0
-            && !originals.iter().any(|p| {
-                p.id == calc.id
-                    && uses_native_net(p)
-            })
+            && !originals
+                .iter()
+                .any(|p| p.id == calc.id && uses_native_net(p))
         {
             continue;
         }

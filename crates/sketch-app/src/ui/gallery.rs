@@ -45,7 +45,11 @@ pub fn view(app: &App) -> Element<'_, Message> {
                 ],
                 app.ui.density,
             ),
-            kit::text_button("Close Gallery", Some(Message::Ui(Msg::SetGallery(false))), app.ui.density),
+            kit::text_button(
+                "Close Gallery",
+                Some(Message::Ui(Msg::SetGallery(false))),
+                app.ui.density
+            ),
         ]
         .spacing(SPACE_3)
         .align_y(Alignment::Center)
@@ -60,28 +64,32 @@ pub fn view(app: &App) -> Element<'_, Message> {
     });
 
     let body = row![
-        density_column(app, Density::Comfortable, "COMFORTABLE (44 / 36 / 32 / 62×58)"),
+        density_column(
+            app,
+            Density::Comfortable,
+            "COMFORTABLE (44 / 36 / 32 / 62×58)"
+        ),
         density_column(app, Density::Touch, "TOUCH (56 / 48 / 44 / 68×68)"),
     ]
     .spacing(SPACE_4)
     .width(Length::Fill);
 
-    let scroller = scrollable(
-        container(body)
-            .padding(SPACE_4)
-            .width(Length::Fill),
+    let scroller = scrollable(container(body).padding(SPACE_4).width(Length::Fill))
+        .width(Length::Fill)
+        .height(Length::Fill);
+
+    container(
+        column![header, kit::divider(), scroller]
+            .width(Length::Fill)
+            .height(Length::Fill),
     )
     .width(Length::Fill)
-    .height(Length::Fill);
-
-    container(column![header, kit::divider(), scroller].width(Length::Fill).height(Length::Fill))
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .style(|_| container::Style {
-            background: Some(Background::Color(tokens::canvas())),
-            ..container::Style::default()
-        })
-        .into()
+    .height(Length::Fill)
+    .style(|_| container::Style {
+        background: Some(Background::Color(tokens::canvas())),
+        ..container::Style::default()
+    })
+    .into()
 }
 
 fn density_column<'a>(app: &'a App, d: Density, heading: &'a str) -> Element<'a, Message> {
@@ -89,7 +97,11 @@ fn density_column<'a>(app: &'a App, d: Density, heading: &'a str) -> Element<'a,
         column![
             kit::group_header("BUTTONS & ICON BUTTONS", None),
             row![
-                kit::tooltip(kit::text_button("Normal", Some(noop()), d), "Secondary button", Position::Bottom),
+                kit::tooltip(
+                    kit::text_button("Normal", Some(noop()), d),
+                    "Secondary button",
+                    Position::Bottom
+                ),
                 kit::text_button_with("Active", Some(noop()), d, true, false),
                 kit::text_button_with("Focused", Some(noop()), d, false, true),
                 kit::text_button("Disabled", None, d),
@@ -157,9 +169,24 @@ fn density_column<'a>(app: &'a App, d: Density, heading: &'a str) -> Element<'a,
                 kit::stepper("Scale", "1/4\"", Some(noop()), Some(noop()), d),
                 kit::segmented(
                     vec![
-                        Segment { label: "Feet", selected: true, focused: false, on_press: Some(noop()) },
-                        Segment { label: "Inches", selected: false, focused: true, on_press: Some(noop()) },
-                        Segment { label: "Metric", selected: false, focused: false, on_press: None },
+                        Segment {
+                            label: "Feet",
+                            selected: true,
+                            focused: false,
+                            on_press: Some(noop())
+                        },
+                        Segment {
+                            label: "Inches",
+                            selected: false,
+                            focused: true,
+                            on_press: Some(noop())
+                        },
+                        Segment {
+                            label: "Metric",
+                            selected: false,
+                            focused: false,
+                            on_press: None
+                        },
                     ],
                     d,
                 ),
@@ -263,7 +290,10 @@ fn density_column<'a>(app: &'a App, d: Density, heading: &'a str) -> Element<'a,
                     .font(BSC_SEMIBOLD)
                     .size(NUM_24)
                     .color(tokens::text()),
-                text("sq ft").font(BARLOW).size(TEXT_12).color(tokens::muted()),
+                text("sq ft")
+                    .font(BARLOW)
+                    .size(TEXT_12)
+                    .color(tokens::muted()),
             ]
             .spacing(SPACE_2)
             .align_y(Alignment::Center),

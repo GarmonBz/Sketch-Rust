@@ -57,20 +57,33 @@ impl App {
         page
     }
 
+    /// The Layers panel import: pick a file (on the `file-dialog` thread),
+    /// then `Message::DialogPicked` runs the read-and-import continuation.
     pub(crate) fn import_layer_file(&mut self) -> iced::Task<Message> {
         #[cfg(not(test))]
-        if let Some(path) = crate::platform::pick_file("Sketch layer", &["json"])
         {
-            let result = std::fs::read_to_string(path)
-                .map_err(|e| e.to_string())
-                .and_then(|body| serde_json::from_str(&body).map_err(|e| e.to_string()))
-                .and_then(|data| self.import_layer_data(&data));
-            return self.toasts.show(match result {
-                Ok(()) => "Layer imported.".into(),
-                Err(e) => format!("Layer import failed: {e}"),
-            });
+            iced::Task::perform(
+                crate::platform::pick_file_async(
+                    "Sketch layer".to_owned(),
+                    vec!["json".to_owned()],
+                ),
+                |path| Message::DialogPicked(crate::DialogRequest::ImportLayer, path),
+            )
         }
+        #[cfg(test)]
         iced::Task::none()
+    }
+
+    /// The import continuation: read the picked layer file and merge it.
+    pub(crate) fn import_layer_path(&mut self, path: std::path::PathBuf) -> iced::Task<Message> {
+        let result = std::fs::read_to_string(path)
+            .map_err(|e| e.to_string())
+            .and_then(|body| serde_json::from_str(&body).map_err(|e| e.to_string()))
+            .and_then(|data| self.import_layer_data(&data));
+        self.toasts.show(match result {
+            Ok(()) => "Layer imported.".into(),
+            Err(e) => format!("Layer import failed: {e}"),
+        })
     }
     pub(crate) fn import_layer_data(&mut self, data: &Value) -> Result<(), String> {
         if data["version"] != "Sketch-Layer" {

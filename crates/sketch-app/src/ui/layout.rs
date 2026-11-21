@@ -48,8 +48,10 @@ impl DrawingChrome {
         let available = (canvas_width - CHROME_INSET * 2.0).max(1.0);
         let (tile_w, tile_h) = density.tray_button();
         let natural = tool_count as f32 * tile_w
-            + tool_count.saturating_sub(1) as f32 * TRAY_GAP + TRAY_PAD * 2.0;
-        let controls_at_top = class != SizeClass::Wide || density == Density::Touch
+            + tool_count.saturating_sub(1) as f32 * TRAY_GAP
+            + TRAY_PAD * 2.0;
+        let controls_at_top = class != SizeClass::Wide
+            || density == Density::Touch
             || available < natural + 2.0 * (CONTROL_LANE_W + CHROME_GAP);
         Self {
             controls_at_top,
@@ -58,14 +60,24 @@ impl DrawingChrome {
             // Leave a separate lane for North on the first top row.
             zoom_width: CONTROL_LANE_W.min((available - 76.0 - CHROME_GAP).max(1.0)),
             snap_width: CONTROL_LANE_W.min(available),
-            control_height: if density == Density::Touch { 38.0 } else { 32.0 },
+            control_height: if density == Density::Touch {
+                38.0
+            } else {
+                32.0
+            },
             touch_footer: density == Density::Touch && class != SizeClass::Compact,
         }
     }
 
     pub fn tray_clearance(self) -> f32 {
-        CHROME_INSET + self.tray_height + CHROME_GAP
-            + if self.touch_footer { self.control_height + SPACE_2 } else { 0.0 }
+        CHROME_INSET
+            + self.tray_height
+            + CHROME_GAP
+            + if self.touch_footer {
+                self.control_height + SPACE_2
+            } else {
+                0.0
+            }
     }
 
     pub fn top_popover_offset(self, row: usize) -> f32 {
@@ -108,8 +120,7 @@ pub fn canvas_rect(app: &App) -> Rectangle {
             app.ui.effective_ledger_width()
         },
         super::inspector::is_available(app),
-        (app.ui.compact_bottom_open() && app.symbol_edit_session.is_none())
-            || app.touch_panel_open,
+        (app.ui.compact_bottom_open() && app.symbol_edit_session.is_none()) || app.touch_panel_open,
     )
 }
 
@@ -146,7 +157,12 @@ pub fn canvas_rect_next(
         }
         SizeClass::Compact => {
             let top = bar_h + PAGE_BAR_H;
-            let bottom = bar_h + if compact_sheet_open { COMPACT_SHEET_H } else { 0.0 };
+            let bottom = bar_h
+                + if compact_sheet_open {
+                    COMPACT_SHEET_H
+                } else {
+                    0.0
+                };
             Rectangle::new(
                 iced::Point::new(0.0, top),
                 iced::Size::new(window_w.max(0.0), (window_h - top - bottom).max(0.0)),
@@ -292,18 +308,22 @@ mod tests {
     fn drawing_chrome_requires_room_for_both_side_lanes_and_all_tools() {
         let d = Density::Comfortable;
         let tools = super::super::tray::TrayTool::ALL.len();
-        let natural = tools as f32 * d.tray_button().0
-            + (tools - 1) as f32 * TRAY_GAP + TRAY_PAD * 2.0;
+        let natural =
+            tools as f32 * d.tray_button().0 + (tools - 1) as f32 * TRAY_GAP + TRAY_PAD * 2.0;
         let threshold = natural + 2.0 * (CONTROL_LANE_W + CHROME_GAP + CHROME_INSET);
         assert!(DrawingChrome::new(threshold - 1.0, SizeClass::Wide, d, tools).controls_at_top);
         assert!(!DrawingChrome::new(threshold, SizeClass::Wide, d, tools).controls_at_top);
         // Screenshot regression: 2048 physical pixels at 125% scaling with
         // a 280px ledger leaves 1358 logical pixels, too narrow for 12 tools.
-        assert!(DrawingChrome::new(2048.0 / 1.25 - 280.0, SizeClass::Wide, d, tools).controls_at_top);
+        assert!(
+            DrawingChrome::new(2048.0 / 1.25 - 280.0, SizeClass::Wide, d, tools).controls_at_top
+        );
         assert!(DrawingChrome::new(2400.0, SizeClass::Wide, Density::Touch, tools).controls_at_top);
         let touch = DrawingChrome::new(980.0, SizeClass::Wide, Density::Touch, tools);
-        assert!(touch.tray_clearance() >= CHROME_INSET + touch.tray_height
-            + touch.control_height + SPACE_2 + CHROME_GAP);
+        assert!(
+            touch.tray_clearance()
+                >= CHROME_INSET + touch.tray_height + touch.control_height + SPACE_2 + CHROME_GAP
+        );
         // A future additional tool must also change the fit decision.
         assert!(DrawingChrome::new(threshold, SizeClass::Wide, d, tools + 1).controls_at_top);
     }
@@ -330,10 +350,23 @@ mod tests {
             false,
             false,
         );
-        assert_eq!(r_wide, Rectangle::new(iced::Point::new(264.0, 44.0), iced::Size::new(1136.0, 816.0)));
+        assert_eq!(
+            r_wide,
+            Rectangle::new(
+                iced::Point::new(264.0, 44.0),
+                iced::Size::new(1136.0, 816.0)
+            )
+        );
 
-        let r_wide_resized = canvas_rect_next(1400.0, 860.0, Density::Comfortable, 340.0, false, false);
-        assert_eq!(r_wide_resized, Rectangle::new(iced::Point::new(340.0, 44.0), iced::Size::new(1060.0, 816.0)));
+        let r_wide_resized =
+            canvas_rect_next(1400.0, 860.0, Density::Comfortable, 340.0, false, false);
+        assert_eq!(
+            r_wide_resized,
+            Rectangle::new(
+                iced::Point::new(340.0, 44.0),
+                iced::Size::new(1060.0, 816.0)
+            )
+        );
 
         let r_wide_insp = canvas_rect_next(
             1400.0,
@@ -343,7 +376,10 @@ mod tests {
             true,
             false,
         );
-        assert_eq!(r_wide_insp, Rectangle::new(iced::Point::new(264.0, 44.0), iced::Size::new(856.0, 816.0)));
+        assert_eq!(
+            r_wide_insp,
+            Rectangle::new(iced::Point::new(264.0, 44.0), iced::Size::new(856.0, 816.0))
+        );
 
         let r_wide_touch = canvas_rect_next(
             1280.0,
@@ -353,15 +389,27 @@ mod tests {
             false,
             false,
         );
-        assert_eq!(r_wide_touch, Rectangle::new(iced::Point::new(300.0, 56.0), iced::Size::new(980.0, 744.0)));
+        assert_eq!(
+            r_wide_touch,
+            Rectangle::new(iced::Point::new(300.0, 56.0), iced::Size::new(980.0, 744.0))
+        );
 
         let r_med = canvas_rect_next(800.0, 1280.0, Density::Touch, 300.0, true, false);
-        assert_eq!(r_med, Rectangle::new(iced::Point::new(0.0, 100.0), iced::Size::new(800.0, 1180.0)));
+        assert_eq!(
+            r_med,
+            Rectangle::new(iced::Point::new(0.0, 100.0), iced::Size::new(800.0, 1180.0))
+        );
 
         let r_cmp = canvas_rect_next(372.0, 800.0, Density::Touch, 300.0, false, false);
-        assert_eq!(r_cmp, Rectangle::new(iced::Point::new(0.0, 100.0), iced::Size::new(372.0, 644.0)));
+        assert_eq!(
+            r_cmp,
+            Rectangle::new(iced::Point::new(0.0, 100.0), iced::Size::new(372.0, 644.0))
+        );
 
         let r_cmp_sheet = canvas_rect_next(372.0, 800.0, Density::Touch, 300.0, false, true);
-        assert_eq!(r_cmp_sheet, Rectangle::new(iced::Point::new(0.0, 100.0), iced::Size::new(372.0, 284.0)));
+        assert_eq!(
+            r_cmp_sheet,
+            Rectangle::new(iced::Point::new(0.0, 100.0), iced::Size::new(372.0, 284.0))
+        );
     }
 }

@@ -103,6 +103,16 @@ pub fn size_position(d: &Drawing, poly: &Polygon) -> Pt {
         return p;
     }
     let label = label_position(d, poly);
+    size_position_with_label(poly, label)
+}
+
+fn size_position_with_label(poly: &Polygon, label: Pt) -> Pt {
+    if let Some(p) = poly
+        .area_size_position
+        .filter(|p| p.x.is_finite() && p.y.is_finite())
+    {
+        return p;
+    }
     let post = &poly.auto_post;
     if !post.code && !post.name {
         return label;
@@ -150,6 +160,9 @@ pub fn area_blocks(
     if post.factor {
         size.push(format!("Factor: {factor:.2}"));
     }
+    if label.is_empty() && size.is_empty() {
+        return Vec::new();
+    }
     let label_rotation = poly.label_rotation.unwrap_or(0.0);
     // Rendering uses the raw scale (`Number(scale) || 1`), unclamped.
     let raw = |s: Option<f64>| s.filter(|s| *s != 0.0).unwrap_or(1.0);
@@ -167,21 +180,35 @@ pub fn area_blocks(
         underline: poly.label_underline.unwrap_or(false),
         color: poly.label_color.clone().filter(|c| !c.is_empty()),
     };
+    let shared_label_pos = if !label.is_empty()
+        || poly
+            .area_size_position
+            .filter(|p| p.x.is_finite() && p.y.is_finite())
+            .is_none()
+    {
+        Some(label_position(d, poly))
+    } else {
+        None
+    };
     let mut out = Vec::new();
     if !label.is_empty() {
         out.push(block(
             TextKind::AreaLabel,
             label,
-            label_position(d, poly),
+            shared_label_pos.unwrap_or_else(|| label_position(d, poly)),
             label_rotation,
             label_scale,
         ));
     }
     if !size.is_empty() {
+        let size_pos = match shared_label_pos {
+            Some(lbl) => size_position_with_label(poly, lbl),
+            None => size_position(d, poly),
+        };
         out.push(block(
             TextKind::AreaSize,
             size,
-            size_position(d, poly),
+            size_pos,
             poly.area_size_rotation.unwrap_or(label_rotation),
             raw(poly.area_size_scale.or(poly.label_scale)),
         ));
@@ -408,25 +435,42 @@ pub fn selected_vertices<'a>(
         };
         filters[filter] && selection.is_line_selected(line.id) && gates.selectable(line.id)
     });
-    let corners = d.polygons.iter().filter(move |poly| {
-        selection.is_poly_selected(poly.id) && gates.selectable(poly.id)
-    });
+    let corners = d
+        .polygons
+        .iter()
+        .filter(move |poly| selection.is_poly_selected(poly.id) && gates.selectable(poly.id));
     ends.flat_map(|line| {
         [
             (
-                VertexHandle::WallEnd { id: line.id, start: true },
+                VertexHandle::WallEnd {
+                    id: line.id,
+                    start: true,
+                },
                 line.start,
             ),
             (
-                VertexHandle::WallEnd { id: line.id, start: false },
+                VertexHandle::WallEnd {
+                    id: line.id,
+                    start: false,
+                },
                 line.end,
             ),
         ]
     })
     .chain(corners.flat_map(|poly| {
-        poly.points.iter().copied().enumerate().map(|(vertex, point)| {
-            (VertexHandle::AreaCorner { id: poly.id, vertex }, point)
-        })
+        poly.points
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(vertex, point)| {
+                (
+                    VertexHandle::AreaCorner {
+                        id: poly.id,
+                        vertex,
+                    },
+                    point,
+                )
+            })
     }))
 }
 
@@ -883,7 +927,10 @@ mod tests {
         assert_eq!(b.center, (100.0, 100.0), "the pivot stays on the origin");
         close(span(&b), (-5.0 * ps, 113.0 * ps, 0.0, 8.0 * ps));
         // The rotation handle sits above the box's top edge, over its middle.
-        assert!((b.handle.0 - 100.0 - 54.0 * ps).abs() < 1e-6 && (b.handle.1 - 100.0 + 30.0).abs() < 1e-6);
+        assert!(
+            (b.handle.0 - 100.0 - 54.0 * ps).abs() < 1e-6
+                && (b.handle.1 - 100.0 + 30.0).abs() < 1e-6
+        );
         // Flipped left-right, the box mirrors about the origin.
         let f = symbol_box(at, 0.0, 1.0, true, bounds, pan, 1.0);
         close(span(&f), (-113.0 * ps, 5.0 * ps, 0.0, 8.0 * ps));
@@ -896,7 +943,15 @@ mod tests {
     fn a_symbols_handles_turn_with_it_and_snap_in_steps() {
         // 36 x 12 in definition, 100% zoom (20 px/ft): 60 x 20 px box.
         let bounds = (-18.0, -6.0, 18.0, 6.0);
-        let b = symbol_box(Pt::new(0.0, 0.0), 0.0, 1.0, false, bounds, (100.0, 100.0), 1.0);
+        let b = symbol_box(
+            Pt::new(0.0, 0.0),
+            0.0,
+            1.0,
+            false,
+            bounds,
+            (100.0, 100.0),
+            1.0,
+        );
         assert_eq!(b.center, (100.0, 100.0));
         // The handle is above the top edge (smaller screen y), 30px clear.
         assert!((b.handle.0 - 100.0).abs() < 1e-9 && (b.handle.1 - 60.0).abs() < 1e-9);
@@ -917,7 +972,15 @@ mod tests {
             Some(SymbolHandle::Rotate)
         );
         // A quarter turn clockwise swings the handle to the right.
-        let b = symbol_box(Pt::new(0.0, 0.0), 90.0, 1.0, false, bounds, (100.0, 100.0), 1.0);
+        let b = symbol_box(
+            Pt::new(0.0, 0.0),
+            90.0,
+            1.0,
+            false,
+            bounds,
+            (100.0, 100.0),
+            1.0,
+        );
         assert!((b.handle.0 - 140.0).abs() < 1e-9 && (b.handle.1 - 100.0).abs() < 1e-9);
         // Steps.
         let quarter = std::f64::consts::FRAC_PI_2;

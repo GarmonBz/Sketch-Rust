@@ -29,8 +29,14 @@ pub const GROUPS: &[(&str, &[(&str, &str)])] = &[
             ("Ctrl + X / C / V", "Cut / Copy / Paste"),
             ("Ctrl + A", "Select all"),
             ("Delete", "Remove selection"),
-            ("Esc", "Stop drawing / close menu or sheet / clear selection"),
-            ("Arrow keys", "Nudge selection by the snap pitch (Shift = 10x)"),
+            (
+                "Esc",
+                "Stop drawing / close menu or sheet / clear selection",
+            ),
+            (
+                "Arrow keys",
+                "Nudge selection by the snap pitch (Shift = 10x)",
+            ),
         ],
     ),
     (

@@ -41,7 +41,13 @@ impl Placement {
 
     /// A stored placement made safe to use: a sane size, and a position
     /// only if its title bar would land on a monitor that still exists.
-    fn sanitized(mut self, ui_scale: f32, system_scale: f32, min_w: f32, min_h: f32) -> Option<Self> {
+    fn sanitized(
+        mut self,
+        ui_scale: f32,
+        system_scale: f32,
+        min_w: f32,
+        min_h: f32,
+    ) -> Option<Self> {
         if !self.width.is_finite() || !self.height.is_finite() {
             return None;
         }
@@ -114,8 +120,11 @@ mod tests {
             });
             let loaded = load(1.0, 1.0).expect("a small size is clamped, not dropped");
             assert_eq!((loaded.width, loaded.height), (MIN_W, MIN_H));
-            crate::persist::write(FILE, r#"{"pos":null,"width":null,"height":1,"maximized":false}"#)
-                .unwrap();
+            crate::persist::write(
+                FILE,
+                r#"{"pos":null,"width":null,"height":1,"maximized":false}"#,
+            )
+            .unwrap();
             assert_eq!(load(1.0, 1.0), None);
         });
     }

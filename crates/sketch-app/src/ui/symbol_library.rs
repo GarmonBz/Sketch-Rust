@@ -188,6 +188,9 @@ pub enum Msg {
     StartNewSymbol,
     StartFromSelection,
     ImportDxf,
+    /// The Import picker resolved (None = cancelled): import the files.
+    #[cfg_attr(test, allow(dead_code))]
+    ImportDxfPicked(Option<Vec<std::path::PathBuf>>),
     MoveTarget(String),
     MoveSelected,
     ToggleFavoriteSelected,
@@ -279,10 +282,9 @@ impl SymbolLibraryState {
                 }
             }
         }
-        self.selected.retain(|id| ix.library.symbols.contains_key(id));
-        if self.move_target.is_empty()
-            || !ix.categories.iter().any(|c| c.key == self.move_target)
-        {
+        self.selected
+            .retain(|id| ix.library.symbols.contains_key(id));
+        if self.move_target.is_empty() || !ix.categories.iter().any(|c| c.key == self.move_target) {
             if let Some(first) = ix.categories.first() {
                 self.move_target = first.key.clone();
             }
@@ -371,10 +373,7 @@ pub fn visible_symbols<'a>(app: &'a App, ix: &'a SymIndex) -> Vec<&'a Symbol> {
                 }
             }
             for s in ix.library.symbols.values() {
-                if s.category == cat_key
-                    && !hidden.contains(&s.id)
-                    && seen.insert(s.id.clone())
-                {
+                if s.category == cat_key && !hidden.contains(&s.id) && seen.insert(s.id.clone()) {
                     out.push(s);
                 }
             }
@@ -699,11 +698,7 @@ fn modal_header<'a>(
             CompactPage::Editor => "< Grid",
             CompactPage::Categories => "",
         };
-        left = left.push(kit::text_button(
-            back_label,
-            Some(m(Msg::CompactBack)),
-            d,
-        ));
+        left = left.push(kit::text_button(back_label, Some(m(Msg::CompactBack)), d));
     }
 
     let title = if compact && st.compact_page == CompactPage::Grid {
@@ -748,11 +743,7 @@ fn category_display_name(ix: &SymIndex, key: &str) -> String {
     }
 }
 
-fn categories_pane<'a>(
-    app: &'a App,
-    ix: &'a SymIndex,
-    d: Density,
-) -> Element<'a, Message> {
+fn categories_pane<'a>(app: &'a App, ix: &'a SymIndex, d: Density) -> Element<'a, Message> {
     let st = &app.ui.symbol_library;
     let hidden = &app.symbol_changes.hidden;
     let total_visible = ix
@@ -768,8 +759,30 @@ fn categories_pane<'a>(
         .count();
 
     let mut list = column![
-        cat_row("All symbols", total_visible, st.category == ALL_KEY || st.category.is_empty(), ALL_KEY, false, false, false, 0, 0, d),
-        cat_row("Favorites", fav_count, st.category == FAVORITES_KEY, FAVORITES_KEY, false, false, false, 0, 0, d),
+        cat_row(
+            "All symbols",
+            total_visible,
+            st.category == ALL_KEY || st.category.is_empty(),
+            ALL_KEY,
+            false,
+            false,
+            false,
+            0,
+            0,
+            d
+        ),
+        cat_row(
+            "Favorites",
+            fav_count,
+            st.category == FAVORITES_KEY,
+            FAVORITES_KEY,
+            false,
+            false,
+            false,
+            0,
+            0,
+            d
+        ),
     ]
     .spacing(2)
     .width(Length::Fill);
@@ -814,16 +827,8 @@ fn categories_pane<'a>(
             let can_down = idx + 1 < cat_count;
             let strip = container(
                 row![
-                    kit::text_button(
-                        "Rename",
-                        Some(m(Msg::StartRenameCategory(k.clone()))),
-                        d,
-                    ),
-                    kit::text_button(
-                        "Delete",
-                        Some(m(Msg::RequestDeleteCategory(k.clone()))),
-                        d,
-                    ),
+                    kit::text_button("Rename", Some(m(Msg::StartRenameCategory(k.clone()))), d,),
+                    kit::text_button("Delete", Some(m(Msg::RequestDeleteCategory(k.clone()))), d,),
                     kit::icon_button(
                         "arrow-up",
                         false,
@@ -862,16 +867,8 @@ fn categories_pane<'a>(
                         d,
                     ),
                     row![
-                        kit::primary_button(
-                            "Create",
-                            Some(m(Msg::SubmitPrompt)),
-                            d,
-                        ),
-                        kit::text_button(
-                            "Cancel",
-                            Some(m(Msg::CancelPrompt)),
-                            d,
-                        ),
+                        kit::primary_button("Create", Some(m(Msg::SubmitPrompt)), d,),
+                        kit::text_button("Cancel", Some(m(Msg::CancelPrompt)), d,),
                     ]
                     .spacing(SPACE_1),
                 ]
@@ -893,16 +890,8 @@ fn categories_pane<'a>(
                         d,
                     ),
                     row![
-                        kit::primary_button(
-                            "Rename",
-                            Some(m(Msg::SubmitPrompt)),
-                            d,
-                        ),
-                        kit::text_button(
-                            "Cancel",
-                            Some(m(Msg::CancelPrompt)),
-                            d,
-                        ),
+                        kit::primary_button("Rename", Some(m(Msg::SubmitPrompt)), d,),
+                        kit::text_button("Cancel", Some(m(Msg::CancelPrompt)), d,),
                     ]
                     .spacing(SPACE_1),
                 ]
@@ -919,7 +908,8 @@ fn categories_pane<'a>(
     }
 
     column![
-        scrollable(container(list).padding(SPACE_2).width(Length::Fill)).id("symbol-categories-list")
+        scrollable(container(list).padding(SPACE_2).width(Length::Fill))
+            .id("symbol-categories-list")
             .width(Length::Fill)
             .height(Length::Fill),
         kit::divider(),
@@ -944,12 +934,20 @@ fn cat_row<'a>(
     d: Density,
 ) -> Element<'a, Message> {
     let k = key.to_owned();
-    let fg = if active { tokens::accent() } else { tokens::text() };
+    let fg = if active {
+        tokens::accent()
+    } else {
+        tokens::text()
+    };
     let count_str = count.to_string();
     let label_btn = button(
         row![
             text(label.to_owned())
-                .font(if active { BARLOW_SEMIBOLD } else { BARLOW_MEDIUM })
+                .font(if active {
+                    BARLOW_SEMIBOLD
+                } else {
+                    BARLOW_MEDIUM
+                })
                 .size(TEXT_13)
                 .color(fg)
                 .width(Length::Fill),
@@ -976,7 +974,11 @@ fn cat_row<'a>(
                 Color::TRANSPARENT
             })),
             border: Border {
-                color: if active { tokens::accent() } else { Color::TRANSPARENT },
+                color: if active {
+                    tokens::accent()
+                } else {
+                    Color::TRANSPARENT
+                },
                 width: if active { 1.0 } else { 0.0 },
                 radius: RADIUS_CONTROL.into(),
             },
@@ -1014,7 +1016,8 @@ fn grid_pane<'a>(
     let has_selection = !st.selected.is_empty();
     let dups_count = app.merge_pairs().len();
     let is_hidden_view = st.category == HIDDEN_KEY;
-    let can_make_from_sel = crate::symbol_shape::selection_convertible(&app.drawing, &app.selection);
+    let can_make_from_sel =
+        crate::symbol_shape::selection_convertible(&app.drawing, &app.selection);
 
     let search = kit::field(
         FieldProps {
@@ -1096,8 +1099,8 @@ fn grid_pane<'a>(
                     pick_list(cat_opts, selected_cat, |c: CategoryChoice| {
                         m(Msg::PromptCategory(c.key))
                     })
-            .style(kit::pick_list_style)
-            .menu_style(kit::pick_menu_style)
+                    .style(kit::pick_list_style)
+                    .menu_style(kit::pick_menu_style)
                     .width(Length::Fill),
                 ]
                 .spacing(SPACE_2)
@@ -1144,10 +1147,14 @@ fn grid_pane<'a>(
         .or_else(|| cat_opts.first().cloned());
 
     let mut sel_bar = row![
-        text(format!("{} shown · {} selected", shown.len(), st.selected.len()))
-            .font(BSC_MEDIUM)
-            .size(TEXT_11)
-            .color(tokens::muted()),
+        text(format!(
+            "{} shown · {} selected",
+            shown.len(),
+            st.selected.len()
+        ))
+        .font(BSC_MEDIUM)
+        .size(TEXT_11)
+        .color(tokens::muted()),
         kit::text_button("Select all", Some(m(Msg::SelectAll)), d),
     ]
     .spacing(SPACE_1)
@@ -1155,17 +1162,13 @@ fn grid_pane<'a>(
 
     if has_selection {
         sel_bar = sel_bar
-            .push(kit::text_button(
-                "Clear",
-                Some(m(Msg::ClearSelection)),
-                d,
-            ))
+            .push(kit::text_button("Clear", Some(m(Msg::ClearSelection)), d))
             .push(
                 pick_list(cat_opts, move_sel, |c: CategoryChoice| {
                     m(Msg::MoveTarget(c.key))
                 })
-            .style(kit::pick_list_style)
-            .menu_style(kit::pick_menu_style)
+                .style(kit::pick_list_style)
+                .menu_style(kit::pick_menu_style)
                 .width(Length::Fixed(130.0)),
             )
             .push(kit::text_button(
@@ -1179,17 +1182,9 @@ fn grid_pane<'a>(
                 d,
             ));
         if is_hidden_view {
-            sel_bar = sel_bar.push(kit::text_button(
-                "Unhide",
-                Some(m(Msg::UnhideSelected)),
-                d,
-            ));
+            sel_bar = sel_bar.push(kit::text_button("Unhide", Some(m(Msg::UnhideSelected)), d));
         } else {
-            sel_bar = sel_bar.push(kit::text_button(
-                "Hide",
-                Some(m(Msg::HideSelected)),
-                d,
-            ));
+            sel_bar = sel_bar.push(kit::text_button("Hide", Some(m(Msg::HideSelected)), d));
         }
         sel_bar = sel_bar
             .push(kit::text_button(
@@ -1261,7 +1256,8 @@ fn grid_pane<'a>(
     };
 
     col_items = col_items.push(
-        scrollable(container(grid_el).padding(SPACE_3).width(Length::Fill)).id("symbol-grid-list")
+        scrollable(container(grid_el).padding(SPACE_3).width(Length::Fill))
+            .id("symbol-grid-list")
             .width(Length::Fill)
             .height(Length::Fill),
     );
@@ -1299,7 +1295,11 @@ fn symbol_grid_tile<'a>(
     .height(Length::Fixed(52.0));
 
     let name_el = text(sym.name.clone())
-        .font(if focused { BARLOW_SEMIBOLD } else { BARLOW_MEDIUM })
+        .font(if focused {
+            BARLOW_SEMIBOLD
+        } else {
+            BARLOW_MEDIUM
+        })
         .size(TEXT_12)
         .color(tokens::text())
         .align_x(alignment::Horizontal::Center);
@@ -1423,30 +1423,22 @@ fn editor_pane<'a>(
 
     let mut action_row = row![
         kit::text_button(
-            if is_fav { "Remove favorite" } else { "Add to favorites" },
+            if is_fav {
+                "Remove favorite"
+            } else {
+                "Add to favorites"
+            },
             Some(m(Msg::ToggleFavoriteFocused)),
             d,
         ),
-        kit::text_button(
-            "Duplicate",
-            Some(m(Msg::DuplicateFocused)),
-            d,
-        ),
+        kit::text_button("Duplicate", Some(m(Msg::DuplicateFocused)), d,),
         kit::text_button(
             if is_hidden { "Unhide" } else { "Hide" },
             Some(m(Msg::HideFocused)),
             d,
         ),
-        kit::text_button(
-            "Delete",
-            Some(m(Msg::RequestDeleteFocused)),
-            d,
-        ),
-        kit::primary_button(
-            "Place",
-            Some(m(Msg::PlaceFocused)),
-            d,
-        ),
+        kit::text_button("Delete", Some(m(Msg::RequestDeleteFocused)), d,),
+        kit::primary_button("Place", Some(m(Msg::PlaceFocused)), d,),
     ]
     .spacing(SPACE_1);
 
@@ -1480,11 +1472,7 @@ fn editor_pane<'a>(
                     .size(TEXT_14)
                     .color(tokens::text()),
                 Space::new().width(Length::Fill),
-                kit::text_button(
-                    "Back",
-                    Some(m(Msg::CloseMediumEditor)),
-                    d,
-                ),
+                kit::text_button("Back", Some(m(Msg::CloseMediumEditor)), d,),
             ]
             .align_y(Alignment::Center),
         );
@@ -1499,11 +1487,7 @@ fn editor_pane<'a>(
                     .size(TEXT_11)
                     .color(tokens::muted()),
                 Space::new().width(Length::Fill),
-                kit::text_button(
-                    "Edit shape",
-                    Some(m(Msg::EditShapeFocused)),
-                    d,
-                ),
+                kit::text_button("Edit shape", Some(m(Msg::EditShapeFocused)), d,),
             ]
             .align_y(Alignment::Center)
             .width(Length::Fill),
@@ -1613,7 +1597,11 @@ fn editor_pane<'a>(
                     .color(tokens::muted()),
                 Space::new().width(Length::Fill),
                 kit::primary_button(
-                    if st.editor.dirty { "Save changes" } else { "Saved" },
+                    if st.editor.dirty {
+                        "Save changes"
+                    } else {
+                        "Saved"
+                    },
                     Some(m(Msg::SaveProperties)),
                     d,
                 ),
@@ -1635,7 +1623,10 @@ fn labeled_pick<'a>(
     picker: impl Into<Element<'a, Message>>,
 ) -> Element<'a, Message> {
     column![
-        text(label).font(BARLOW).size(TEXT_12).color(tokens::muted()),
+        text(label)
+            .font(BARLOW)
+            .size(TEXT_12)
+            .color(tokens::muted()),
         picker.into(),
     ]
     .spacing(3.0)
@@ -1691,16 +1682,8 @@ fn modal_footer<'a>(app: &'a App, compact: bool, d: Density) -> Element<'a, Mess
     );
 
     let mut left = row![
-        kit::text_button(
-            "Export library",
-            Some(m(Msg::ExportLibrary)),
-            d,
-        ),
-        kit::text_button(
-            "Import library",
-            Some(m(Msg::ImportLibrary)),
-            d,
-        ),
+        kit::text_button("Export library", Some(m(Msg::ExportLibrary)), d,),
+        kit::text_button("Import library", Some(m(Msg::ImportLibrary)), d,),
         restore_btn,
     ]
     .spacing(SPACE_1);
@@ -1901,7 +1884,8 @@ pub fn update(app: &mut App, msg: Msg) -> iced::Task<Message> {
             iced::Task::none()
         }
         Msg::PromptCategory(cat) => {
-            if let Some(PromptMode::NewSymbol { category, .. }) = &mut app.ui.symbol_library.prompt {
+            if let Some(PromptMode::NewSymbol { category, .. }) = &mut app.ui.symbol_library.prompt
+            {
                 *category = cat;
             }
             iced::Task::none()
@@ -1923,6 +1907,12 @@ pub fn update(app: &mut App, msg: Msg) -> iced::Task<Message> {
         Msg::StartNewSymbol => start_new_symbol_prompt(app, false),
         Msg::StartFromSelection => start_new_symbol_prompt(app, true),
         Msg::ImportDxf => import_dxf_dialog(app),
+        Msg::ImportDxfPicked(paths) => {
+            if let Some(paths) = paths {
+                return import_dxf_paths(app, &paths);
+            }
+            iced::Task::none()
+        }
         Msg::MoveTarget(k) => {
             app.ui.symbol_library.move_target = k;
             iced::Task::none()
@@ -1962,7 +1952,9 @@ pub fn update(app: &mut App, msg: Msg) -> iced::Task<Message> {
             }
             iced::Task::none()
         }
-        Msg::ExportSelected => export_library_dialog(app, Some(app.ui.symbol_library.selected.clone())),
+        Msg::ExportSelected => {
+            export_library_dialog(app, Some(app.ui.symbol_library.selected.clone()))
+        }
         Msg::EditName(v) => {
             app.ui.symbol_library.editor.name = v;
             app.ui.symbol_library.editor.dirty = true;
@@ -2160,7 +2152,9 @@ fn submit_prompt(app: &mut App) -> iced::Task<Message> {
                 key = format!("{base_key}-{n}");
                 n += 1;
             }
-            match symlib::try_edit_library(|p| sketch_core::symbol_edit::add_category(p, &key, &name)) {
+            match symlib::try_edit_library(|p| {
+                sketch_core::symbol_edit::add_category(p, &key, &name)
+            }) {
                 Ok(_) => {
                     app.rebuild_symbols();
                     app.ui.symbol_library.category = key;
@@ -2170,7 +2164,8 @@ fn submit_prompt(app: &mut App) -> iced::Task<Message> {
                 }
                 Err((err, true)) => {
                     let _ = err;
-                    app.toasts.show("Could not write new category to shared library.".into())
+                    app.toasts
+                        .show("Could not write new category to shared library.".into())
                 }
                 Err((err, false)) => app.toasts.show(err),
             }
@@ -2239,10 +2234,26 @@ fn submit_prompt(app: &mut App) -> iced::Task<Message> {
                     entity_type: sketch_core::symbols::EntityType::Polyline,
                     closed: Some(true),
                     vertices: Some(vec![
-                        sketch_core::symbols::Vertex { x: -12.0, y: -12.0, b: None },
-                        sketch_core::symbols::Vertex { x: 12.0, y: -12.0, b: None },
-                        sketch_core::symbols::Vertex { x: 12.0, y: 12.0, b: None },
-                        sketch_core::symbols::Vertex { x: -12.0, y: 12.0, b: None },
+                        sketch_core::symbols::Vertex {
+                            x: -12.0,
+                            y: -12.0,
+                            b: None,
+                        },
+                        sketch_core::symbols::Vertex {
+                            x: 12.0,
+                            y: -12.0,
+                            b: None,
+                        },
+                        sketch_core::symbols::Vertex {
+                            x: 12.0,
+                            y: 12.0,
+                            b: None,
+                        },
+                        sketch_core::symbols::Vertex {
+                            x: -12.0,
+                            y: 12.0,
+                            b: None,
+                        },
                     ]),
                     ..Default::default()
                 }];
@@ -2322,7 +2333,9 @@ fn move_category(app: &mut App, key: &str, delta: isize) -> iced::Task<Message> 
             app.rebuild_symbols();
             iced::Task::none()
         }
-        Err((err, _)) => app.toasts.show(format!("Could not reorder categories ({err}).")),
+        Err((err, _)) => app
+            .toasts
+            .show(format!("Could not reorder categories ({err}).")),
     }
 }
 
@@ -2341,12 +2354,15 @@ fn move_symbol_in_cat(app: &mut App, id: &str, delta: isize) -> iced::Task<Messa
         return iced::Task::none();
     }
     ids.swap(pos, next);
-    match symlib::try_edit_library(|p| sketch_core::symbol_edit::reorder_symbols(p, &cat_key, &ids)) {
+    match symlib::try_edit_library(|p| sketch_core::symbol_edit::reorder_symbols(p, &cat_key, &ids))
+    {
         Ok(_) => {
             app.rebuild_symbols();
             iced::Task::none()
         }
-        Err((err, _)) => app.toasts.show(format!("Could not reorder symbols ({err}).")),
+        Err((err, _)) => app
+            .toasts
+            .show(format!("Could not reorder symbols ({err}).")),
     }
 }
 
@@ -2370,7 +2386,10 @@ fn move_selected(app: &mut App) -> iced::Task<Message> {
             }
             let task = app.store_symbols();
             sync_library_focus(app);
-            task.chain(app.toasts.show(format!("Moved {} symbol(s) to {cat_name}.", ids.len())))
+            task.chain(
+                app.toasts
+                    .show(format!("Moved {} symbol(s) to {cat_name}.", ids.len())),
+            )
         }
         Err((_, true)) => {
             let mut moved = Vec::new();
@@ -2424,7 +2443,8 @@ fn save_editor_properties(app: &mut App) -> iced::Task<Message> {
         let mut count = 0;
         if !target_cat.is_empty() && target_cat != old_sym.category {
             let one = BTreeSet::from([draft.id.clone()]);
-            count += sketch_core::symbol_edit::move_to_category(path, &one, &target_cat, &cat_name)?;
+            count +=
+                sketch_core::symbol_edit::move_to_category(path, &one, &target_cat, &cat_name)?;
         }
         let props = sketch_core::symbol_edit::SymbolProps {
             name: Some(name.clone()),
@@ -2477,7 +2497,9 @@ fn save_editor_properties(app: &mut App) -> iced::Task<Message> {
             updated.wall_gap_width = gap;
             updated.wall_gap_alignment = align;
             updated.wall_cap_length = cap;
-            app.symbol_changes.custom.insert(updated.id.clone(), updated.clone());
+            app.symbol_changes
+                .custom
+                .insert(updated.id.clone(), updated.clone());
             let task = app.store_symbols();
             app.ui.symbol_library.refresh_editor_from_symbol(&updated);
             task.chain(app.toasts.show("Saved for this user only".into()))
@@ -2604,7 +2626,9 @@ fn execute_confirm(app: &mut App) -> iced::Task<Message> {
                         kept.len()
                     )))
                 }
-                Err((err, _)) => app.toasts.show(format!("Could not merge duplicates ({err}).")),
+                Err((err, _)) => app
+                    .toasts
+                    .show(format!("Could not merge duplicates ({err}).")),
             }
         }
         ConfirmAction::RestoreOriginal => restore_original_library(app),
@@ -2620,21 +2644,33 @@ pub fn restore_original_library(app: &mut App) -> iced::Task<Message> {
     let dest = symlib::library_path();
     let orig_bytes = match std::fs::read(&orig) {
         Ok(b) => b,
-        Err(e) => return app.toasts.show(format!("Could not read {}: {e}", orig.display())),
+        Err(e) => {
+            return app
+                .toasts
+                .show(format!("Could not read {}: {e}", orig.display()))
+        }
     };
     if let Ok(cur_bytes) = std::fs::read(&dest) {
         let bak = dest.with_file_name("symbols.json.bak");
         if let Err(e) = std::fs::write(&bak, &cur_bytes) {
-            return app.toasts.show(format!("Could not write backup ({}): {e}", bak.display()));
+            return app
+                .toasts
+                .show(format!("Could not write backup ({}): {e}", bak.display()));
         }
     }
     let tmp = dest.with_file_name("symbols.json.tmp");
     if let Err(e) = std::fs::write(&tmp, &orig_bytes) {
-        return app.toasts.show(format!("Could not restore library ({}): {e}", dest.display()));
+        return app.toasts.show(format!(
+            "Could not restore library ({}): {e}",
+            dest.display()
+        ));
     }
     if let Err(e) = std::fs::rename(&tmp, &dest) {
         let _ = std::fs::remove_file(&tmp);
-        return app.toasts.show(format!("Could not replace library ({}): {e}", dest.display()));
+        return app.toasts.show(format!(
+            "Could not replace library ({}): {e}",
+            dest.display()
+        ));
     }
     symlib::invalidate_cache();
     app.symbol_changes.hidden.clear();
@@ -2651,13 +2687,21 @@ pub fn restore_original_library(app: &mut App) -> iced::Task<Message> {
     ))
 }
 
+/// Import › DXF: pick the files on the `file-dialog` thread; the picked
+/// paths come back through `Msg::ImportDxfPicked`.
 fn import_dxf_dialog(app: &mut App) -> iced::Task<Message> {
-    #[cfg(not(test))]
-    if let Some(paths) = crate::platform::pick_files("DXF or Symbol JSON", &["dxf", "json", "dwg"])
-    {
-        return import_dxf_paths(app, &paths);
-    }
     let _ = app;
+    #[cfg(not(test))]
+    {
+        iced::Task::perform(
+            crate::platform::pick_files_async(
+                "DXF or Symbol JSON".to_owned(),
+                vec!["dxf".to_owned(), "json".to_owned(), "dwg".to_owned()],
+            ),
+            |paths| Message::Ui(crate::ui::Msg::SymbolLibrary(Msg::ImportDxfPicked(paths))),
+        )
+    }
+    #[cfg(test)]
     iced::Task::none()
 }
 
@@ -2671,7 +2715,10 @@ pub fn import_dxf_paths(app: &mut App, paths: &[std::path::PathBuf]) -> iced::Ta
         let cat_key = if !matches!(
             app.ui.symbol_library.category.as_str(),
             "" | ALL_KEY | FAVORITES_KEY | HIDDEN_KEY
-        ) && ix.categories.iter().any(|c| c.key == app.ui.symbol_library.category)
+        ) && ix
+            .categories
+            .iter()
+            .any(|c| c.key == app.ui.symbol_library.category)
         {
             app.ui.symbol_library.category.clone()
         } else {
@@ -2682,7 +2729,10 @@ pub fn import_dxf_paths(app: &mut App, paths: &[std::path::PathBuf]) -> iced::Ta
     };
 
     for path in paths {
-        if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("dwg")) {
+        if path
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("dwg"))
+        {
             errors.push("DWG requires conversion to DXF.".into());
             continue;
         }
@@ -2752,26 +2802,56 @@ pub fn import_dxf_paths(app: &mut App, paths: &[std::path::PathBuf]) -> iced::Ta
     iced::Task::batch(tasks)
 }
 
+/// Export › (Selected) library: pick the destination on the `file-dialog`
+/// thread; the write runs in the `DialogPicked(ExportLibrary)` continuation.
 fn export_library_dialog(app: &mut App, subset: Option<BTreeSet<String>>) -> iced::Task<Message> {
+    let _ = app;
     #[cfg(not(test))]
-    if let Some(dest) = crate::platform::save_file("Symbol Library JSON", &["json"], "symbols-export.json")
     {
-        return match sketch_core::symbol_edit::export(&symlib::library_path(), &dest, subset.as_ref()) {
-            Ok(n) => app.toasts.show(format!("Exported {n} symbol(s).")),
-            Err(e) => app.toasts.show(format!("Export failed: {e}")),
-        };
+        let request = crate::DialogRequest::ExportLibrary { subset };
+        iced::Task::perform(
+            crate::platform::save_file_async(
+                "Symbol Library JSON".to_owned(),
+                vec!["json".to_owned()],
+                "symbols-export.json".to_owned(),
+            ),
+            move |dest| Message::DialogPicked(request, dest),
+        )
     }
-    let _ = (app, subset);
-    iced::Task::none()
+    #[cfg(test)]
+    {
+        let _ = subset;
+        iced::Task::none()
+    }
 }
 
-fn import_library_dialog(app: &mut App) -> iced::Task<Message> {
-    #[cfg(not(test))]
-    if let Some(src) = crate::platform::pick_file("Symbol Library JSON", &["json"])
-    {
-        return import_library_file(app, &src);
+/// The export continuation: write the (subset of the) library to `dest`.
+pub fn export_library_file(
+    app: &mut App,
+    dest: &std::path::Path,
+    subset: Option<&BTreeSet<String>>,
+) -> iced::Task<Message> {
+    match sketch_core::symbol_edit::export(&symlib::library_path(), dest, subset) {
+        Ok(n) => app.toasts.show(format!("Exported {n} symbol(s).")),
+        Err(e) => app.toasts.show(format!("Export failed: {e}")),
     }
+}
+
+/// Import › library file: pick the source on the `file-dialog` thread; the
+/// merge runs in the `DialogPicked(ImportLibrary)` continuation.
+fn import_library_dialog(app: &mut App) -> iced::Task<Message> {
     let _ = app;
+    #[cfg(not(test))]
+    {
+        iced::Task::perform(
+            crate::platform::pick_file_async(
+                "Symbol Library JSON".to_owned(),
+                vec!["json".to_owned()],
+            ),
+            |src| Message::DialogPicked(crate::DialogRequest::ImportLibrary, src),
+        )
+    }
+    #[cfg(test)]
     iced::Task::none()
 }
 

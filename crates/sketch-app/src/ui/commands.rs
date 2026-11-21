@@ -193,9 +193,7 @@ static COMMANDS: &[Command] = &[
         shortcut: "",
         enabled: always,
         checked: None,
-        run: |_| {
-            Message::AreaWorkflow(crate::area_workflow::Msg::Advanced(true))
-        },
+        run: |_| Message::AreaWorkflow(crate::area_workflow::Msg::Advanced(true)),
     },
     Command {
         id: "new",
@@ -1669,10 +1667,10 @@ pub fn icon_for(id: &str) -> Option<(&'static str, bool)> {
         "zoom-fence" => ("selection-background", false),
         "toggle-grid" => ("grid-four", false),
         "toggle-snap" | "toggle-area-snap" => ("magnet", false),
-        "pitch-1ft" | "pitch-half" | "pitch-quarter" | "pitch-1in" | "units-imperial" | "units-metric"
-        | "tool-measure" | "photo-scale" => ("ruler", false),
-        "filter" | "filter-areas" | "filter-exterior" | "filter-interior"
-        | "filter-dimensions" | "filter-labels" | "filter-symbols" => ("funnel", false),
+        "pitch-1ft" | "pitch-half" | "pitch-quarter" | "pitch-1in" | "units-imperial"
+        | "units-metric" | "tool-measure" | "photo-scale" => ("ruler", false),
+        "filter" | "filter-areas" | "filter-exterior" | "filter-interior" | "filter-dimensions"
+        | "filter-labels" | "filter-symbols" => ("funnel", false),
         "toggle-north" | "photo-orient" => ("compass", false),
         "mini-map" | "geo-load-map" => ("map-trifold", false),
         "toggle-calcs" | "area-breakdown" => ("calculator", true),
@@ -1681,7 +1679,10 @@ pub fn icon_for(id: &str) -> Option<(&'static str, bool)> {
         "page-first" => ("caret-left", true),
         "page-last" => ("caret-right", true),
         "page-delete" => ("file-minus", false),
-        "toggle-canvas-background" | "canvas-bg-light" | "canvas-bg-dark" | "canvas-bg-blue"
+        "toggle-canvas-background"
+        | "canvas-bg-light"
+        | "canvas-bg-dark"
+        | "canvas-bg-blue"
         | "theme-blue" => ("drop", false),
         "interface-theme" => ("circle-half-tilt", false),
         "theme-dark" => ("moon", false),
@@ -1922,7 +1923,8 @@ mod tests {
             }
             for token in cmd_msg.split_whitespace() {
                 if let Some(cmd_id) = token.strip_prefix("cmd:") {
-                    let clean = cmd_id.trim_end_matches(|c: char| !c.is_ascii_alphanumeric() && c != '-');
+                    let clean =
+                        cmd_id.trim_end_matches(|c: char| !c.is_ascii_alphanumeric() && c != '-');
                     assert!(
                         find(clean).is_some(),
                         "{id} cites unknown command id {clean:?} in {cmd_msg:?}"
@@ -1939,8 +1941,8 @@ mod tests {
     #[test]
     fn every_command_has_an_embedded_icon() {
         for cmd in all() {
-            let (name, fill) = icon_for(cmd.id)
-                .unwrap_or_else(|| panic!("command {} has no icon", cmd.id));
+            let (name, fill) =
+                icon_for(cmd.id).unwrap_or_else(|| panic!("command {} has no icon", cmd.id));
             let _ = crate::icons::mono_icon(name, fill, 14.0, iced::Color::WHITE);
         }
     }
@@ -1954,8 +1956,20 @@ mod tests {
         assert_eq!(crate::icons::tint_of("ruler"), Some(IconTint::Orange));
         assert_eq!(crate::icons::tint_of("floppy-disk"), Some(IconTint::Green));
         assert_eq!(crate::icons::tint_of("bluetooth"), Some(IconTint::Slate));
-        for glyph in ["caret-down", "dots-three", "list", "x", "check", "plus", "minus"] {
-            assert_eq!(crate::icons::tint_of(glyph), None, "{glyph} should stay neutral");
+        for glyph in [
+            "caret-down",
+            "dots-three",
+            "list",
+            "x",
+            "check",
+            "plus",
+            "minus",
+        ] {
+            assert_eq!(
+                crate::icons::tint_of(glyph),
+                None,
+                "{glyph} should stay neutral"
+            );
         }
     }
 }

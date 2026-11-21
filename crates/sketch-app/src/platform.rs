@@ -42,7 +42,9 @@ pub fn work_area(window: &dyn iced::window::Window) -> Option<(f32, f32)> {
     use iced::window::raw_window_handle::RawWindowHandle;
     use windows::Win32::{
         Foundation::HWND,
-        Graphics::Gdi::{GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST},
+        Graphics::Gdi::{
+            GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+        },
         UI::HiDpi::GetDpiForWindow,
     };
     let RawWindowHandle::Win32(handle) = window.window_handle().ok()?.as_raw() else {
@@ -186,127 +188,205 @@ pub fn activation_stream(path: &std::path::PathBuf) -> impl iced::futures::Strea
 // has to replace this block (Android: the Storage Access Framework).
 // ---------------------------------------------------------------------------
 
-/// Runs a blocking native dialog on a thread of its own and waits for it.
+/// Runs a blocking native dialog on a `file-dialog` thread of its own and
+/// hands the result to the returned future. The interface thread never
+/// pumps or blocks: it awaits, and the iced event loop keeps running.
 ///
-/// Shown from the interface thread, Windows' file dialog shares that thread
-/// with the window's own message handling and can sit on "Working on it..."
-/// while it reads a folder (Downloads, in particular). On a fresh thread the
-/// dialog gets its own message loop and COM apartment, the way it has in a
-/// program that does nothing else.
-fn on_dialog_thread<T: Send + 'static>(show: impl FnOnce() -> Option<T> + Send + 'static) -> Option<T> {
-    let dialog = std::thread::Builder::new()
+/// The pump architecture this replaces (0.3.8-0.3.10) polled the dialog
+/// thread from the interface thread while hand-pumping its Windows message
+/// queue; nested inside a winit dispatch, that pump wedged the Shell's
+/// dialog initialization (the dialog thread stuck in `NtUserGetMessage`
+/// inside windows.storage/SHCore, no dialog window ever created) and the
+/// app froze. A spawned thread running the sync dialog — awaited, never
+/// pumped for — is the known-good architecture (the D repo ran it this
+/// way).
+fn dialog_on_thread<T: Send + 'static>(
+    show: impl FnOnce() -> Option<T> + Send + 'static,
+) -> impl std::future::Future<Output = Option<T>> {
+    let (sender, receiver) = iced::futures::channel::oneshot::channel();
+    // A failed spawn drops `sender`, which resolves the future to `None`.
+    let _ = std::thread::Builder::new()
         .name("file-dialog".into())
-        .spawn(show)
-        .ok()?;
-    // Wait without freezing the window: keep handling its messages, so Windows
-    // never marks it "Not Responding" while the dialog is open.
-    while !dialog.is_finished() {
-        pump_window_messages();
-        std::thread::sleep(std::time::Duration::from_millis(10));
-    }
-    dialog.join().ok().flatten()
+        .spawn(move || {
+            let _ = sender.send(show());
+        });
+    async move { receiver.await.unwrap_or_default() }
 }
 
-/// Handles the messages waiting for this thread's windows (paint, resize,
-/// activate), as the dialog's own loop did when it ran on this thread.
-#[cfg(windows)]
-fn pump_window_messages() {
-    use windows::Win32::UI::WindowsAndMessaging::{
-        DispatchMessageW, PeekMessageW, TranslateMessage, MSG, PM_REMOVE,
-    };
-    let mut msg = MSG::default();
-    // SAFETY: `msg` is a valid MSG; these calls only read and dispatch this
-    // thread's own queue.
-    unsafe {
-        while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() {
-            let _ = TranslateMessage(&msg);
-            DispatchMessageW(&msg);
-        }
+/// A known-local folder the native file dialogs start in. Left unset, the
+/// Windows file dialog restores its own last-visited location; when that is
+/// a network share the Shell's folder initialization can stall indefinitely
+/// (SMB enumeration) and the dialog window is never created — the
+/// app appears frozen the moment a dialog opens (File > Open in 0.3.8,
+/// Save in 0.3.9). An explicit directory keeps the dialog off remembered
+/// network locations.
+fn dialog_start_dir() -> Option<std::path::PathBuf> {
+    let profile = std::path::PathBuf::from(std::env::var_os("USERPROFILE")?);
+    let documents = profile.join("Documents");
+    Some(if documents.is_dir() {
+        documents
+    } else {
+        profile
+    })
+}
+
+/// A native dialog builder that accepts an explicit start folder. The trait
+/// exists so tests can pin the anchoring behaviour without opening a real
+/// dialog.
+trait NativeDialog {
+    fn set_directory(self, dir: std::path::PathBuf) -> Self;
+}
+
+impl NativeDialog for rfd::FileDialog {
+    fn set_directory(self, dir: std::path::PathBuf) -> Self {
+        rfd::FileDialog::set_directory(self, dir)
     }
 }
 
-#[cfg(not(windows))]
-fn pump_window_messages() {}
+/// Anchor a dialog to an explicit start folder, so Windows never restores
+/// its own remembered location at dialog init. `None` leaves the dialog
+/// exactly as built.
+fn with_start_dir<D: NativeDialog>(dialog: D, dir: Option<std::path::PathBuf>) -> D {
+    match dir {
+        Some(dir) => dialog.set_directory(dir),
+        None => dialog,
+    }
+}
+
+/// The only construction point of an rfd dialog: anchored to an explicit
+/// local start folder (see `dialog_start_dir`).
+fn sync_dialog() -> rfd::FileDialog {
+    with_start_dir(rfd::FileDialog::new(), dialog_start_dir())
+}
 
 /// Ask for one existing file whose extension is in `extensions`.
-pub fn pick_file(filter: &str, extensions: &[&str]) -> Option<std::path::PathBuf> {
-    let filter = filter.to_owned();
-    let extensions: Vec<String> = extensions.iter().map(|e| (*e).to_owned()).collect();
-    on_dialog_thread(move || {
-        rfd::FileDialog::new()
-            .add_filter(filter, &extensions)
-            .pick_file()
-    })
+pub async fn pick_file_async(
+    filter: String,
+    extensions: Vec<String>,
+) -> Option<std::path::PathBuf> {
+    dialog_on_thread(move || sync_dialog().add_filter(filter, &extensions).pick_file()).await
 }
 
 /// Ask for one or more existing files.
 #[cfg_attr(test, allow(dead_code))]
-pub fn pick_files(filter: &str, extensions: &[&str]) -> Option<Vec<std::path::PathBuf>> {
-    let filter = filter.to_owned();
-    let extensions: Vec<String> = extensions.iter().map(|e| (*e).to_owned()).collect();
-    on_dialog_thread(move || {
-        rfd::FileDialog::new()
-            .add_filter(filter, &extensions)
-            .pick_files()
-    })
+pub async fn pick_files_async(
+    filter: String,
+    extensions: Vec<String>,
+) -> Option<Vec<std::path::PathBuf>> {
+    dialog_on_thread(move || sync_dialog().add_filter(filter, &extensions).pick_files()).await
 }
 
 /// Ask where to save, offering `default_name`.
-pub fn save_file(
-    filter: &str,
-    extensions: &[&str],
-    default_name: impl Into<String>,
+pub async fn save_file_async(
+    filter: String,
+    extensions: Vec<String>,
+    default_name: String,
 ) -> Option<std::path::PathBuf> {
-    let filter = filter.to_owned();
-    let extensions: Vec<String> = extensions.iter().map(|e| (*e).to_owned()).collect();
-    let default_name = default_name.into();
-    on_dialog_thread(move || {
-        rfd::FileDialog::new()
+    dialog_on_thread(move || {
+        sync_dialog()
             .add_filter(filter, &extensions)
             .set_file_name(default_name)
             .save_file()
     })
+    .await
 }
 
 /// Ask where to save, offering one `(name, extension)` filter per format in
 /// the order given.
 #[cfg_attr(test, allow(dead_code))]
-pub fn save_file_as(default_name: &str, filters: &[(&str, &str)]) -> Option<std::path::PathBuf> {
-    let default_name = default_name.to_owned();
-    let filters: Vec<(String, String)> = filters
-        .iter()
-        .map(|(name, ext)| ((*name).to_owned(), (*ext).to_owned()))
-        .collect();
-    on_dialog_thread(move || {
-        let mut dialog = rfd::FileDialog::new().set_file_name(default_name);
+pub async fn save_file_as_async(
+    default_name: String,
+    filters: Vec<(String, String)>,
+) -> Option<std::path::PathBuf> {
+    dialog_on_thread(move || {
+        let mut dialog = sync_dialog().set_file_name(default_name);
         for (name, ext) in &filters {
             dialog = dialog.add_filter(name, &[ext.as_str()]);
         }
         dialog.save_file()
     })
+    .await
 }
 
-/// `pick_file` without blocking the interface thread.
-#[cfg_attr(test, allow(dead_code))]
-pub async fn pick_file_async(filter: &str, extensions: &[&str]) -> Option<std::path::PathBuf> {
-    rfd::AsyncFileDialog::new()
-        .add_filter(filter, extensions)
-        .pick_file()
-        .await
-        .map(|file| file.path().to_path_buf())
-}
+#[cfg(test)]
+mod dialog_tests {
+    use super::*;
 
-/// `save_file` without blocking the interface thread.
-#[cfg_attr(test, allow(dead_code))]
-pub async fn save_file_async(
-    filter: &str,
-    extensions: &[&str],
-    default_name: &str,
-) -> Option<std::path::PathBuf> {
-    rfd::AsyncFileDialog::new()
-        .add_filter(filter, extensions)
-        .set_file_name(default_name)
-        .save_file()
-        .await
-        .map(|file| file.path().to_path_buf())
+    /// A dialog stand-in that records the folder it was anchored to, so the
+    /// anchoring behaviour is testable without opening a real dialog.
+    struct RecordingDialog(Option<std::path::PathBuf>);
+
+    impl NativeDialog for RecordingDialog {
+        fn set_directory(self, dir: std::path::PathBuf) -> Self {
+            RecordingDialog(Some(dir))
+        }
+    }
+
+    #[test]
+    fn with_start_dir_applies_the_given_local_directory() {
+        let dir = std::env::temp_dir();
+        let anchored = with_start_dir(RecordingDialog(None), Some(dir.clone()));
+        assert_eq!(
+            anchored.0,
+            Some(dir),
+            "a provided directory must reach the dialog builder"
+        );
+        let untouched = with_start_dir(RecordingDialog(None), None);
+        assert_eq!(
+            untouched.0, None,
+            "without a directory the dialog must be left exactly as built"
+        );
+    }
+
+    #[test]
+    fn dialogs_never_pump_the_interface_thread() {
+        // Only the production half of this file is under contract.
+        let production = include_str!("platform.rs")
+            .split("#[cfg(test)]")
+            .next()
+            .expect("the test module sits after the production code");
+        assert!(
+            !production.contains("PeekMessageW"),
+            "the interface thread must never hand-pump Windows messages while a \
+             dialog is open: the nested pump wedged the Shell's dialog \
+             initialization (dialog thread stuck in NtUserGetMessage inside \
+             windows.storage/SHCore, no dialog window created) and froze the \
+             app in 0.3.8-0.3.10. The iced event loop owns message dispatch; a \
+             dialog is awaited, never pumped for."
+        );
+        assert!(
+            !production.contains("fn on_dialog_thread"),
+            "dialogs must not be waited on from the interface thread; the \
+             runtime awaits a spawned dialog thread while the event loop runs"
+        );
+    }
+
+    #[test]
+    fn every_native_dialog_is_anchored_to_an_explicit_start_directory() {
+        // Only the production half of this file is under contract; this
+        // module's own probe strings must not count towards it.
+        let production = include_str!("platform.rs")
+            .split("#[cfg(test)]")
+            .next()
+            .expect("the test module sits after the production code");
+        // The only legal construction of an rfd dialog is inside
+        // `sync_dialog`, which anchors through `with_start_dir`. Counting
+        // constructions (rather than call formatting) keeps the oracle
+        // stable under rustfmt.
+        let sync_built = production.matches("rfd::FileDialog::new()").count();
+        assert_eq!(
+            sync_built, 1,
+            "rfd::FileDialog::new() may only appear inside sync_dialog(), which \
+             anchors it to an explicit start folder so Windows never restores its \
+             remembered location at dialog init: a remembered network share wedges \
+             the Shell's folder initialization and froze the app (0.3.8 File > Open, \
+             0.3.9 Save)"
+        );
+        assert!(
+            !production.contains("AsyncFileDialog"),
+            "every native dialog runs on the `file-dialog` thread through \
+             dialog_on_thread(); rfd's AsyncFileDialog is gone, and the sync \
+             builder it replaced is anchored the same way (see dialog_start_dir)"
+        );
+    }
 }

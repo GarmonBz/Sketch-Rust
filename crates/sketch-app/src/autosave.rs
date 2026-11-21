@@ -48,16 +48,23 @@ fn signature(model: &serde_json::Value) -> String {
     sketch_core::skx::sha256_hex(v.to_string().as_bytes())
 }
 /// `signature` for the unsaved-changes check: the save model also carries
-/// interface state (which dock tab is open, the canvas theme) that rides
-/// along in the file but is not the user's work, so flipping it must not
-/// read as an edit.
-fn content_signature(model: &serde_json::Value) -> String {
-    let mut v = model.clone();
+/// interface state (which dock tab is open, the canvas theme) and immutable
+/// `.sketchie` backing snapshots that ride along in the file but are not
+/// edited directly, so flipping UI state or avoiding backing serialization
+/// must not read as an edit.
+fn content_signature_owned(mut v: serde_json::Value) -> String {
+    if let Some(m) = v.as_object_mut() {
+        m.remove("savedAt");
+        m.remove("sketchyBacking");
+    }
     if let Some(settings) = v.get_mut("settings").and_then(|s| s.as_object_mut()) {
         settings.remove("sidebar");
         settings.remove("canvasTheme");
     }
-    signature(&v)
+    sketch_core::skx::sha256_hex(v.to_string().as_bytes())
+}
+fn content_signature(model: &serde_json::Value) -> String {
+    content_signature_owned(model.clone())
 }
 pub fn latest() -> Option<(PathBuf, serde_json::Value)> {
     if !persist::enabled() {
@@ -125,8 +132,8 @@ impl App {
     /// reads as clean again.
     pub(crate) fn refresh_dirty(&mut self) {
         let started = Instant::now();
-        let model = self.build_save_model();
-        self.dirty = content_signature(&model) != self.saved_hash;
+        let model = self.build_save_model_without_backing();
+        self.dirty = content_signature_owned(model) != self.saved_hash;
         self.dirty_revision = self.undo.revision();
         self.dirty_checked = Instant::now();
         self.dirty_cost = started.elapsed();
@@ -135,6 +142,9 @@ impl App {
     /// or the last look is stale. The stale interval grows with the cost of
     /// hashing, so a large sketch is not hashed on every message.
     pub(crate) fn refresh_dirty_if_due(&mut self) {
+        if self.is_interactive_gesture_active() {
+            return;
+        }
         let stale = (self.dirty_cost * 20).max(Duration::from_millis(750));
         if self.undo.revision() != self.dirty_revision || self.dirty_checked.elapsed() >= stale {
             self.refresh_dirty();

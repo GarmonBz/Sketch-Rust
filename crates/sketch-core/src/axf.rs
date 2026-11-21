@@ -643,7 +643,11 @@ impl AxfDocument {
             notes.push(format!(
                 "{} door/fixture symbol{} not imported.",
                 self.blocks_skipped,
-                if self.blocks_skipped == 1 { " was" } else { "s were" }
+                if self.blocks_skipped == 1 {
+                    " was"
+                } else {
+                    "s were"
+                }
             ));
         }
 
@@ -809,14 +813,20 @@ pub(crate) mod tests {
         assert_eq!(doc.areas.len(), 2);
         assert_eq!(doc.areas[0].vertices.len(), 4);
         let entry = doc.areas[0].entry.as_ref().expect("matched entry");
-        assert_eq!((entry.code.as_str(), entry.name.as_str()), ("GLA1", "First Floor"));
+        assert_eq!(
+            (entry.code.as_str(), entry.name.as_str()),
+            ("GLA1", "First Floor")
+        );
         assert_eq!(doc.areas[1].entry.as_ref().unwrap().name, "Shed");
         assert_eq!(doc.dimension_texts, 2);
         assert_eq!(doc.blocks_skipped, 1);
         assert_eq!(doc.labels.len(), 2);
         assert_eq!(doc.labels[0].text, "Living");
         assert_eq!(doc.labels[1].text, "½ Bath");
-        assert_eq!((doc.labels[1].x, doc.labels[1].y, doc.labels[1].rotation), (4.0, 2.0, 45.0));
+        assert_eq!(
+            (doc.labels[1].x, doc.labels[1].y, doc.labels[1].rotation),
+            (4.0, 2.0, 45.0)
+        );
         assert!(doc.warnings.is_empty(), "{:?}", doc.warnings);
     }
 
@@ -844,7 +854,11 @@ pub(crate) mod tests {
         assert_eq!(polygons[0]["type"], "GLA1");
         assert_eq!(polygons[0]["name"], "First Floor");
         assert_eq!(polygons[1]["type"], "ZZZ");
-        assert!((polygons[0]["area"].as_f64().unwrap() - doc.areas[0].entry.as_ref().unwrap().area).abs() < 1e-6);
+        assert!(
+            (polygons[0]["area"].as_f64().unwrap() - doc.areas[0].entry.as_ref().unwrap().area)
+                .abs()
+                < 1e-6
+        );
         // The bowed wall carries a 90-degree bow, outward (area grows).
         let bowed: Vec<_> = page["lines"]
             .as_array()
@@ -864,7 +878,10 @@ pub(crate) mod tests {
 
     #[test]
     fn rejects_files_that_are_not_axf() {
-        assert_eq!(read(b"{\"format\":\"sketchy\"}").unwrap_err(), AxfError::NotCompressed);
+        assert_eq!(
+            read(b"{\"format\":\"sketchy\"}").unwrap_err(),
+            AxfError::NotCompressed
+        );
         let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
         encoder.write_all(b"just some other deflated data").unwrap();
         let other = encoder.finish().unwrap();
@@ -874,7 +891,10 @@ pub(crate) mod tests {
         let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
         encoder.write_all(SIGNATURE).unwrap();
         encoder.write_all(&[0u8; 64]).unwrap();
-        assert_eq!(read(&encoder.finish().unwrap()).unwrap_err(), AxfError::NoGeometry);
+        assert_eq!(
+            read(&encoder.finish().unwrap()).unwrap_err(),
+            AxfError::NoGeometry
+        );
     }
 
     #[test]
@@ -920,11 +940,21 @@ pub(crate) mod tests {
             let e = area.entry.as_ref().unwrap();
             eprintln!(
                 "{} [{}] n={} calc {:.4}/{:.4} stored {:.4}/{:.4}",
-                e.name, e.code, area.vertices.len(), a, p, e.area, e.perimeter
+                e.name,
+                e.code,
+                area.vertices.len(),
+                a,
+                p,
+                e.area,
+                e.perimeter
             );
         }
         for l in &doc.labels {
-            eprintln!("label {:?} {:.1},{:.1} rot {}", l.text, l.x, l.y, l.rotation);
-        }        assert!(doc.warnings.is_empty(), "{:?}", doc.warnings);
+            eprintln!(
+                "label {:?} {:.1},{:.1} rot {}",
+                l.text, l.x, l.y, l.rotation
+            );
+        }
+        assert!(doc.warnings.is_empty(), "{:?}", doc.warnings);
     }
 }

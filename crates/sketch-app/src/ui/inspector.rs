@@ -113,13 +113,11 @@ pub fn panel<'a>(app: &'a App, d: Density, overlay: bool) -> Element<'a, Message
         trace_active,
     );
 
-    let mut header = row![
-        text(title)
-            .font(BARLOW_SEMIBOLD)
-            .size(TEXT_14)
-            .color(tokens::text())
-            .width(Length::Fill),
-    ]
+    let mut header = row![text(title)
+        .font(BARLOW_SEMIBOLD)
+        .size(TEXT_14)
+        .color(tokens::text())
+        .width(Length::Fill),]
     .spacing(SPACE_1)
     .align_y(Alignment::Center)
     .width(Length::Fill);
@@ -157,7 +155,9 @@ pub fn panel<'a>(app: &'a App, d: Density, overlay: bool) -> Element<'a, Message
     };
     let mut sections = column![subject].spacing(SPACE_2);
     if kind_count == 1 && (has_wall || has_text || has_symbol) {
-        sections = sections.push(kit::divider()).push(common_actions_section(d));
+        sections = sections
+            .push(kit::divider())
+            .push(common_actions_section(d));
     }
     if kind_count != 0 && trace_active {
         sections = column![trace_image_section(app, d), kit::divider(), sections].spacing(SPACE_2);
@@ -173,7 +173,9 @@ pub fn panel<'a>(app: &'a App, d: Density, overlay: bool) -> Element<'a, Message
             })
             .width(Length::Fill),
     )
-    .direction(Direction::Vertical(Scrollbar::new().width(5).scroller_width(5)))
+    .direction(Direction::Vertical(
+        Scrollbar::new().width(5).scroller_width(5),
+    ))
     .width(Length::Fill)
     .height(Length::Fill);
 
@@ -305,10 +307,7 @@ fn inspector_title(
 fn wall_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
     let line = app.drawing.first_selected_line(&app.selection);
     let edit = app.edit_tools_data();
-    let handle_note = edit
-        .as_ref()
-        .map(|e| e.endpoint_label)
-        .unwrap_or("Length");
+    let handle_note = edit.as_ref().map(|e| e.endpoint_label).unwrap_or("Length");
     let units = &app.drawing.options.units;
     let length_val = app.line_length_edit.clone().unwrap_or_else(|| {
         line.map(|line| {
@@ -319,12 +318,14 @@ fn wall_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
                 format!("{length:.2}")
             }
         })
-            .unwrap_or_default()
+        .unwrap_or_default()
     });
     let current_style = line
         .and_then(|l| l.line_style.as_deref())
         .unwrap_or("solid");
-    let wall_color = edit.as_ref().map_or_else(tokens::accent, |values| values.color);
+    let wall_color = edit
+        .as_ref()
+        .map_or_else(tokens::accent, |values| values.color);
 
     let curve_height_mode = app.view.curve_mode == CurveMode::Height;
     let bow_readout = line
@@ -501,9 +502,7 @@ fn area_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
             .into();
     };
 
-    let area_tools = app
-        .edit_tools_data()
-        .and_then(|e| e.area);
+    let area_tools = app.edit_tools_data().and_then(|e| e.area);
 
     let dialog_synced = !app.area_dialog.open && app.ui.inspector_area_id == Some(poly.id);
     let name_val = if dialog_synced {
@@ -529,7 +528,11 @@ fn area_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
         poly.auto_post.suffix.clone()
     };
     let post = if dialog_synced {
-        app.area_dialog.props.auto_post.clone().unwrap_or_else(|| poly.auto_post.clone())
+        app.area_dialog
+            .props
+            .auto_post
+            .clone()
+            .unwrap_or_else(|| poly.auto_post.clone())
     } else {
         poly.auto_post.clone()
     };
@@ -617,7 +620,10 @@ fn area_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
     }
     stats = stats
         .push(metric_line("Net area", format!("{net_area:.1} sf")))
-        .push(metric_line("Perimeter", app.drawing.options.units.length(perimeter)));
+        .push(metric_line(
+            "Perimeter",
+            app.drawing.options.units.length(perimeter),
+        ));
 
     let factor_row: Element<'a, Message> = kit::field(
         FieldProps {
@@ -692,11 +698,14 @@ fn area_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
 
     let measure_pick = styled_pick_list(
         MEASURE_OPTIONS.iter().map(|s| s.to_string()).collect(),
-        Some(match measure_val {
-            "interior" => "Interior Face",
-            "exterior" => "Exterior Face",
-            _ => "Centerline",
-        }.to_owned()),
+        Some(
+            match measure_val {
+                "interior" => "Interior Face",
+                "exterior" => "Exterior Face",
+                _ => "Centerline",
+            }
+            .to_owned(),
+        ),
         |v| Message::AreaDialog(AreaDialogMsg::Measure(v)),
         d,
     );
@@ -711,7 +720,13 @@ fn area_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
                     Some(Message::AreaCycle(AreaCycle::FillPattern)),
                     d,
                 ),
-                kit::swatch(tools.fill, false, false, Some(Message::AreaColorClicked(true)), d),
+                kit::swatch(
+                    tools.fill,
+                    false,
+                    false,
+                    Some(Message::AreaColorClicked(true)),
+                    d
+                ),
             ]
             .spacing(SPACE_1)
             .align_y(Alignment::Center)
@@ -894,7 +909,11 @@ fn area_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
                 (Some(a), Some(b)) => distance(*a, *b),
                 _ => 0.0,
             };
-            let label = format!("Wall {} · {}", idx + 1, app.drawing.options.units.length(len));
+            let label = format!(
+                "Wall {} · {}",
+                idx + 1,
+                app.drawing.options.units.length(len)
+            );
             let msg = edge.line_id.map(|id| Message::Ui(UiMsg::SelectWall(id)));
             container(kit::text_button(label, msg, d))
                 .width(Length::FillPortion(1))
@@ -1212,10 +1231,10 @@ fn chain_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
         Some(s) if s < 0 => "Side B",
         _ => "Side A",
     };
-    let offset_text = chain
-        .map_or_else(|| app.drawing.options.units.length(0.0), |c| {
-            app.drawing.options.units.length(c.offset)
-        });
+    let offset_text = chain.map_or_else(
+        || app.drawing.options.units.length(0.0),
+        |c| app.drawing.options.units.length(c.offset),
+    );
     let overall_on = chain.is_some_and(|c| c.show_overall);
 
     column![
@@ -1268,7 +1287,11 @@ fn trace_image_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
         .width(Length::Fill),
         action_btn(
             "arrows-out-cardinal",
-            if bg.edit_mode { "Done moving" } else { "Move on canvas" },
+            if bg.edit_mode {
+                "Done moving"
+            } else {
+                "Move on canvas"
+            },
             bg.edit_mode,
             Some(Message::PhotoEditModeToggle),
             d,
@@ -1346,12 +1369,22 @@ fn trace_image_section<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
         kit::stepper(
             "Opacity step",
             format!("{:.0}%", opacity_pct),
-            Some(Message::PhotoIntensity((opacity_pct - 10.0).clamp(0.0, 100.0))),
-            Some(Message::PhotoIntensity((opacity_pct + 10.0).clamp(0.0, 100.0))),
+            Some(Message::PhotoIntensity(
+                (opacity_pct - 10.0).clamp(0.0, 100.0)
+            )),
+            Some(Message::PhotoIntensity(
+                (opacity_pct + 10.0).clamp(0.0, 100.0)
+            )),
             d,
         ),
         row![
-            action_btn("map-trifold", "Map options", false, Some(Message::GeoOpen), d),
+            action_btn(
+                "map-trifold",
+                "Map options",
+                false,
+                Some(Message::GeoOpen),
+                d
+            ),
             kit::text_button("Close", Some(Message::Ui(UiMsg::CloseOverlays)), d),
         ]
         .spacing(SPACE_1)

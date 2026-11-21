@@ -280,10 +280,16 @@ pub fn active_row_count(app: &App) -> usize {
 pub fn enter_message(app: &App) -> Option<Message> {
     let row = app.ui.menu_row;
     if searching(app) {
-        return search_actions(app).into_iter().nth(row).and_then(|a| a.on_press);
+        return search_actions(app)
+            .into_iter()
+            .nth(row)
+            .and_then(|a| a.on_press);
     }
     if let Some(sub) = app.ui.menu_sub {
-        return sub_actions(app, sub).into_iter().nth(row).and_then(|a| a.on_press);
+        return sub_actions(app, sub)
+            .into_iter()
+            .nth(row)
+            .and_then(|a| a.on_press);
     }
     match rows().nth(row)? {
         Entry::Sub(sub) => Some(Message::Ui(UiMsg::MenuSub(Some(sub)))),
@@ -519,7 +525,9 @@ fn desktop_dropdown<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
             .spacing(SPACE_1),
         )
         .padding(SPACE_2)
-        .width(Length::Fixed(SEARCH_W.min(app.window_size.width - SPACE_3 * 2.0)))
+        .width(Length::Fixed(
+            SEARCH_W.min(app.window_size.width - SPACE_3 * 2.0),
+        ))
         .max_height(avail_h)
         .style(panel_style);
         return mouse_area(panel).on_press(Message::Ui(UiMsg::Noop)).into();
@@ -599,9 +607,13 @@ fn compact_sheet<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
             false,
             false,
         );
-        column![back, kit::divider(), actions_list(sub_actions(app, sub), d, app.ui.menu_row)]
-            .spacing(SPACE_1)
-            .into()
+        column![
+            back,
+            kit::divider(),
+            actions_list(sub_actions(app, sub), d, app.ui.menu_row)
+        ]
+        .spacing(SPACE_1)
+        .into()
     } else {
         main_list(app, d, false)
     };
@@ -609,9 +621,13 @@ fn compact_sheet<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
     let sheet = container(column![
         header,
         container(search_field(app, d)).padding([SPACE_1, SPACE_3]),
-        scrollable(container(body).padding([SPACE_1, SPACE_3]).width(Length::Fill))
-            .height(Length::Fill)
-            .width(Length::Fill),
+        scrollable(
+            container(body)
+                .padding([SPACE_1, SPACE_3])
+                .width(Length::Fill)
+        )
+        .height(Length::Fill)
+        .width(Length::Fill),
     ])
     .width(Length::Fill)
     .height(Length::Fill)
@@ -656,7 +672,12 @@ fn action_row<'a>(
             .width(Length::Fill),
     );
     if !a.detail.is_empty() {
-        r = r.push(text(a.detail).font(BARLOW).size(TEXT_11).color(tokens::muted()));
+        r = r.push(
+            text(a.detail)
+                .font(BARLOW)
+                .size(TEXT_11)
+                .color(tokens::muted()),
+        );
     }
     if has_fly {
         r = r.push(icons::mono("caret-right", 12.0, tokens::muted()));
@@ -751,7 +772,10 @@ mod tests {
             MenuSub::Help,
         ] {
             for (id, _) in sub.commands() {
-                assert!(commands::find(id).is_some(), "{sub:?} cites unknown command {id}");
+                assert!(
+                    commands::find(id).is_some(),
+                    "{sub:?} cites unknown command {id}"
+                );
             }
             let (name, fill) = sub.icon();
             let _ = icons::mono_icon(name, fill, 14.0, Color::WHITE);
@@ -769,11 +793,15 @@ mod fly_out_tests {
         let help = MenuSub::Help.commands().len();
         assert_eq!(MenuSub::Help.commands().last().unwrap().0, "about");
         let fly_h = fly_out_height(help, d);
-        let row_top = SPACE_2 + d.field_h() + SPACE_1 * 2.0 + sub_offset(MenuSub::Help, d) - SPACE_2;
+        let row_top =
+            SPACE_2 + d.field_h() + SPACE_1 * 2.0 + sub_offset(MenuSub::Help, d) - SPACE_2;
         for window_h in [600.0_f32, 700.0, 760.0, 900.0] {
             let avail_h = window_h - d.bar_h() - SPACE_3 * 2.0;
             let top = fly_out_top(row_top, fly_h, avail_h);
-            assert!(top + fly_h <= avail_h + 0.5, "About cut off at {window_h} px");
+            assert!(
+                top + fly_h <= avail_h + 0.5,
+                "About cut off at {window_h} px"
+            );
             assert!(top <= row_top);
         }
         // Tall enough: it still lines up with its row.

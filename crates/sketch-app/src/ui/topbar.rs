@@ -1,8 +1,6 @@
 //! Top bar, page tabs, tab context menu, export menu, and pages drawer overlay for `Shell::Next`.
 
-use iced::widget::{
-    button, column, container, mouse_area, opaque, row, text, Space,
-};
+use iced::widget::{button, column, container, mouse_area, opaque, row, text, Space};
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
 
 use crate::calcs;
@@ -43,11 +41,19 @@ pub fn undo_history_anchor(app: &App) -> (f32, f32) {
     let (x, y) = match class {
         SizeClass::Wide => {
             // Right cluster sits at the right edge; Undo is left of Search + Primary + Window controls.
-            let right_cluster = if matches!(d, Density::Touch) { 615.0 } else { 565.0 };
+            let right_cluster = if matches!(d, Density::Touch) {
+                615.0
+            } else {
+                565.0
+            };
             ((w - right_cluster).max(8.0), bar_h + 2.0)
         }
         SizeClass::Medium => {
-            let right_cluster = if matches!(d, Density::Touch) { 465.0 } else { 420.0 };
+            let right_cluster = if matches!(d, Density::Touch) {
+                465.0
+            } else {
+                420.0
+            };
             ((w - right_cluster).max(8.0), bar_h + 2.0)
         }
         SizeClass::Compact => ((w - 230.0).max(8.0), bar_h + PAGE_BAR_H + 2.0),
@@ -208,7 +214,10 @@ pub fn page_bar<'a>(
 ) -> Element<'a, Message> {
     let compact = matches!(class, SizeClass::Compact);
     if let Some(session) = app.symbol_edit_session.as_ref() {
-        let mut content = row![].spacing(SPACE_2).align_y(Alignment::Center).width(Length::Fill);
+        let mut content = row![]
+            .spacing(SPACE_2)
+            .align_y(Alignment::Center)
+            .width(Length::Fill);
         if compact {
             content = content.push(undo_redo_controls(app, d));
         }
@@ -314,13 +323,7 @@ fn menu_trigger<'a>(open: bool, d: Density, compact: bool) -> Element<'a, Messag
             iced::widget::tooltip::Position::Bottom,
         )
     } else {
-        kit::text_button_with(
-            "Menu",
-            Some(Message::Ui(UiMsg::ToggleMenu)),
-            d,
-            open,
-            false,
-        )
+        kit::text_button_with("Menu", Some(Message::Ui(UiMsg::ToggleMenu)), d, open, false)
     }
 }
 
@@ -399,7 +402,11 @@ fn symbol_edit_strip<'a>(
         container(
             text(format!(
                 "{count} non-editable {}",
-                if count == 1 { "entity locked" } else { "entities locked" }
+                if count == 1 {
+                    "entity locked"
+                } else {
+                    "entities locked"
+                }
             ))
             .font(BARLOW_MEDIUM)
             .size(TEXT_11)
@@ -417,12 +424,10 @@ fn symbol_edit_strip<'a>(
         })
     });
 
-    let mut r = row![
-        text(format!("Editing symbol: {}", session.symbol_name))
-            .font(BARLOW_SEMIBOLD)
-            .size(if compact { TEXT_12 } else { TEXT_14 })
-            .color(tokens::text()),
-    ]
+    let mut r = row![text(format!("Editing symbol: {}", session.symbol_name))
+        .font(BARLOW_SEMIBOLD)
+        .size(if compact { TEXT_12 } else { TEXT_14 })
+        .color(tokens::text()),]
     .spacing(SPACE_2)
     .align_y(Alignment::Center);
     if !compact {
@@ -437,7 +442,11 @@ fn symbol_edit_strip<'a>(
         );
     }
     r = r
-        .push(kit::text_button("Cancel", Some(Message::CancelSymbolShape), d))
+        .push(kit::text_button(
+            "Cancel",
+            Some(Message::CancelSymbolShape),
+            d,
+        ))
         .push(kit::primary_button(
             "Save shape",
             Some(Message::SaveSymbolShape),
@@ -449,17 +458,30 @@ fn symbol_edit_strip<'a>(
 fn page_tabs_strip<'a>(app: &'a App, d: Density, compact: bool) -> Element<'a, Message> {
     let count = app.pages.len();
     let current = app.pages.current.min(count.saturating_sub(1));
-    let h = if matches!(d, Density::Touch) { 36.0 } else { 28.0 };
+    let h = if matches!(d, Density::Touch) {
+        36.0
+    } else {
+        28.0
+    };
 
     let step = |icon: &'static str, label: &'static str, target: Option<usize>| {
         kit::tooltip(
-            kit::icon_button(icon, false, target.map(|i| Message::PagesNav(NavMsg::Go(i))), d),
+            kit::icon_button(
+                icon,
+                false,
+                target.map(|i| Message::PagesNav(NavMsg::Go(i))),
+                d,
+            ),
             label,
             iced::widget::tooltip::Position::Bottom,
         )
     };
     let prev = step("caret-left", "Previous page", current.checked_sub(1));
-    let next = step("caret-right", "Next page", (current + 1 < count).then_some(current + 1));
+    let next = step(
+        "caret-right",
+        "Next page",
+        (current + 1 < count).then_some(current + 1),
+    );
 
     // One control for the current page: its name, "n / total", and a caret.
     // Press opens the page list; right-click or long-press opens the page menu.
@@ -502,7 +524,11 @@ fn page_tabs_strip<'a>(app: &'a App, d: Density, compact: bool) -> Element<'a, M
             background: Some(Background::Color(fill)),
             text_color: tokens::text(),
             border: Border {
-                color: if open { tokens::accent() } else { tokens::rule() },
+                color: if open {
+                    tokens::accent()
+                } else {
+                    tokens::rule()
+                },
                 width: 1.0,
                 radius: RADIUS_CONTROL.into(),
             },
@@ -510,8 +536,7 @@ fn page_tabs_strip<'a>(app: &'a App, d: Density, compact: bool) -> Element<'a, M
         }
     });
     let switcher = kit::long_press(
-        mouse_area(switcher_btn)
-            .on_right_press(Message::Ui(UiMsg::TogglePageMenu(Some(current)))),
+        mouse_area(switcher_btn).on_right_press(Message::Ui(UiMsg::TogglePageMenu(Some(current)))),
         Message::Ui(UiMsg::TogglePageMenu(Some(current))),
     );
 
@@ -760,7 +785,9 @@ fn window_controls<'a>(app: &'a App, compact: bool) -> Element<'a, Message> {
             .style(move |_, status| button::Style {
                 background: match status {
                     button::Status::Hovered => Some(Background::Color(hover_bg)),
-                    button::Status::Pressed => Some(Background::Color(over(Color::BLACK, 0.14, hover_bg))),
+                    button::Status::Pressed => {
+                        Some(Background::Color(over(Color::BLACK, 0.14, hover_bg)))
+                    }
                     _ => None,
                 },
                 border: Border {
@@ -788,7 +815,13 @@ fn window_controls<'a>(app: &'a App, compact: bool) -> Element<'a, Message> {
     .on_exit(Message::CloseHover(false));
 
     row![
-        caption_btn("minus", Message::Minimize, tokens::hover(), tokens::text(), "Minimize"),
+        caption_btn(
+            "minus",
+            Message::Minimize,
+            tokens::hover(),
+            tokens::text(),
+            "Minimize"
+        ),
         caption_btn(
             if app.maximized { "copy" } else { "square" },
             Message::ToggleMaximize,
@@ -818,7 +851,12 @@ fn totals_chip<'a>(app: &'a App, compact: bool) -> Element<'a, Message> {
     } else {
         format!("Totals: 0 {}", unit)
     };
-    kit::chip(label, false, Some(Message::Ui(UiMsg::ToggleLedger)), app.ui.density)
+    kit::chip(
+        label,
+        false,
+        Some(Message::Ui(UiMsg::ToggleLedger)),
+        app.ui.density,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -931,16 +969,15 @@ fn page_menu_overlay<'a>(app: &'a App, index: usize, d: Density) -> Element<'a, 
             right: SPACE_3,
             bottom: SPACE_3,
         })
-        .align_x(if matches!(SizeClass::of(app.window_size.width), SizeClass::Wide) {
-            Alignment::Center
-        } else {
-            Alignment::Start
-        });
+        .align_x(
+            if matches!(SizeClass::of(app.window_size.width), SizeClass::Wide) {
+                Alignment::Center
+            } else {
+                Alignment::Start
+            },
+        );
 
-    opaque(
-        mouse_area(positioned)
-            .on_press(Message::Ui(UiMsg::CloseOverlays)),
-    )
+    opaque(mouse_area(positioned).on_press(Message::Ui(UiMsg::CloseOverlays)))
 }
 
 fn export_menu_overlay<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
@@ -1012,14 +1049,12 @@ fn export_menu_overlay<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
         })
         .align_x(Alignment::End);
 
-    opaque(
-        mouse_area(positioned)
-            .on_press(Message::Ui(UiMsg::CloseOverlays)),
-    )
+    opaque(mouse_area(positioned).on_press(Message::Ui(UiMsg::CloseOverlays)))
 }
 
 fn pages_nav_overlay<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
-    let max_h = (app.window_size.height - d.bar_h() - PAGE_BAR_H - SPACE_3 * 2.0).clamp(220.0, 480.0);
+    let max_h =
+        (app.window_size.height - d.bar_h() - PAGE_BAR_H - SPACE_3 * 2.0).clamp(220.0, 480.0);
     let panel = container(pages_nav::view(&app.pages, app.pages_nav_hover))
         .height(Length::Fixed(max_h))
         .style(|_| container::Style {
@@ -1047,18 +1082,17 @@ fn pages_nav_overlay<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
             right: SPACE_3,
             bottom: SPACE_3,
         })
-        .align_x(if matches!(SizeClass::of(app.window_size.width), SizeClass::Wide) {
-            Alignment::Center
-        } else {
-            Alignment::Start
-        })
+        .align_x(
+            if matches!(SizeClass::of(app.window_size.width), SizeClass::Wide) {
+                Alignment::Center
+            } else {
+                Alignment::Start
+            },
+        )
         .style(|_| container::Style {
             background: Some(Background::Color(tokens::scrim())),
             ..container::Style::default()
         });
 
-    opaque(
-        mouse_area(positioned)
-            .on_press(Message::PagesNav(NavMsg::Close)),
-    )
+    opaque(mouse_area(positioned).on_press(Message::PagesNav(NavMsg::Close)))
 }

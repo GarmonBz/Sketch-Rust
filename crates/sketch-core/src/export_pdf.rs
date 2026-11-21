@@ -1028,7 +1028,13 @@ fn report_page_content(
     let comment_height = comment_tables_height(subject, layout);
     if comment_height > 0.0 {
         let top = SKETCH_BODY_TOP + sketch_height;
-        for (index, label) in layout.captions.comment_table_labels.iter().take(3).enumerate() {
+        for (index, label) in layout
+            .captions
+            .comment_table_labels
+            .iter()
+            .take(3)
+            .enumerate()
+        {
             let cx = x0 + index as f64 * 180.0;
             content.ops.push(Op::SetGrayStroke(GRAY_BORDER));
             content.ops.push(Op::StrokeRect {

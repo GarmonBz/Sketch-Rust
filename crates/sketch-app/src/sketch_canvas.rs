@@ -229,12 +229,16 @@ impl canvas::Program<crate::Message> for SketchCanvas<'_> {
                             fired: false,
                             drag_kind: None,
                         });
-                        if !self.finger_pan_only && !self.space_pan
+                        if !self.finger_pan_only
+                            && !self.space_pan
                             && matches!(self.mode, Mode::Freeform | Mode::Erase)
                         {
-                            state.touch_hold.as_mut().unwrap().drag_kind = Some(TouchDragKind::Press);
+                            state.touch_hold.as_mut().unwrap().drag_kind =
+                                Some(TouchDragKind::Press);
                             let (x, y) = rel(position);
-                            return Some(canvas::Action::publish(Message::CanvasPress(x, y)).and_capture());
+                            return Some(
+                                canvas::Action::publish(Message::CanvasPress(x, y)).and_capture(),
+                            );
                         }
                         return Some(
                             canvas::Action::request_redraw_at(now + TOUCH_HOLD_DELAY).and_capture(),
@@ -302,8 +306,7 @@ impl canvas::Program<crate::Message> for SketchCanvas<'_> {
                             state.touch_hold = Some(hold);
                             let (ox, oy) = rel(origin);
                             return Some(
-                                canvas::Action::publish(Message::CanvasPress(ox, oy))
-                                    .and_capture(),
+                                canvas::Action::publish(Message::CanvasPress(ox, oy)).and_capture(),
                             );
                         }
                     }
@@ -333,9 +336,9 @@ impl canvas::Program<crate::Message> for SketchCanvas<'_> {
                                 )
                             }
                         }
-                        None if self.mode.is_drawing() || self.mode == Mode::DefineArea => Some(
-                            canvas::Action::publish(Message::CanvasHover(x, y)).and_capture(),
-                        ),
+                        None if self.mode.is_drawing() || self.mode == Mode::DefineArea => {
+                            Some(canvas::Action::publish(Message::CanvasHover(x, y)).and_capture())
+                        }
                         None => Some(canvas::Action::capture()),
                     }
                 }
@@ -392,8 +395,7 @@ impl canvas::Program<crate::Message> for SketchCanvas<'_> {
             Event::Window(iced::window::Event::RedrawRequested(now)) => {
                 if let Some(mut hold) = state.touch_hold {
                     if !hold.fired && hold.drag_kind.is_none() && hold.max_travel <= 8.0 {
-                        let deadline =
-                            hold.started + std::time::Duration::from_millis(500);
+                        let deadline = hold.started + std::time::Duration::from_millis(500);
                         if *now >= deadline {
                             hold.fired = true;
                             state.touch_hold = Some(hold);
@@ -436,7 +438,10 @@ impl canvas::Program<crate::Message> for SketchCanvas<'_> {
                     return Some(canvas::Action::publish(Message::FenceStart(x, y)).and_capture());
                 }
                 if *button == mouse::Button::Left
-                    && matches!(self.mode, Mode::Select | Mode::Curve | Mode::Freeform | Mode::Erase)
+                    && matches!(
+                        self.mode,
+                        Mode::Select | Mode::Curve | Mode::Freeform | Mode::Erase
+                    )
                 {
                     // The pointer doubles as the marquee tool when the drag
                     // starts on empty canvas; main hit-tests and decides. The
@@ -542,9 +547,9 @@ impl canvas::Program<crate::Message> for SketchCanvas<'_> {
                 // fractions; one zoom step per fraction would fling the
                 // view. Bank them and step once per whole notch.
                 let now = std::time::Instant::now();
-                let stale = state
-                    .wheel_at
-                    .is_none_or(|at| now.duration_since(at) > std::time::Duration::from_millis(400));
+                let stale = state.wheel_at.is_none_or(|at| {
+                    now.duration_since(at) > std::time::Duration::from_millis(400)
+                });
                 if stale || state.wheel_acc * dy < 0.0 {
                     state.wheel_acc = 0.0;
                 }
@@ -1018,28 +1023,54 @@ mod tests {
         let mut state = CanvasState::default();
         let cursor = mouse::Cursor::Unavailable;
         let pt = |x: f32, y: f32| Point::new(BOUNDS.x + x, BOUNDS.y + y);
-        let press = |id, p| Event::Touch(T::FingerPressed { id: Finger(id), position: p });
-        let moved = |id, p| Event::Touch(T::FingerMoved { id: Finger(id), position: p });
-        assert!(c.update(&mut state, &press(1, pt(100.0, 100.0)), BOUNDS, cursor).is_none());
+        let press = |id, p| {
+            Event::Touch(T::FingerPressed {
+                id: Finger(id),
+                position: p,
+            })
+        };
+        let moved = |id, p| {
+            Event::Touch(T::FingerMoved {
+                id: Finger(id),
+                position: p,
+            })
+        };
+        assert!(c
+            .update(&mut state, &press(1, pt(100.0, 100.0)), BOUNDS, cursor)
+            .is_none());
         assert!(
-            c.update(&mut state, &moved(1, pt(110.0, 100.0)), BOUNDS, cursor).is_none(),
+            c.update(&mut state, &moved(1, pt(110.0, 100.0)), BOUNDS, cursor)
+                .is_none(),
             "one finger is not a pinch"
         );
-        assert!(c.update(&mut state, &press(2, pt(210.0, 100.0)), BOUNDS, cursor).is_none());
+        assert!(c
+            .update(&mut state, &press(2, pt(210.0, 100.0)), BOUNDS, cursor)
+            .is_none());
         // Fingers 100px apart; the second moves out to 200px apart.
         let action = c
             .update(&mut state, &moved(2, pt(310.0, 100.0)), BOUNDS, cursor)
             .unwrap();
         match action.into_inner().0 {
-            Some(crate::Message::Pinch { factor, x, y, dx, dy }) => {
+            Some(crate::Message::Pinch {
+                factor,
+                x,
+                y,
+                dx,
+                dy,
+            }) => {
                 assert_eq!((factor, x, y, dx, dy), (2.0, 210.0, 100.0, 50.0, 0.0));
             }
             other => panic!("expected a pinch, got {other:?}"),
         }
         // Lifting one ends it.
-        let lift = Event::Touch(T::FingerLifted { id: Finger(1), position: pt(110.0, 100.0) });
+        let lift = Event::Touch(T::FingerLifted {
+            id: Finger(1),
+            position: pt(110.0, 100.0),
+        });
         assert!(c.update(&mut state, &lift, BOUNDS, cursor).is_none());
-        assert!(c.update(&mut state, &moved(2, pt(320.0, 100.0)), BOUNDS, cursor).is_none());
+        assert!(c
+            .update(&mut state, &moved(2, pt(320.0, 100.0)), BOUNDS, cursor)
+            .is_none());
     }
 
     #[test]
@@ -1185,25 +1216,49 @@ mod tests {
     #[test]
     fn single_finger_touch_follows_tool_pan_fence_and_draw_tap() {
         let finger = iced::touch::Finger(7);
-        let pressed = |id, p: Point| Event::Touch(iced::touch::Event::FingerPressed { id, position: p });
-        let moved = |id, p: Point| Event::Touch(iced::touch::Event::FingerMoved { id, position: p });
-        let lifted = |id, p: Point| Event::Touch(iced::touch::Event::FingerLifted { id, position: p });
+        let pressed =
+            |id, p: Point| Event::Touch(iced::touch::Event::FingerPressed { id, position: p });
+        let moved =
+            |id, p: Point| Event::Touch(iced::touch::Event::FingerMoved { id, position: p });
+        let lifted =
+            |id, p: Point| Event::Touch(iced::touch::Event::FingerLifted { id, position: p });
 
         // Pan tool: 1-finger drag pans.
         let mut c = canvas(Mode::Pan);
         c.touch_gestures = true;
         let mut state = CanvasState::default();
-        assert!(message_with(&c, &mut state, pressed(finger, Point::new(200.0, 200.0)), at(200.0, 200.0)).is_none());
+        assert!(message_with(
+            &c,
+            &mut state,
+            pressed(finger, Point::new(200.0, 200.0)),
+            at(200.0, 200.0)
+        )
+        .is_none());
         assert!(matches!(
-            message_with(&c, &mut state, moved(finger, Point::new(220.0, 200.0)), at(220.0, 200.0)),
+            message_with(
+                &c,
+                &mut state,
+                moved(finger, Point::new(220.0, 200.0)),
+                at(220.0, 200.0)
+            ),
             Some(Message::PanStart(200.0, 200.0))
         ));
         assert!(matches!(
-            message_with(&c, &mut state, moved(finger, Point::new(240.0, 210.0)), at(240.0, 210.0)),
+            message_with(
+                &c,
+                &mut state,
+                moved(finger, Point::new(240.0, 210.0)),
+                at(240.0, 210.0)
+            ),
             Some(Message::PanMove(240.0, 210.0))
         ));
         assert!(matches!(
-            message_with(&c, &mut state, lifted(finger, Point::new(240.0, 210.0)), at(240.0, 210.0)),
+            message_with(
+                &c,
+                &mut state,
+                lifted(finger, Point::new(240.0, 210.0)),
+                at(240.0, 210.0)
+            ),
             Some(Message::PanEnd)
         ));
 
@@ -1211,8 +1266,18 @@ mod tests {
         let mut c = canvas(Mode::DrawExterior);
         c.touch_gestures = true;
         let mut state = CanvasState::default();
-        let _ = message_with(&c, &mut state, pressed(finger, Point::new(300.0, 300.0)), at(300.0, 300.0));
-        match message_with(&c, &mut state, lifted(finger, Point::new(301.0, 302.0)), at(301.0, 302.0)) {
+        let _ = message_with(
+            &c,
+            &mut state,
+            pressed(finger, Point::new(300.0, 300.0)),
+            at(300.0, 300.0),
+        );
+        match message_with(
+            &c,
+            &mut state,
+            lifted(finger, Point::new(301.0, 302.0)),
+            at(301.0, 302.0),
+        ) {
             Some(Message::CanvasTouchTap { x, y }) => {
                 assert_eq!((x, y), (260.0, 173.0));
             }
@@ -1223,13 +1288,28 @@ mod tests {
         let mut c = canvas(Mode::Fence);
         c.touch_gestures = true;
         let mut state = CanvasState::default();
-        let _ = message_with(&c, &mut state, pressed(finger, Point::new(200.0, 200.0)), at(200.0, 200.0));
+        let _ = message_with(
+            &c,
+            &mut state,
+            pressed(finger, Point::new(200.0, 200.0)),
+            at(200.0, 200.0),
+        );
         assert!(matches!(
-            message_with(&c, &mut state, moved(finger, Point::new(230.0, 230.0)), at(230.0, 230.0)),
+            message_with(
+                &c,
+                &mut state,
+                moved(finger, Point::new(230.0, 230.0)),
+                at(230.0, 230.0)
+            ),
             Some(Message::FenceStart(..))
         ));
         assert!(matches!(
-            message_with(&c, &mut state, lifted(finger, Point::new(230.0, 230.0)), at(230.0, 230.0)),
+            message_with(
+                &c,
+                &mut state,
+                lifted(finger, Point::new(230.0, 230.0)),
+                at(230.0, 230.0)
+            ),
             Some(Message::FenceEnd)
         ));
     }
@@ -1290,37 +1370,81 @@ mod tests {
     fn pen_ink_mode_fingers_pan_only_and_pinch_cancels_hold() {
         let f1 = iced::touch::Finger(1);
         let f2 = iced::touch::Finger(2);
-        let pressed = |id, p: Point| Event::Touch(iced::touch::Event::FingerPressed { id, position: p });
-        let moved = |id, p: Point| Event::Touch(iced::touch::Event::FingerMoved { id, position: p });
-        let lifted = |id, p: Point| Event::Touch(iced::touch::Event::FingerLifted { id, position: p });
+        let pressed =
+            |id, p: Point| Event::Touch(iced::touch::Event::FingerPressed { id, position: p });
+        let moved =
+            |id, p: Point| Event::Touch(iced::touch::Event::FingerMoved { id, position: p });
+        let lifted =
+            |id, p: Point| Event::Touch(iced::touch::Event::FingerLifted { id, position: p });
 
         let mut c = canvas(Mode::DrawExterior);
         c.touch_gestures = true;
         c.finger_pan_only = true;
         let mut state = CanvasState::default();
-        let _ = message_with(&c, &mut state, pressed(f1, Point::new(200.0, 200.0)), at(200.0, 200.0));
+        let _ = message_with(
+            &c,
+            &mut state,
+            pressed(f1, Point::new(200.0, 200.0)),
+            at(200.0, 200.0),
+        );
         // Dragging in DrawExterior with pen-ink mode starts Pan instead of drawing.
         assert!(matches!(
-            message_with(&c, &mut state, moved(f1, Point::new(220.0, 200.0)), at(220.0, 200.0)),
+            message_with(
+                &c,
+                &mut state,
+                moved(f1, Point::new(220.0, 200.0)),
+                at(220.0, 200.0)
+            ),
             Some(Message::PanStart(..))
         ));
         assert!(matches!(
-            message_with(&c, &mut state, lifted(f1, Point::new(220.0, 200.0)), at(220.0, 200.0)),
+            message_with(
+                &c,
+                &mut state,
+                lifted(f1, Point::new(220.0, 200.0)),
+                at(220.0, 200.0)
+            ),
             Some(Message::PanEnd)
         ));
 
         // Tap without move in pen-ink mode does NOT emit CanvasTouchTap.
-        let _ = message_with(&c, &mut state, pressed(f1, Point::new(200.0, 200.0)), at(200.0, 200.0));
-        assert!(message_with(&c, &mut state, lifted(f1, Point::new(200.0, 200.0)), at(200.0, 200.0)).is_none());
+        let _ = message_with(
+            &c,
+            &mut state,
+            pressed(f1, Point::new(200.0, 200.0)),
+            at(200.0, 200.0),
+        );
+        assert!(message_with(
+            &c,
+            &mut state,
+            lifted(f1, Point::new(200.0, 200.0)),
+            at(200.0, 200.0)
+        )
+        .is_none());
 
         // Adding a second finger cancels touch_hold and triggers Pinch.
         c.finger_pan_only = false;
-        let _ = message_with(&c, &mut state, pressed(f1, Point::new(200.0, 200.0)), at(200.0, 200.0));
+        let _ = message_with(
+            &c,
+            &mut state,
+            pressed(f1, Point::new(200.0, 200.0)),
+            at(200.0, 200.0),
+        );
         assert!(state.touch_hold.is_some());
-        let _ = message_with(&c, &mut state, pressed(f2, Point::new(300.0, 200.0)), at(300.0, 200.0));
+        let _ = message_with(
+            &c,
+            &mut state,
+            pressed(f2, Point::new(300.0, 200.0)),
+            at(300.0, 200.0),
+        );
         assert!(state.touch_hold.is_none());
         assert!(matches!(
-            message_with(&c, &mut state, moved(f2, Point::new(360.0, 200.0)), at(360.0, 200.0)),
+            message_with(
+                &c,
+                &mut state,
+                moved(f2, Point::new(360.0, 200.0)),
+                at(360.0, 200.0)
+            ),
             Some(Message::Pinch { .. })
         ));
     }

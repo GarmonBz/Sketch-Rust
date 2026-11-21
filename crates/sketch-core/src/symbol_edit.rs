@@ -11,7 +11,9 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use crate::symbols::{Bounds, Entity, Symbol, SymbolLibraryError, WallSnap, SYMBOL_LIBRARY_FILENAME};
+use crate::symbols::{
+    Bounds, Entity, Symbol, SymbolLibraryError, WallSnap, SYMBOL_LIBRARY_FILENAME,
+};
 
 type Edit = Result<usize, SymbolLibraryError>;
 
@@ -425,7 +427,8 @@ pub fn replace_geometry(path: &Path, id: &str, geometry: &[Entity], bounds: Boun
         };
         let next_geom = serde_json::to_value(geometry).unwrap_or(Value::Array(Vec::new()));
         let next_bounds = serde_json::to_value(bounds).unwrap_or(Value::Null);
-        let changed = sym.get("geometry") != Some(&next_geom) || sym.get("bounds") != Some(&next_bounds);
+        let changed =
+            sym.get("geometry") != Some(&next_geom) || sym.get("bounds") != Some(&next_bounds);
         if !changed {
             return 0;
         }
@@ -495,9 +498,10 @@ pub fn duplicate(path: &Path, id: &str, new_id: &str, new_name: &str) -> Edit {
         copy["label"] = Value::from(formatted_label(&cat_name, new_name));
         symbols.insert(new_id.to_owned(), copy);
         if !cat_key.is_empty() {
-            if let Some(cat) = categories(doc)
-                .and_then(|all| all.iter_mut().find(|c| c["key"].as_str() == Some(cat_key.as_str())))
-            {
+            if let Some(cat) = categories(doc).and_then(|all| {
+                all.iter_mut()
+                    .find(|c| c["key"].as_str() == Some(cat_key.as_str()))
+            }) {
                 if let Some(list) = cat.get_mut("symbolIds").and_then(Value::as_array_mut) {
                     if let Some(pos) = list.iter().position(|v| v.as_str() == Some(id)) {
                         list.insert(pos + 1, Value::from(new_id));
@@ -660,10 +664,7 @@ pub fn export(path: &Path, dest: &Path, ids: Option<&BTreeSet<String>>) -> Edit 
 
 /// Imports symbols from `source` into `path` by id, skipping colliding ids and
 /// reporting them alongside the count added.
-pub fn import_with_report(
-    path: &Path,
-    source: &Path,
-) -> Result<ImportReport, SymbolLibraryError> {
+pub fn import_with_report(path: &Path, source: &Path) -> Result<ImportReport, SymbolLibraryError> {
     let body = std::fs::read_to_string(source)?;
     let src: Value = serde_json::from_str(&body)?;
     let mut category_names: BTreeMap<String, String> = BTreeMap::new();
@@ -674,24 +675,28 @@ pub fn import_with_report(
             }
         }
     }
-    let incoming: Vec<(String, Value)> = if let Some(symbols) = src.get("symbols").and_then(Value::as_object) {
-        symbols.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
-    } else if src.get("geometry").is_some() {
-        let fallback_id = src["id"]
-            .as_str()
-            .filter(|s| !s.trim().is_empty())
-            .map(str::to_owned)
-            .unwrap_or_else(|| {
-                let stem = source
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("imported");
-                format!("imported/{stem}")
-            });
-        vec![(fallback_id, src)]
-    } else {
-        Vec::new()
-    };
+    let incoming: Vec<(String, Value)> =
+        if let Some(symbols) = src.get("symbols").and_then(Value::as_object) {
+            symbols
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect()
+        } else if src.get("geometry").is_some() {
+            let fallback_id = src["id"]
+                .as_str()
+                .filter(|s| !s.trim().is_empty())
+                .map(str::to_owned)
+                .unwrap_or_else(|| {
+                    let stem = source
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("imported");
+                    format!("imported/{stem}")
+                });
+            vec![(fallback_id, src)]
+        } else {
+            Vec::new()
+        };
 
     let mut report = ImportReport::default();
     rewrite(path, |doc| {
@@ -934,8 +939,16 @@ mod tests {
             name: Some("One".into()),
             ..Default::default()
         };
-        assert_eq!(update_properties(&f.path(), "a/one", &unchanged).unwrap(), 1, "label becomes A - One");
-        assert_eq!(update_properties(&f.path(), "a/one", &unchanged).unwrap(), 0, "no-op writes nothing");
+        assert_eq!(
+            update_properties(&f.path(), "a/one", &unchanged).unwrap(),
+            1,
+            "label becomes A - One"
+        );
+        assert_eq!(
+            update_properties(&f.path(), "a/one", &unchanged).unwrap(),
+            0,
+            "no-op writes nothing"
+        );
 
         let props = SymbolProps {
             name: Some("Updated One".into()),
@@ -969,8 +982,14 @@ mod tests {
             max_x: 12.0,
             max_y: 6.0,
         };
-        assert_eq!(replace_geometry(&f.path(), "a/one", &next_geom, next_bounds).unwrap(), 1);
-        assert_eq!(replace_geometry(&f.path(), "a/one", &next_geom, next_bounds).unwrap(), 0);
+        assert_eq!(
+            replace_geometry(&f.path(), "a/one", &next_geom, next_bounds).unwrap(),
+            1
+        );
+        assert_eq!(
+            replace_geometry(&f.path(), "a/one", &next_geom, next_bounds).unwrap(),
+            0
+        );
         let lib = f.load();
         let s = lib.symbol("a/one").unwrap();
         assert_eq!(s.geometry.len(), 1);
@@ -1005,10 +1024,18 @@ mod tests {
         let lib = f.load();
         assert_eq!(lib.symbol_count, 5);
         assert_eq!(lib.symbol("a/custom").unwrap().label, "A - Custom Box");
-        assert!(lib.categories[0].symbol_ids.contains(&"a/custom".to_owned()));
+        assert!(lib.categories[0]
+            .symbol_ids
+            .contains(&"a/custom".to_owned()));
 
-        assert_eq!(duplicate(&f.path(), "a/one", "a/one-copy", "One Copy").unwrap(), 1);
-        assert_eq!(duplicate(&f.path(), "a/one", "a/one-copy", "One Copy").unwrap(), 0);
+        assert_eq!(
+            duplicate(&f.path(), "a/one", "a/one-copy", "One Copy").unwrap(),
+            1
+        );
+        assert_eq!(
+            duplicate(&f.path(), "a/one", "a/one-copy", "One Copy").unwrap(),
+            0
+        );
         let raw = f.raw();
         assert_eq!(raw["symbols"]["a/one-copy"]["futureField"], 1);
         let lib = f.load();
@@ -1050,10 +1077,17 @@ mod tests {
     fn export_and_import_round_trip_and_report_conflicts() {
         let src = Fixture::new("export-src");
         let dest = src.0.join("subset.json");
-        assert_eq!(export(&src.path(), &dest, Some(&ids(&["a/one", "b/three"]))).unwrap(), 2);
+        assert_eq!(
+            export(&src.path(), &dest, Some(&ids(&["a/one", "b/three"]))).unwrap(),
+            2
+        );
 
         let clean = Fixture::new("clean-dst");
-        let clean_empty = delete(&clean.path(), &ids(&["a/one", "a/two", "b/three", "favorites/one"])).unwrap();
+        let clean_empty = delete(
+            &clean.path(),
+            &ids(&["a/one", "a/two", "b/three", "favorites/one"]),
+        )
+        .unwrap();
         assert_eq!(clean_empty, 4);
         assert_eq!(import(&clean.path(), &dest).unwrap(), 2);
         let clean_lib = clean.load();

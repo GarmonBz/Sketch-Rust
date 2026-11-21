@@ -145,7 +145,8 @@ pub(crate) struct ScrollArea {
 impl ScrollArea {
     /// The content is taller or wider than the area, so it would scroll.
     pub(crate) fn overflows(&self) -> bool {
-        self.content.height > self.bounds.height + 1.0 || self.content.width > self.bounds.width + 1.0
+        self.content.height > self.bounds.height + 1.0
+            || self.content.width > self.bounds.width + 1.0
     }
 }
 

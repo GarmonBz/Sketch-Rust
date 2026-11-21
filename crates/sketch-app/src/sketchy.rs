@@ -1690,23 +1690,36 @@ mod tests {
             let (mut app, _) = App::boot(1.0);
             let open = |app: &mut App| {
                 crate::file_dialogs::with_open_path(Some(path.clone()), || {
-                    let _ = app.update(Message::OpenFile);
+                    let task = app.update(Message::OpenFile);
+                    crate::file_dialogs::drive(&mut *app, task);
                 });
             };
             let original = std::fs::read(&path).unwrap();
             open(&mut app);
             assert_eq!(app.current_file.as_ref().unwrap().format, format);
             app.refresh_dirty();
-            assert_eq!(app.save_state(), "Saved", "{format:?} immediately after Open");
+            assert_eq!(
+                app.save_state(),
+                "Saved",
+                "{format:?} immediately after Open"
+            );
 
             let _ = app.update(Message::Status(StatusMsg::ZoomIn));
             let _ = app.update(Message::Status(StatusMsg::PageNext));
             assert_eq!(app.pages.current, 1);
             app.refresh_dirty();
-            assert_eq!(app.save_state(), "Saved", "{format:?} on first visit to page two");
+            assert_eq!(
+                app.save_state(),
+                "Saved",
+                "{format:?} on first visit to page two"
+            );
             let _ = app.update(Message::Status(StatusMsg::PagePrev));
             app.refresh_dirty();
-            assert_eq!(app.save_state(), "Saved", "{format:?} after view navigation");
+            assert_eq!(
+                app.save_state(),
+                "Saved",
+                "{format:?} after view navigation"
+            );
             assert_eq!(std::fs::read(&path).unwrap(), original);
 
             let id = app.drawing.polygons[0].id;
@@ -1720,7 +1733,11 @@ mod tests {
             rename(&mut app);
             assert_eq!(app.save_state(), "Unsaved", "{format:?} after editing");
             let _ = app.update(Message::Undo);
-            assert_eq!(app.save_state(), "Saved", "{format:?} after undoing the edit");
+            assert_eq!(
+                app.save_state(),
+                "Saved",
+                "{format:?} after undoing the edit"
+            );
 
             rename(&mut app);
             let _ = app.update(Message::SaveFile);
@@ -1794,7 +1811,13 @@ mod tests {
         assert_eq!(app.file_name, "Plan: 100 Example Lane");
         assert_eq!(app.subject_info.property_address, "100 Example Lane");
         assert_eq!(app.recent[0].path.as_ref(), Some(&source));
-        let front = app.drawing.lines.iter().min_by_key(|line| line.id).unwrap().id;
+        let front = app
+            .drawing
+            .lines
+            .iter()
+            .min_by_key(|line| line.id)
+            .unwrap()
+            .id;
         assert!(crate::transform::move_line_endpoint(
             &mut app.drawing,
             &mut app.selection,
@@ -1811,7 +1834,8 @@ mod tests {
         app.drawing.polygons[0].name = "Renamed floor".into();
         app.drawing.texts[0].text = "Edited note".into();
         let (_, requests) = crate::file_dialogs::with_save_path(None, || {
-            let _ = app.update(Message::SaveFile);
+            let task = app.update(Message::SaveFile);
+            crate::file_dialogs::drive(&mut app, task);
         });
         assert!(requests.is_empty(), "Save writes the opened file directly");
         let saved = std::fs::read(&source).unwrap();
@@ -1866,7 +1890,8 @@ mod tests {
         assert_eq!(saved_wall.thickness, Some(8.0));
         assert_eq!(reopened.drawing.texts[0].text, "Edited note");
         let (_, requests) = crate::file_dialogs::with_save_path(Some(copy.clone()), || {
-            let _ = app.update(Message::SaveFileAs);
+            let task = app.update(Message::SaveFileAs);
+            crate::file_dialogs::drive(&mut app, task);
         });
         // Save As offers the current Sketchie name for a Sketchy 0.2 file.
         assert_eq!(requests, ["renamed.sketchie"]);
@@ -1877,7 +1902,8 @@ mod tests {
         assert_eq!(fork["derived_from"]["revision"], raw["revision"]["id"]);
         app.drawing.texts[0].text = "Changed copy".into();
         let (_, requests) = crate::file_dialogs::with_save_path(None, || {
-            let _ = app.update(Message::SaveFile);
+            let task = app.update(Message::SaveFile);
+            crate::file_dialogs::drive(&mut app, task);
         });
         assert!(requests.is_empty());
         let written: Value = serde_json::from_slice(&std::fs::read(&copy).unwrap()).unwrap();
@@ -1907,7 +1933,8 @@ mod tests {
             Pt::new(0.0, 0.0),
         );
         crate::file_dialogs::with_save_path(Some(file.clone()), || {
-            let _ = app.update(Message::SaveFileAs);
+            let task = app.update(Message::SaveFileAs);
+            crate::file_dialogs::drive(&mut app, task);
         });
         let raw: Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
         assert_eq!(raw["format"], FORMAT);
@@ -2092,7 +2119,8 @@ mod tests {
         let (mut app, _) = App::boot(1.0);
         let _ = app.open_sketch_path(legacy.clone());
         let (_, names) = crate::file_dialogs::with_save_path(Some(json_path.clone()), || {
-            let _ = app.update(Message::SaveFileAs);
+            let task = app.update(Message::SaveFileAs);
+            crate::file_dialogs::drive(&mut app, task);
         });
         assert_eq!(names, ["original.sketchie"]);
         let saved: Value = serde_json::from_slice(&std::fs::read(&json_path).unwrap()).unwrap();
@@ -2102,14 +2130,18 @@ mod tests {
             saved["$schema"],
             "https://property-hackers.github.io/sketchie/schema/0.2/sketchie.schema.json"
         );
-        assert_eq!(std::fs::read_to_string(&legacy).unwrap(), source.to_string());
+        assert_eq!(
+            std::fs::read_to_string(&legacy).unwrap(),
+            source.to_string()
+        );
         assert_eq!(app.file_name, "copy");
 
         let _ = app.open_sketch_path(json_path);
         app.refresh_dirty();
         assert_eq!(app.save_state(), "Saved");
         crate::file_dialogs::with_save_path(Some(store_path.clone()), || {
-            let _ = app.update(Message::SaveFileAs);
+            let task = app.update(Message::SaveFileAs);
+            crate::file_dialogs::drive(&mut app, task);
         });
         assert!(crate::is_sketch_file(&store_path));
         let initial = store::read(&store_path).unwrap();

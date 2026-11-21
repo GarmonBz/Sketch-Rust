@@ -261,13 +261,17 @@ impl App {
             self.workflow.status = "Assigned. Tap another outline, or Escape to stop.".into();
             return Task::none();
         }
-        if prev.as_ref().is_some_and(|p| Self::regions_match(p, &region)) {
+        if prev
+            .as_ref()
+            .is_some_and(|p| Self::regions_match(p, &region))
+        {
             let (x, y) = self.view.to_screen(crate::view_state::World {
                 x: world.x,
                 y: world.y,
             });
             let origin = self.canvas_origin();
-            return self.workflow_open(region, Point::new(x as f32 + origin.x, y as f32 + origin.y));
+            return self
+                .workflow_open(region, Point::new(x as f32 + origin.x, y as f32 + origin.y));
         }
         let sq_ft = match &region {
             Region::Area(id) => self
@@ -727,7 +731,12 @@ impl App {
                     .code
                     .clone()
                     .filter(|code| all_codes.iter().any(|e| &e.code == code && c.matches(e)))
-                    .or_else(|| all_codes.iter().find(|e| c.matches(e)).map(|e| e.code.clone()));
+                    .or_else(|| {
+                        all_codes
+                            .iter()
+                            .find(|e| c.matches(e))
+                            .map(|e| e.code.clone())
+                    });
                 let Some(code) = code else {
                     return Task::none();
                 };

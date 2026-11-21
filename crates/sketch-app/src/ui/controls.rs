@@ -9,8 +9,8 @@
 
 use iced::widget::scrollable::{Direction, Scrollbar};
 use iced::widget::{
-    button, checkbox, column, container, image, mouse_area, opaque, row, scrollable, slider,
-    text, text_input, Column, Space,
+    button, checkbox, column, container, image, mouse_area, opaque, row, scrollable, slider, text,
+    text_input, Column, Space,
 };
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
 
@@ -21,8 +21,8 @@ use crate::ui::fonts::{BARLOW, BARLOW_MEDIUM, BARLOW_SEMIBOLD, BSC_SEMIBOLD};
 use crate::ui::kit;
 use crate::ui::layout::{DrawingChrome, SizeClass, CHROME_GAP, CHROME_INSET, CONTROL_LANE_W};
 use crate::ui::tokens::{
-    self, Density, FOCUS_RING_WIDTH, RADIUS_CONTROL, RADIUS_DIALOG, SPACE_1, SPACE_2,
-    TEXT_11, TEXT_12, TEXT_13,
+    self, Density, FOCUS_RING_WIDTH, RADIUS_CONTROL, RADIUS_DIALOG, SPACE_1, SPACE_2, TEXT_11,
+    TEXT_12, TEXT_13,
 };
 use crate::ui::{ControlsPopover, Msg as UiMsg};
 use crate::view_state::{DimensionPlacement, FILTERS, PITCHES};
@@ -38,13 +38,26 @@ pub fn bars_layer<'a>(app: &'a App) -> Element<'a, Message> {
     let corners_at_top = chrome.controls_at_top;
     let show_underlay = app.pages.len() > 1 || app.pages.underlay_label() != "Underlay: None";
 
-    let mk_zoom = || bounded_pill(zoom_group(app, d, corners_at_top), chrome.zoom_width, "drawing-zoom");
+    let mk_zoom = || {
+        bounded_pill(
+            zoom_group(app, d, corners_at_top),
+            chrome.zoom_width,
+            "drawing-zoom",
+        )
+    };
     let mk_snap = || bounded_pill(snap_group(app, d), chrome.snap_width, "drawing-snap");
     let north = pill_surface(north_chip(app, d));
-    let underlay = show_underlay.then(|| bounded_pill(underlay_chip(app, d), CONTROL_LANE_W.min(chrome.snap_width), "drawing-underlay"));
+    let underlay = show_underlay.then(|| {
+        bounded_pill(
+            underlay_chip(app, d),
+            CONTROL_LANE_W.min(chrome.snap_width),
+            "drawing-underlay",
+        )
+    });
 
     let top_area: Element<'a, Message> = if corners_at_top {
-        let r1 = row![mk_zoom(), Space::new().width(Length::Fill), north].align_y(Alignment::Center);
+        let r1 =
+            row![mk_zoom(), Space::new().width(Length::Fill), north].align_y(Alignment::Center);
         let r2 = row![Space::new().width(Length::Fill), mk_snap()].align_y(Alignment::Center);
         let mut col = column![r1, r2].spacing(SPACE_1).width(Length::Fill);
         if let Some(u) = underlay {
@@ -87,22 +100,33 @@ pub fn bars_layer<'a>(app: &'a App) -> Element<'a, Message> {
 
     let bottom_row: Element<'a, Message> = if !corners_at_top {
         row![
-            container(mk_zoom()).width(Length::Fill).align_x(Alignment::Start),
+            container(mk_zoom())
+                .width(Length::Fill)
+                .align_x(Alignment::Start),
             super::tray::dock_card(app, d),
-            container(mk_snap()).width(Length::Fill).align_x(Alignment::End),
+            container(mk_snap())
+                .width(Length::Fill)
+                .align_x(Alignment::End),
         ]
-            .spacing(CHROME_GAP)
-            .align_y(Alignment::Center)
-            .width(Length::Fill)
-            .into()
+        .spacing(CHROME_GAP)
+        .align_y(Alignment::Center)
+        .width(Length::Fill)
+        .into()
     } else {
         let mut footer = column![].spacing(SPACE_2).width(Length::Fill);
         if let Some(extras) = touch_extras {
-            footer = footer.push(container(extras).width(Length::Fill).align_x(Alignment::End));
+            footer = footer.push(
+                container(extras)
+                    .width(Length::Fill)
+                    .align_x(Alignment::End),
+            );
         }
         if sc != SizeClass::Compact {
-            footer = footer.push(container(super::tray::dock_card(app, d))
-                .width(Length::Fill).align_x(Alignment::Center));
+            footer = footer.push(
+                container(super::tray::dock_card(app, d))
+                    .width(Length::Fill)
+                    .align_x(Alignment::Center),
+            );
         }
         footer.into()
     };
@@ -208,12 +232,15 @@ pub fn popover_layer<'a>(app: &'a App) -> Option<Element<'a, Message>> {
             }
         };
 
-    let row = if corners_at_top && (app.view.filter_open
-        || app.ui.controls_popover == Some(ControlsPopover::Snap)) {
+    let row = if corners_at_top
+        && (app.view.filter_open || app.ui.controls_popover == Some(ControlsPopover::Snap))
+    {
         2
     } else if corners_at_top && app.ui.controls_popover == Some(ControlsPopover::Underlay) {
         3
-    } else { 1 };
+    } else {
+        1
+    };
     let bar_offset = if align_y == Alignment::Start {
         chrome.top_popover_offset(row)
     } else {
@@ -284,7 +311,9 @@ fn zoom_group<'a>(app: &'a App, d: Density, at_top: bool) -> Element<'a, Message
             Message::Status(StatusMsg::CenterFit),
             d,
         ))
-        .on_right_press(Message::Ui(UiMsg::ToggleControlsPopover(ControlsPopover::Fit))),
+        .on_right_press(Message::Ui(UiMsg::ToggleControlsPopover(
+            ControlsPopover::Fit,
+        ))),
         Message::Ui(UiMsg::ToggleControlsPopover(ControlsPopover::Fit)),
     );
 
@@ -467,7 +496,11 @@ fn zoom_popover<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
 fn fit_popover<'a>(d: Density) -> Element<'a, Message> {
     let body = column![
         kit::text_button("Center", Some(Message::Status(StatusMsg::CenterSketch)), d),
-        kit::text_button("Center & Fit", Some(Message::Status(StatusMsg::CenterFit)), d),
+        kit::text_button(
+            "Center & Fit",
+            Some(Message::Status(StatusMsg::CenterFit)),
+            d
+        ),
         kit::text_button("Zoom Fence", Some(Message::Status(StatusMsg::ZoomFence)), d),
     ]
     .spacing(SPACE_1)
@@ -483,7 +516,10 @@ fn snap_popover<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
         pitches = pitches.push(kit::chip(
             label,
             active,
-            Some(Message::Status(StatusMsg::Pitch(PitchOption { label, value }))),
+            Some(Message::Status(StatusMsg::Pitch(PitchOption {
+                label,
+                value,
+            }))),
             d,
         ));
     }
@@ -625,12 +661,10 @@ fn underlay_popover<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
         ));
     }
 
-    let scroll = scrollable(
-        container(col).padding(Padding {
-            right: 10.0,
-            ..Padding::ZERO
-        }),
-    )
+    let scroll = scrollable(container(col).padding(Padding {
+        right: 10.0,
+        ..Padding::ZERO
+    }))
     .direction(Direction::Vertical(
         Scrollbar::new().width(5).scroller_width(5),
     ))
@@ -726,13 +760,23 @@ fn pill_surface<'a>(content: Element<'a, Message>) -> Element<'a, Message> {
 
 /// A long zoom percentage, pitch, or underlay name may scroll within its own
 /// lane, but can never grow into an adjacent control or the tool tray.
-fn bounded_pill<'a>(content: Element<'a, Message>, max_width: f32, id: &'static str) -> Element<'a, Message> {
-    pill_surface(container(
-        scrollable(content)
-            .id(id)
-            .direction(Direction::Horizontal(Scrollbar::new().width(0).scroller_width(0)))
-            .width(Length::Shrink),
-    ).max_width((max_width - 8.0).max(1.0)).into())
+fn bounded_pill<'a>(
+    content: Element<'a, Message>,
+    max_width: f32,
+    id: &'static str,
+) -> Element<'a, Message> {
+    pill_surface(
+        container(
+            scrollable(content)
+                .id(id)
+                .direction(Direction::Horizontal(
+                    Scrollbar::new().width(0).scroller_width(0),
+                ))
+                .width(Length::Shrink),
+        )
+        .max_width((max_width - 8.0).max(1.0))
+        .into(),
+    )
 }
 
 fn chip_toggle<'a>(
@@ -762,7 +806,11 @@ fn chip_toggle<'a>(
     }
     r = r.push(
         text(label.into())
-            .font(if active { BARLOW_SEMIBOLD } else { BARLOW_MEDIUM })
+            .font(if active {
+                BARLOW_SEMIBOLD
+            } else {
+                BARLOW_MEDIUM
+            })
             .size(TEXT_12)
             .color(fg),
     );
@@ -823,10 +871,10 @@ fn compact_icon_btn<'a>(
         } else {
             icons::tinted(icon_name, false, 16.0, fg)
         })
-            .width(Length::Fixed(size))
-            .height(Length::Fixed(size))
-            .align_x(Alignment::Center)
-            .align_y(Alignment::Center),
+        .width(Length::Fixed(size))
+        .height(Length::Fixed(size))
+        .align_x(Alignment::Center)
+        .align_y(Alignment::Center),
     )
     .padding(0)
     .on_press(on_press)

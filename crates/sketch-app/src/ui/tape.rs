@@ -144,13 +144,10 @@ fn wall_body<'a>(app: &'a App) -> Element<'a, Message> {
     .align_y(Alignment::Center)
     .width(Length::Fill);
 
-    column![
-        top,
-        text(hint).font(BARLOW).size(TEXT_11).color(muted_ink),
-    ]
-    .spacing(2)
-    .width(Length::Fill)
-    .into()
+    column![top, text(hint).font(BARLOW).size(TEXT_11).color(muted_ink),]
+        .spacing(2)
+        .width(Length::Fill)
+        .into()
 }
 
 fn measure_body<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
@@ -179,27 +176,42 @@ fn measure_body<'a>(app: &'a App, d: Density) -> Element<'a, Message> {
     let can_close = app.drawing.measure_points.len() >= 2;
 
     let actions = row![
-        tape_btn("Finish", has_pts.then_some(Message::Ui(UiMsg::MeasureFinish)), d),
-        tape_btn("Close", can_close.then_some(Message::Ui(UiMsg::MeasureClose)), d),
+        tape_btn(
+            "Finish",
+            has_pts.then_some(Message::Ui(UiMsg::MeasureFinish)),
+            d
+        ),
+        tape_btn(
+            "Close",
+            can_close.then_some(Message::Ui(UiMsg::MeasureClose)),
+            d
+        ),
         tape_btn(
             "Undo point",
             has_pts.then_some(Message::Ui(UiMsg::MeasureUndo)),
             d
         ),
-        tape_btn("Clear", has_any.then_some(Message::Ui(UiMsg::MeasureClear)), d),
-        tape_btn("Copy", has_any.then_some(Message::Ui(UiMsg::MeasureCopy)), d),
+        tape_btn(
+            "Clear",
+            has_any.then_some(Message::Ui(UiMsg::MeasureClear)),
+            d
+        ),
+        tape_btn(
+            "Copy",
+            has_any.then_some(Message::Ui(UiMsg::MeasureCopy)),
+            d
+        ),
     ]
     .spacing(SPACE_1)
     .align_y(Alignment::Center);
 
-    column![top, actions].spacing(SPACE_1).width(Length::Fill).into()
+    column![top, actions]
+        .spacing(SPACE_1)
+        .width(Length::Fill)
+        .into()
 }
 
-fn tape_btn<'a>(
-    label: &'a str,
-    on_press: Option<Message>,
-    d: Density,
-) -> Element<'a, Message> {
+fn tape_btn<'a>(label: &'a str, on_press: Option<Message>, d: Density) -> Element<'a, Message> {
     let ink = tokens::tape_ink();
     let disabled = on_press.is_none();
     let fg = if disabled {
@@ -207,7 +219,11 @@ fn tape_btn<'a>(
     } else {
         ink
     };
-    let h = if matches!(d, Density::Touch) { 26.0 } else { 22.0 };
+    let h = if matches!(d, Density::Touch) {
+        26.0
+    } else {
+        22.0
+    };
     let mut b = button(
         container(text(label).font(BARLOW_SEMIBOLD).size(TEXT_11).color(fg))
             .height(Length::Fixed(h))
@@ -335,9 +351,7 @@ fn strip_position(app: &App, card_w: f32, card_h: f32) -> (f32, f32) {
             pl + crate::ui::pad::FLOAT_W + 16.0,
             pt + crate::ui::pad::FLOAT_H + 16.0,
         );
-        let under = |cx: f32, cy: f32| {
-            cx < pr && cx + card_w > pl && cy < pb && cy + card_h > pt
-        };
+        let under = |cx: f32, cy: f32| cx < pr && cx + card_w > pl && cy < pb && cy + card_h > pt;
         if under(x, y) {
             let left_x = (pl - card_w).clamp(min_x, max_x);
             let above_y = (pt - card_h).clamp(min_y, max_y);

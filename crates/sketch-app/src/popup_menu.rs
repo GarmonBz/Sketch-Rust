@@ -137,8 +137,14 @@ pub fn placement(anchor: (f32, f32), size: (f32, f32), window: (f32, f32)) -> (f
 fn menu_row<'a>(entry: &Entry) -> Element<'a, Message> {
     let name: Element<'a, Message> = if entry.active {
         row![
-            text(entry.label).size(LABEL_SIZE).font(ARIAL).color(text_main()),
-            text("\u{2713}").size(LABEL_SIZE).font(ARIAL).color(ICON_BLUE),
+            text(entry.label)
+                .size(LABEL_SIZE)
+                .font(ARIAL)
+                .color(text_main()),
+            text("\u{2713}")
+                .size(LABEL_SIZE)
+                .font(ARIAL)
+                .color(ICON_BLUE),
         ]
         .spacing(4)
         .align_y(alignment::Vertical::Center)

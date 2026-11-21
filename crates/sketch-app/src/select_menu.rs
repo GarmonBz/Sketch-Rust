@@ -2,8 +2,8 @@
 
 use iced::{Background, Border, Color, Element, Length, Vector};
 
-use crate::theme::{bg_hover, bg_panel, border, text_main, ARIAL};
 use crate::icons::mono;
+use crate::theme::{bg_hover, bg_panel, border, text_main, ARIAL};
 
 const ROW_H: f32 = 29.0;
 const PAD: f32 = 5.0;

@@ -11,7 +11,9 @@ use iced::alignment::Vertical;
 use iced::widget::canvas::{path::Arc, Frame, LineCap, LineDash, LineJoin, Path, Stroke, Text};
 use iced::widget::text::{Alignment, LineHeight, Shaping};
 use iced::{Color, Font, Pixels, Point, Radians, Rectangle, Size, Vector};
-use sketch_core::geometry::{distance, AreaCode, GeometryEngine, Pt, MAX_BOW_ANGLE, PIXELS_PER_FOOT};
+use sketch_core::geometry::{
+    distance, AreaCode, GeometryEngine, Pt, MAX_BOW_ANGLE, PIXELS_PER_FOOT,
+};
 use sketch_core::model::{Polygon, SketchLine, WallType};
 
 use crate::drawing::{js_round, DrawCtx, Drawing};
@@ -413,7 +415,12 @@ fn draw_curved_solid(
         }
         p.close();
     });
-    fill_wall_shape(frame, &path, color, scene.selection.is_line_selected(line.id));
+    fill_wall_shape(
+        frame,
+        &path,
+        color,
+        scene.selection.is_line_selected(line.id),
+    );
 }
 
 fn fill_wall_shape(frame: &mut Frame, path: &Path, color: Color, selected: bool) {
@@ -690,7 +697,8 @@ fn draw_lines(frame: &mut Frame, scene: &Scene, only_rank: Option<usize>, prep: 
             // openings are not cut in bowed walls, the original's v1 limit).
             for line in &d.lines {
                 let bowed = line.bow_angle != 0.0 && line.bow_angle.abs() > 0.5;
-                if !bowed || (line.kind == WallType::Interior) != interior_pass || !in_rank(line.id) {
+                if !bowed || (line.kind == WallType::Interior) != interior_pass || !in_rank(line.id)
+                {
                     continue;
                 }
                 if !scene.gates.shows(line.id) {
@@ -807,7 +815,7 @@ fn draw_lines(frame: &mut Frame, scene: &Scene, only_rank: Option<usize>, prep: 
             );
         }
         if !is_curve_drag {
-            draw_line_dimension(frame, scene, line, color, &covered, active);
+            draw_line_dimension(frame, scene, line, color, covered, active);
         }
         if is_curve_drag {
             draw_curve_guides(frame, scene, line);
@@ -1445,15 +1453,7 @@ fn draw_symbols(frame: &mut Frame, scene: &Scene) {
         if sym.flip_h {
             frame.scale_nonuniform(Vector::new(-1.0, 1.0));
         }
-        crate::symlib::render_geometry(
-            frame,
-            def,
-            s as f64,
-            0.0,
-            0.0,
-            symbol_ink,
-            symbol_paper,
-        );
+        crate::symlib::render_geometry(frame, def, s as f64, 0.0, 0.0, symbol_ink, symbol_paper);
         // Selection handles for selected symbols.
         if scene.selection.symbols.contains(&sym.id) {
             let bw_px =
@@ -1463,8 +1463,10 @@ fn draw_symbols(frame: &mut Frame, scene: &Scene) {
             let accent = crate::theme::ICON_BLUE;
             // Around the bounds, not the origin (see `handles::symbol_box`);
             // this runs inside the flip transform, so x needs no sign here.
-            let mid_x = ((def.bounds.min_x + def.bounds.max_x) as f32 / 2.0) * sc * pixel_scale / 12.0;
-            let mid_y = -((def.bounds.min_y + def.bounds.max_y) as f32 / 2.0) * sc * pixel_scale / 12.0;
+            let mid_x =
+                ((def.bounds.min_x + def.bounds.max_x) as f32 / 2.0) * sc * pixel_scale / 12.0;
+            let mid_y =
+                -((def.bounds.min_y + def.bounds.max_y) as f32 / 2.0) * sc * pixel_scale / 12.0;
             let rect = Path::rectangle(
                 Point::new(mid_x - bw_px / 2.0, mid_y - bh_px / 2.0),
                 iced::Size::new(bw_px, bh_px),
@@ -1555,7 +1557,8 @@ pub(crate) fn area_outline(poly: &Polygon, definition: Option<&AreaCode>) -> Opt
 }
 
 pub(crate) fn area_fill(poly: &Polygon, definition: Option<&AreaCode>) -> Color {
-    let fill = poly.fill_color
+    let fill = poly
+        .fill_color
         .as_deref()
         .and_then(parse_css_color)
         .or_else(|| {
@@ -1576,7 +1579,10 @@ pub(crate) fn area_fill(poly: &Polygon, definition: Option<&AreaCode>) -> Color 
             ..fill
         }
     } else if definition.is_none() && fill.a == 1.0 {
-        Color { a: POLY_FILL.a, ..fill }
+        Color {
+            a: POLY_FILL.a,
+            ..fill
+        }
     } else {
         fill
     }
@@ -1610,8 +1616,19 @@ fn ring_path(ring: &[Point]) -> Path {
 fn hatch_segments(ring: &[Point], a: f32, b: f32, bounds: (f32, f32)) -> Vec<(Point, Point)> {
     let mut out = Vec::new();
     let (w, h) = bounds;
-    let kmax = a.abs() * w + b.abs() * h;
-    let kmin = (-a.min(0.0).abs() * w).min(0.0) - b.min(0.0).abs() * h;
+    let (minx, maxx) = ring
+        .iter()
+        .fold((f32::MAX, f32::MIN), |(l, r), p| (l.min(p.x), r.max(p.x)));
+    let (miny, maxy) = ring
+        .iter()
+        .fold((f32::MAX, f32::MIN), |(l, r), p| (l.min(p.y), r.max(p.y)));
+    let (x0, x1) = (minx.max(0.0), maxx.min(w));
+    let (y0, y1) = (miny.max(0.0), maxy.min(h));
+    if x0 > x1 || y0 > y1 {
+        return out;
+    }
+    let kmin = (a * x0).min(a * x1) + (b * y0).min(b * y1);
+    let kmax = (a * x0).max(a * x1) + (b * y0).max(b * y1);
     let mut k = (kmin / 10.0).floor() * 10.0;
     while k <= kmax {
         // Intersections of the line with every ring edge, parametrised by
@@ -1711,16 +1728,20 @@ fn draw_areas(frame: &mut Frame, scene: &Scene, only_rank: Option<usize>) {
                     let (miny, maxy) = ring
                         .iter()
                         .fold((f32::MAX, f32::MIN), |(l, h), p| (l.min(p.y), h.max(p.y)));
-                    let mut x = 4.0 + ((minx - 4.0) / 10.0).floor() * 10.0;
-                    while x <= maxx {
-                        let mut y = 4.0 + ((miny - 4.0) / 10.0).floor() * 10.0;
-                        while y <= maxy {
-                            if point_in_ring(&ring, x, y) {
-                                frame.fill(&Path::circle(Point::new(x, y), 1.2), ink);
+                    let (minx, maxx) = (minx.max(0.0), maxx.min(vw));
+                    let (miny, maxy) = (miny.max(0.0), maxy.min(vh));
+                    if minx <= maxx && miny <= maxy {
+                        let mut x = 4.0 + ((minx - 4.0) / 10.0).floor() * 10.0;
+                        while x <= maxx {
+                            let mut y = 4.0 + ((miny - 4.0) / 10.0).floor() * 10.0;
+                            while y <= maxy {
+                                if point_in_ring(&ring, x, y) {
+                                    frame.fill(&Path::circle(Point::new(x, y), 1.2), ink);
+                                }
+                                y += 10.0;
                             }
-                            y += 10.0;
+                            x += 10.0;
                         }
-                        x += 10.0;
                     }
                 }
             }
@@ -1745,9 +1766,7 @@ fn draw_areas(frame: &mut Frame, scene: &Scene, only_rank: Option<usize>) {
             &path,
             Stroke {
                 line_dash: dashed(dash),
-                ..Stroke::default()
-                    .with_color(outline)
-                    .with_width(thickness)
+                ..Stroke::default().with_color(outline).with_width(thickness)
             },
         );
         if defined {
@@ -1788,7 +1807,10 @@ fn draw_selected_geometry(frame: &mut Frame, scene: &Scene) {
         };
         let fill = match handle {
             crate::handles::VertexHandle::WallEnd { id, start }
-                if scene.selection.active_endpoint == Some((id, start)) => SELECT_LINE,
+                if scene.selection.active_endpoint == Some((id, start)) =>
+            {
+                SELECT_LINE
+            }
             _ => Color::WHITE,
         };
         frame.fill(&mark, fill);
@@ -1893,9 +1915,7 @@ fn draw_texts(frame: &mut Frame, scene: &Scene) {
         let color = if automatic {
             automatic_text_ink()
         } else {
-            readable_on_canvas(
-                crate::render::parse_hex(&t.color).unwrap_or(automatic_text_ink()),
-            )
+            readable_on_canvas(crate::render::parse_hex(&t.color).unwrap_or(automatic_text_ink()))
         };
         let font = crate::theme::font_named(&t.font_family, t.bold, t.italic);
         // No text metrics inside a canvas draw: ~0.52em a glyph (0.57 bold).
@@ -2310,7 +2330,11 @@ fn draw_transform_handles(frame: &mut Frame, scene: &Scene) {
         let rotate_r = if scene.touch_handles { 6.0f32 } else { 8.0f32 };
         for c in &b.corners {
             let (x, y) = (c.0 as f32 - corner_sz / 2.0, c.1 as f32 - corner_sz / 2.0);
-            frame.fill_rectangle(Point::new(x, y), iced::Size::new(corner_sz, corner_sz), green);
+            frame.fill_rectangle(
+                Point::new(x, y),
+                iced::Size::new(corner_sz, corner_sz),
+                green,
+            );
             frame.stroke(
                 &Path::rectangle(Point::new(x, y), iced::Size::new(corner_sz, corner_sz)),
                 Stroke::default().with_color(light).with_width(1.1),
@@ -2494,13 +2518,21 @@ mod tests {
         canvas_theme::set(CanvasTheme::Light);
         assert_eq!(readable_on_canvas(black), black, "black stays on white");
         assert_eq!(readable_on_canvas(red), red);
-        assert_ne!(readable_on_canvas(white), white, "white would vanish on white");
+        assert_ne!(
+            readable_on_canvas(white),
+            white,
+            "white would vanish on white"
+        );
         for theme in [CanvasTheme::Dark, CanvasTheme::Blue] {
             canvas_theme::set(theme);
             for dark in [black, slate] {
                 assert_eq!(readable_on_canvas(dark), automatic_text_ink(), "{theme:?}");
             }
-            assert_eq!(readable_on_canvas(red), red, "a coloured label keeps its colour");
+            assert_eq!(
+                readable_on_canvas(red),
+                red,
+                "a coloured label keeps its colour"
+            );
             assert_eq!(readable_on_canvas(white), white);
         }
         canvas_theme::set(was);
@@ -2519,7 +2551,10 @@ mod tests {
             assert_eq!(paper, theme.bg(), "closed shapes take the canvas colour");
             let luma = |c: Color| 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
             assert!(luma(ink) > 0.8, "{theme:?}: the line is light");
-            assert!(luma(ink) - luma(paper) > 0.6, "{theme:?}: and clear of the canvas");
+            assert!(
+                luma(ink) - luma(paper) > 0.6,
+                "{theme:?}: and clear of the canvas"
+            );
         }
         canvas_theme::set(was);
     }

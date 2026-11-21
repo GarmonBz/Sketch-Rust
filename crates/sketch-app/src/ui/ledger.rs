@@ -153,7 +153,12 @@ fn panel_header<'a>(
             .color(tokens::text()),
         Space::new().width(Length::Fill),
         kit::tooltip(
-            kit::icon_button("folder-simple-plus", false, Some(Message::LayerNewFolder), d),
+            kit::icon_button(
+                "folder-simple-plus",
+                false,
+                Some(Message::LayerNewFolder),
+                d
+            ),
             "New layer folder",
             iced::widget::tooltip::Position::Bottom,
         ),
@@ -385,6 +390,11 @@ fn drawn_view<'a>(app: &'a App, model: &calcs::Calcs, d: Density) -> Element<'a,
 
     let mut placed: std::collections::HashSet<i64> = std::collections::HashSet::new();
     let mut active_menu: Option<LayerRow> = None;
+    // Layers that hold no area are not areas: they hang under the Layers
+    // section at the bottom (folded), so a layer a z-order command or an old
+    // workfile left behind (\"Send to Back\", \"Symbols\", \"Layer 1\") never
+    // reads as an area row.
+    let mut plain: Vec<LayerRow> = Vec::new();
     for r in &tree {
         if app.dock.layer_menu.as_deref() == Some(r.id.as_str()) {
             active_menu = Some(r.clone());
@@ -401,7 +411,11 @@ fn drawn_view<'a>(app: &'a App, model: &calcs::Calcs, d: Density) -> Element<'a,
                 placed.insert(poly);
                 let code = area_code_of(app, poly);
                 let flagged = code == "UND";
-                let shown = if flagged { "Needs a type" } else { code.as_str() };
+                let shown = if flagged {
+                    "Needs a type"
+                } else {
+                    code.as_str()
+                };
                 let kind = RowKind::Area {
                     poly,
                     name: a.name.clone(),
@@ -414,7 +428,11 @@ fn drawn_view<'a>(app: &'a App, model: &calcs::Calcs, d: Density) -> Element<'a,
                     rows.push(area_details(app, a, r.depth));
                 }
             }
-            (false, None) => rows.push(layer_row(app, r, RowKind::Other, d)),
+            (false, None) if r.area_poly_id.is_some() => {
+                // A dedicated layer whose area is gone: still deletable here.
+                rows.push(layer_row(app, r, RowKind::Other, d));
+            }
+            (false, None) => plain.push(r.clone()),
         }
     }
 
@@ -423,6 +441,26 @@ fn drawn_view<'a>(app: &'a App, model: &calcs::Calcs, d: Density) -> Element<'a,
         if let (false, Some(a)) = (placed.contains(&poly.id), areas.get(&poly.id)) {
             let code = area_code_of(app, poly.id);
             rows.push(loose_area_row(app, a, &code, d));
+        }
+    }
+
+    // The Layers section: everything in the tree that is not an area or a
+    // folder. Folded by default, so the list reads as areas; open it to
+    // hide, lock, rename or delete a plain layer.
+    if !plain.is_empty() {
+        let open = app.ui.ledger_layers_open;
+        rows.push(group_toggle_row(
+            "Layers",
+            &format!("{}", plain.len()),
+            !open,
+            false,
+            Message::Ui(UiMsg::ToggleLedgerLayers),
+            d,
+        ));
+        if open {
+            for r in &plain {
+                rows.push(layer_row(app, r, RowKind::Other, d));
+            }
         }
     }
 
@@ -590,15 +628,23 @@ fn loose_area_row<'a>(
             text(area.name.clone())
                 .font(BARLOW_MEDIUM)
                 .size(TEXT_13)
-                .color(if flagged { tokens::flag() } else { tokens::text() }),
+                .color(if flagged {
+                    tokens::flag()
+                } else {
+                    tokens::text()
+                }),
             text(format!(
                 "{} · {:.1} sf",
                 if flagged { "Needs a type" } else { code },
                 area.net_area
             ))
-                .font(BSC_MEDIUM)
-                .size(TEXT_11)
-                .color(if flagged { tokens::flag() } else { tokens::muted() }),
+            .font(BSC_MEDIUM)
+            .size(TEXT_11)
+            .color(if flagged {
+                tokens::flag()
+            } else {
+                tokens::muted()
+            }),
         ]
         .spacing(1)
         .width(Length::Fill),
@@ -735,7 +781,11 @@ fn layer_row<'a>(app: &'a App, r: &LayerRow, kind: RowKind, d: Density) -> Eleme
     } else {
         tokens::text()
     };
-    let name_font = if selected { BARLOW_SEMIBOLD } else { BARLOW_MEDIUM };
+    let name_font = if selected {
+        BARLOW_SEMIBOLD
+    } else {
+        BARLOW_MEDIUM
+    };
 
     let head: Element<'a, Message> = if is_folder {
         let caret = if r.collapsed {
@@ -754,9 +804,9 @@ fn layer_row<'a>(app: &'a App, r: &LayerRow, kind: RowKind, d: Density) -> Eleme
     };
 
     let lead: Element<'a, Message> = match &kind {
-        RowKind::Folder(_) => icons::mono("folder-simple", 14.0, tokens::accent()).into(),
+        RowKind::Folder(_) => icons::mono("folder-simple", 14.0, tokens::accent()),
         RowKind::Area { swatch, .. } => swatch_box(*swatch),
-        RowKind::Other => icons::mono("shapes", 14.0, tokens::muted()).into(),
+        RowKind::Other => icons::mono("shapes", 14.0, tokens::muted()),
     };
 
     let mid_content: Element<'a, Message> = if let Some(buf) = renaming {
@@ -791,7 +841,11 @@ fn layer_row<'a>(app: &'a App, r: &LayerRow, kind: RowKind, d: Density) -> Eleme
                     .font(BSC_MEDIUM)
                     .size(TEXT_11)
                     .wrapping(Wrapping::None)
-                    .color(if flagged { tokens::flag() } else { tokens::muted() }),
+                    .color(if flagged {
+                        tokens::flag()
+                    } else {
+                        tokens::muted()
+                    }),
             ]
             .spacing(1)
             .width(Length::Fill)
@@ -988,7 +1042,11 @@ fn inline_layer_menu<'a>(app: &'a App, r: &LayerRow, d: Density) -> Element<'a, 
             "Edit area…",
             Message::AreaWorkflow(WorkflowMsg::Open(poly)),
         )),
-        None => entries.push(item("text-t", "Rename", Message::LayerStartRename(id.clone()))),
+        None => entries.push(item(
+            "text-t",
+            "Rename",
+            Message::LayerStartRename(id.clone()),
+        )),
     }
     entries.push(item(
         if r.visible { "eye-slash" } else { "eye" },
@@ -1006,10 +1064,7 @@ fn inline_layer_menu<'a>(app: &'a App, r: &LayerRow, d: Density) -> Element<'a, 
     ));
 
     if !r.is_group {
-        let current = app
-            .layers
-            .layer(&r.id)
-            .and_then(|l| l.parent_id.as_deref());
+        let current = app.layers.layer(&r.id).and_then(|l| l.parent_id.as_deref());
         let folders: Vec<&'a crate::layers::Layer> = app
             .layers
             .items

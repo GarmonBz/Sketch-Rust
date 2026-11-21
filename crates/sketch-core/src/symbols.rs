@@ -275,11 +275,7 @@ impl SymbolLibrary {
     pub fn duplicate_groups(&self) -> Vec<Vec<String>> {
         use std::hash::{Hash, Hasher};
         let mut by_shape: std::collections::HashMap<u64, Vec<&Symbol>> = Default::default();
-        for symbol in self
-            .symbols
-            .values()
-            .filter(|s| !s.geometry.is_empty())
-        {
+        for symbol in self.symbols.values().filter(|s| !s.geometry.is_empty()) {
             let mut hasher = std::collections::hash_map::DefaultHasher::new();
             serde_json::to_string(&(
                 &symbol.geometry,
@@ -342,18 +338,27 @@ mod tests {
 
     #[test]
     fn double_garage_door_is_twice_the_single_door() {
-        let Some(path) = real_library_path() else { return };
+        let Some(path) = real_library_path() else {
+            return;
+        };
         let library = SymbolLibrary::load(&path).expect("library loads");
         let single = &library.symbols["caddillo/door-garage-108"];
         let double = &library.symbols["custom/door-garage-216"];
         assert_eq!(double.wall_gap_width, 2.0 * single.wall_gap_width);
         assert_eq!(double.bounds.max_y, single.bounds.max_y);
         assert_eq!(double.bounds.min_y, single.bounds.min_y);
-        assert_eq!(double.bounds.max_x - single.bounds.max_x, single.wall_gap_width);
+        assert_eq!(
+            double.bounds.max_x - single.bounds.max_x,
+            single.wall_gap_width
+        );
         let in_doors = library.categories.iter().any(|c| {
-            c.key == "caddillo-doors-windows" && c.symbol_ids.iter().any(|i| i == "custom/door-garage-216")
+            c.key == "caddillo-doors-windows"
+                && c.symbol_ids.iter().any(|i| i == "custom/door-garage-216")
         });
-        assert!(in_doors, "the double garage door is listed under Doors & windows");
+        assert!(
+            in_doors,
+            "the double garage door is listed under Doors & windows"
+        );
     }
 
     #[test]

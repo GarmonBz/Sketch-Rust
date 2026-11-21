@@ -63,29 +63,29 @@ pub fn layer<'a>(message: &str, bottom: f32) -> Element<'a, Message> {
             .color(text_main())
             .line_height(iced::widget::text::LineHeight::Absolute(21.0.into())),
     )
-        .padding(Padding {
-            // CSS: 1px border + 9px padding around a 21px line = 41px tall.
-            // iced draws the border inside the padding, so 10 + 21 + 10
-            // (the text then lands on the original's rows, measured).
-            top: 10.0,
-            bottom: 10.0,
-            left: 14.0,
-            right: 14.0,
-        })
-        .style(|_| container::Style {
-            background: Some(bg_panel().into()),
-            border: Border {
-                color: border(),
-                width: 1.0,
-                radius: 4.0.into(),
-            },
-            shadow: Shadow {
-                color: Color::from_rgba(0.0, 0.0, 0.0, 0.35),
-                offset: Vector::new(0.0, 5.0),
-                blur_radius: 18.0,
-            },
-            ..container::Style::default()
-        });
+    .padding(Padding {
+        // CSS: 1px border + 9px padding around a 21px line = 41px tall.
+        // iced draws the border inside the padding, so 10 + 21 + 10
+        // (the text then lands on the original's rows, measured).
+        top: 10.0,
+        bottom: 10.0,
+        left: 14.0,
+        right: 14.0,
+    })
+    .style(|_| container::Style {
+        background: Some(bg_panel().into()),
+        border: Border {
+            color: border(),
+            width: 1.0,
+            radius: 4.0.into(),
+        },
+        shadow: Shadow {
+            color: Color::from_rgba(0.0, 0.0, 0.0, 0.35),
+            offset: Vector::new(0.0, 5.0),
+            blur_radius: 18.0,
+        },
+        ..container::Style::default()
+    });
     column![
         Space::new().height(Length::Fill),
         row![

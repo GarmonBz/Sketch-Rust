@@ -70,6 +70,9 @@ pub enum Msg {
     /// Fold every group of identical symbols into its first member.
     MergeDuplicates,
     Import,
+    /// The Import picker resolved (None = cancelled): import the files.
+    #[cfg_attr(test, allow(dead_code))]
+    ImportPicked(Option<Vec<std::path::PathBuf>>),
     View,
     Favorites,
 }
@@ -436,45 +439,21 @@ impl App {
             }
             Msg::Import => {
                 #[cfg(not(test))]
-                if let Some(paths) = crate::platform::pick_files("Symbol or DXF", &["json", "dxf", "dwg"])
                 {
-                    let mut added = 0;
-                    let mut errors = vec![];
-                    for path in paths {
-                        let result = if path
-                            .extension()
-                            .is_some_and(|s| s.eq_ignore_ascii_case("dwg"))
-                        {
-                            Err("DWG requires conversion to DXF.".to_string())
-                        } else {
-                            std::fs::read_to_string(&path)
-                                .map_err(|e| e.to_string())
-                                .and_then(|body| {
-                                    self.import_symbol(
-                                        &body,
-                                        path.file_stem()
-                                            .and_then(|s| s.to_str())
-                                            .unwrap_or("Imported"),
-                                        path.extension().and_then(|s| s.to_str()).unwrap_or(""),
-                                    )
-                                })
-                        };
-                        match result {
-                            Ok(()) => added += 1,
-                            Err(e) => errors.push(format!(
-                                "{}: {e}",
-                                path.file_name().unwrap_or_default().to_string_lossy()
-                            )),
-                        }
-                    }
-                    let task = self.store_symbols();
-                    if errors.is_empty() {
-                        return task.chain(self.toasts.show(format!("Added {added} symbols.")));
-                    }
-                    return task.chain(
-                        self.toasts
-                            .show(format!("Added {added} symbols. {}", errors.join("; "))),
+                    return Task::perform(
+                        crate::platform::pick_files_async(
+                            "Symbol or DXF".to_owned(),
+                            vec!["json".to_owned(), "dxf".to_owned(), "dwg".to_owned()],
+                        ),
+                        |paths| Message::SymbolManager(Msg::ImportPicked(paths)),
                     );
+                }
+                #[cfg(test)]
+                {}
+            }
+            Msg::ImportPicked(paths) => {
+                if let Some(paths) = paths {
+                    return self.import_symbol_files(paths);
                 }
             }
 
@@ -491,6 +470,49 @@ impl App {
         }
         Task::none()
     }
+    /// `Msg::ImportPicked`: read and add each picked symbol file, collecting
+    /// per-file errors into the summary toast.
+    fn import_symbol_files(&mut self, paths: Vec<std::path::PathBuf>) -> Task<Message> {
+        let mut added = 0;
+        let mut errors = vec![];
+        for path in paths {
+            let result = if path
+                .extension()
+                .is_some_and(|s| s.eq_ignore_ascii_case("dwg"))
+            {
+                Err("DWG requires conversion to DXF.".to_string())
+            } else {
+                std::fs::read_to_string(&path)
+                    .map_err(|e| e.to_string())
+                    .and_then(|body| {
+                        self.import_symbol(
+                            &body,
+                            path.file_stem()
+                                .and_then(|s| s.to_str())
+                                .unwrap_or("Imported"),
+                            path.extension().and_then(|s| s.to_str()).unwrap_or(""),
+                        )
+                    })
+            };
+            match result {
+                Ok(()) => added += 1,
+                Err(e) => errors.push(format!(
+                    "{}: {e}",
+                    path.file_name().unwrap_or_default().to_string_lossy()
+                )),
+            }
+        }
+        let task = self.store_symbols();
+        if errors.is_empty() {
+            task.chain(self.toasts.show(format!("Added {added} symbols.")))
+        } else {
+            task.chain(
+                self.toasts
+                    .show(format!("Added {added} symbols. {}", errors.join("; "))),
+            )
+        }
+    }
+
     /// What the manager list shows, narrowed by the category and search: the
     /// live library, or one of the views over it (groups of
     /// Duplicates keeper first, the Largest first).

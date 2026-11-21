@@ -1,5 +1,45 @@
 # Sketch Rust — STATUS ledger
 
+0.3.12 fixes the arrow-key nudge deform reported on the real subject sketch
+(9410 Waddell Creek Rd): selecting a wall and pressing an arrow moved it
+diagonally (~10 ft sideways) instead of one pitch along the arrow. Root cause:
+`nudge_step` used Rust `f64::signum`, which returns 1.0 for +0.0 (JS
+`Math.sign(0)` is 0), so the zero axis of `Nudge(0, ±1)` took the
+`pitch * 10` Shift branch as a positive direction — every plain arrow carried a
+phantom ten-pitch sideways component. Fixed with a JS-faithful sign helper
+(main.rs); regression test
+`arrow_nudge_with_zero_axis_keeps_that_axis_stationary` (RED→GREEN) plus a
+real-file probe (`probe_real_file_nudge_variants`, skips when the workfile is
+absent) pin all four directions and the Shift variant, and the real-sketch
+geometry after fix: the shared balcony/second-floor wall moves (−1,−52)→
+(−1,−53), sides stay vertical, both areas stay rectilinear. Gate on final
+tree: fmt/clippy clean, 398 passed; 3 pre-existing failures in parallel
+Ledger-tree/row-drag/touch-pad WIP (`areas_and_layers_show_as_one_tree…`,
+`dragging_a_rows_grip…`, `p10_touch_input_pad…`) — untouched by this change,
+fail in isolation the same way. Remaining `.signum()` sites (area_repair,
+chains, sketch-core bow/area signs) flagged in the skill for the same-trap
+audit.
+
+0.3.11 stops the file-dialog freeze for good: the interface thread no longer
+hand-pumps `PeekMessage`/`DispatchMessage` while a dialog is up (the pump ran
+nested inside an unfinished winit dispatch and wedged when Shell dialog init
+stalled on a network-share start folder). Dialogs now run on a spawned
+`file-dialog` thread awaited by the iced event loop (Task/oneshot), all ~19
+call sites are message-driven continuations (`Message::DialogPicked`), and
+every dialog still anchors to an explicit local start directory
+(`dialog_start_dir`). Pinned by `dialog_tests` source contracts
+(`dialogs_never_pump_the_interface_thread`, anchor count on `rfd::FileDialog::
+new()` constructions). Verified live: File > Open and Save open real dialogs
+and load/save the subject sketch without hanging.
+
+0.3.8 fixes interactive UI hangs and frame freezes: eliminates exponential
+backtracking in exterior wall-join healing (`walk_closed_loop`), fixes
+T-junction host wall splitting, fast-paths rectangular/convex area label
+anchors so `pole_of_inaccessibility` is skipped during drawing and drags,
+defers dirty-state hashing during active drags/pans without re-serializing
+`.sketchie` backing payloads, keeps the floorplan canvas cache warm across
+chrome/overlay hovers, and clamps dotted/hatched area fills to the viewport.
+
 0.3.7 fixes freezes (dialog wait, per-layer redraw cost) and snaps drags and
 moves onto nearby endpoints. The MSI registers .sketchie/.skx (and Open with
 for .json); the demo is seeded into Recent sketches once; the start screen has

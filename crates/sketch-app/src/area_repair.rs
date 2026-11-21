@@ -111,9 +111,7 @@ pub fn restore_by_walls(
     for (index, record) in records.iter().enumerate() {
         let original = &record.original;
         let n = original.points.len();
-        if n < 3
-            || original.edges.len() != n
-            || polygons.iter().any(|poly| poly.id == original.id)
+        if n < 3 || original.edges.len() != n || polygons.iter().any(|poly| poly.id == original.id)
         {
             continue;
         }
@@ -121,8 +119,8 @@ pub fn restore_by_walls(
         let mut used: HashSet<i64> = HashSet::new();
         let mut missing = 0;
         let mut complete = true;
-        for i in 0..n {
-            if edges[i].line_id.is_some_and(|id| live.contains(&id)) {
+        for (i, edge) in edges.iter_mut().enumerate() {
+            if edge.line_id.is_some_and(|id| live.contains(&id)) {
                 continue;
             }
             missing += 1;
@@ -139,9 +137,13 @@ pub fn restore_by_walls(
             };
             used.insert(line.id);
             let follows = near(line.start, a);
-            edges[i] = sketch_core::geometry::Edge {
+            *edge = sketch_core::geometry::Edge {
                 line_id: Some(line.id),
-                bow_angle: if follows { line.bow_angle } else { -line.bow_angle },
+                bow_angle: if follows {
+                    line.bow_angle
+                } else {
+                    -line.bow_angle
+                },
             };
         }
         if !complete || missing == 0 {
@@ -151,7 +153,11 @@ pub fn restore_by_walls(
         repaired.edges = edges;
         if let Some(layer) = &repaired.layer_id {
             for line in lines.iter_mut() {
-                if repaired.edges.iter().any(|edge| edge.line_id == Some(line.id)) {
+                if repaired
+                    .edges
+                    .iter()
+                    .any(|edge| edge.line_id == Some(line.id))
+                {
                     line.layer_id = Some(layer.clone());
                 }
             }
@@ -163,7 +169,12 @@ pub fn restore_by_walls(
         let twin = polygons.iter().position(|poly| {
             poly.id != repaired.id
                 && poly.edges.len() == repaired.edges.len()
-                && poly.edges.iter().filter_map(|e| e.line_id).collect::<HashSet<i64>>() == ids
+                && poly
+                    .edges
+                    .iter()
+                    .filter_map(|e| e.line_id)
+                    .collect::<HashSet<i64>>()
+                    == ids
         });
         match twin {
             Some(at) => polygons[at] = repaired,
@@ -300,7 +311,10 @@ mod restore_by_walls_tests {
         let (mut lines, poly) = room();
         // Wall 3 is deleted: the area is recorded as opened.
         lines.retain(|l| l.id != 3);
-        let mut records = vec![ReopenedArea { original: poly, first_replacement_id: 90 }];
+        let mut records = vec![ReopenedArea {
+            original: poly,
+            first_replacement_id: 90,
+        }];
         let mut polygons: Vec<Polygon> = Vec::new();
         // Nothing yet: no wall between the open ends.
         assert!(restore_by_walls(&mut lines, &mut polygons, &mut records).is_empty());
@@ -315,7 +329,11 @@ mod restore_by_walls_tests {
         assert_eq!(polygons.len(), 1);
         let back = &polygons[0];
         assert_eq!((back.kind.as_str(), back.name.as_str()), ("GLA1", "Living"));
-        assert_eq!(back.edges[2].line_id, Some(92), "the new wall fills the gap");
+        assert_eq!(
+            back.edges[2].line_id,
+            Some(92),
+            "the new wall fills the gap"
+        );
         assert_eq!(back.edges[0].line_id, Some(1));
         // Its walls go back to the area's layer.
         let layer = lines.iter().find(|l| l.id == 92).unwrap().layer_id.clone();
@@ -326,7 +344,10 @@ mod restore_by_walls_tests {
     fn a_wall_that_misses_the_gap_or_predates_the_deletion_does_not_close_it() {
         let (mut lines, poly) = room();
         lines.retain(|l| l.id != 3);
-        let mut records = vec![ReopenedArea { original: poly, first_replacement_id: 90 }];
+        let mut records = vec![ReopenedArea {
+            original: poly,
+            first_replacement_id: 90,
+        }];
         let mut polygons: Vec<Polygon> = Vec::new();
         lines.push(line(95, 0.0, 10.0, 9.0, 10.0)); // too short
         lines.push(line(40, 10.0, 10.0, 0.0, 10.0)); // older than the deletion

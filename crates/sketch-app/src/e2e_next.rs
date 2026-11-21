@@ -94,15 +94,30 @@ fn p2_resizing_switches_size_classes_at_700_and_1100() {
         assert_eq!(SizeClass::of(w), expected_class);
         match expected_class {
             SizeClass::Wide => {
-                assert!(harness.shows("Search commands"), "expected wide search at {w}");
+                assert!(
+                    harness.shows("Search commands"),
+                    "expected wide search at {w}"
+                );
             }
             SizeClass::Medium => {
-                assert!(harness.shows("Totals: 0 sf"), "expected medium two-row bar at {w}");
-                assert!(!harness.shows("Search commands"), "wide search should hide at {w}");
+                assert!(
+                    harness.shows("Totals: 0 sf"),
+                    "expected medium two-row bar at {w}"
+                );
+                assert!(
+                    !harness.shows("Search commands"),
+                    "wide search should hide at {w}"
+                );
             }
             SizeClass::Compact => {
-                assert!(harness.shows("Totals"), "expected compact totals chip at {w}");
-                assert!(!harness.shows("Not saved"), "compact hides save chip at {w}");
+                assert!(
+                    harness.shows("Totals"),
+                    "expected compact totals chip at {w}"
+                );
+                assert!(
+                    !harness.shows("Not saved"),
+                    "compact hides save chip at {w}"
+                );
             }
         }
     }
@@ -165,7 +180,10 @@ fn p2_canvas_draw_pan_and_zoom_work_across_size_classes() {
         let app = state(harness);
         assert_eq!(app.drawing.lines.len(), 1, "expected 1 wall at {w}x{h}");
         assert!(app.view.zoom > 1.0, "expected zoom-in at {w}x{h}");
-        assert!(app.view.pan.0 != 0.0 || app.view.pan.1 != 0.0, "expected pan at {w}x{h}");
+        assert!(
+            app.view.pan.0 != 0.0 || app.view.pan.1 != 0.0,
+            "expected pan at {w}x{h}"
+        );
         assert_eq!(app.view.mode, Mode::DrawExterior);
     }
 }
@@ -188,13 +206,25 @@ fn p3_menu_opens_navigates_and_runs_commands_across_sizes() {
         } else {
             harness.send(Message::Ui(UiMsg::ToggleMenu));
         }
-        assert!(harness.shows("Property details"), "Menu rows missing at {label}");
-        assert!(harness.shows("Transform sketch"), "Transform row missing at {label}");
+        assert!(
+            harness.shows("Property details"),
+            "Menu rows missing at {label}"
+        );
+        assert!(
+            harness.shows("Transform sketch"),
+            "Transform row missing at {label}"
+        );
         // Drawing controls have their own home; the Menu no longer repeats them.
-        assert!(!harness.shows("Show grid"), "Menu still lists Show grid at {label}");
+        assert!(
+            !harness.shows("Show grid"),
+            "Menu still lists Show grid at {label}"
+        );
 
         harness.send(Message::Ui(UiMsg::MenuSub(Some(MenuSub::Transform))));
-        assert!(harness.shows("Flip horizontally"), "Transform fly-out missing at {label}");
+        assert!(
+            harness.shows("Flip horizontally"),
+            "Transform fly-out missing at {label}"
+        );
 
         // Search reaches every command, including ones that left the Menu.
         harness.send(Message::Ui(UiMsg::MenuQuery("Metric".into())));
@@ -203,7 +233,10 @@ fn p3_menu_opens_navigates_and_runs_commands_across_sizes() {
             "search result missing at {label}"
         );
         harness.script(&["click \"Units: Metric (m / m²)\""]);
-        assert!(!harness.shows("Property details"), "Menu should close after running at {label}");
+        assert!(
+            !harness.shows("Property details"),
+            "Menu should close after running at {label}"
+        );
         let app = state(harness);
         assert!(app.drawing.options.units.metric);
     }
@@ -248,7 +281,10 @@ fn p3_menu_opens_navigates_and_runs_commands_across_sizes() {
 fn p3_ctrl_k_opens_menu_search_and_runs_commands() {
     let mut harness = harness_next_at(VIEWPORT);
     harness.send(Message::Key(KeyCmd::CommandPalette));
-    assert!(harness.shows("Search all commands"), "Ctrl K should open the Menu");
+    assert!(
+        harness.shows("Search all commands"),
+        "Ctrl K should open the Menu"
+    );
     harness.send(Message::Ui(UiMsg::MenuQuery("Metric".into())));
     assert!(harness.shows("Units: Metric (m / m²)"));
     harness.send(Message::Ui(UiMsg::MenuEnter));
@@ -282,13 +318,22 @@ fn p4_pages_rename_search_undo_redo_and_export_work_at_all_sizes() {
         // 1. Add pages and switch between them.
         harness.send(Message::Status(StatusMsg::PageAdd));
         // The page switcher shows the current page; pressing it opens the list.
-        assert!(harness.shows("Page 2"), "page switcher missing Page 2 at {label}");
+        assert!(
+            harness.shows("Page 2"),
+            "page switcher missing Page 2 at {label}"
+        );
         assert!(harness.shows("2 / 2"), "page count missing at {label}");
         harness.script(&["click \"Page 2\""]);
-        assert!(harness.shows("PAGES"), "switcher did not open the page list at {label}");
+        assert!(
+            harness.shows("PAGES"),
+            "switcher did not open the page list at {label}"
+        );
         harness.send(Message::PagesNav(NavMsg::Go(0)));
         harness.send(Message::PagesNav(NavMsg::Close));
-        assert!(harness.shows("1 / 2"), "Go(0) did not change page at {label}");
+        assert!(
+            harness.shows("1 / 2"),
+            "Go(0) did not change page at {label}"
+        );
         {
             let mut h2 = harness_next_at(iced::Size::new(w, h));
             h2.send(Message::Status(StatusMsg::PageAdd));
@@ -303,7 +348,10 @@ fn p4_pages_rename_search_undo_redo_and_export_work_at_all_sizes() {
         assert!(harness.shows("Document name:"));
         harness.send(Message::Dialog(DialogMsg::Input("Oak Street".into())));
         harness.send(Message::Dialog(DialogMsg::Ok));
-        assert!(harness.shows("Oak Street"), "renamed doc title missing at {label}");
+        assert!(
+            harness.shows("Oak Street"),
+            "renamed doc title missing at {label}"
+        );
 
         // 3. Rename current page via tab menu.
         harness.send(Message::Ui(UiMsg::TogglePageMenu(Some(0))));
@@ -313,7 +361,10 @@ fn p4_pages_rename_search_undo_redo_and_export_work_at_all_sizes() {
         assert!(harness.shows("Page name:"));
         harness.send(Message::Dialog(DialogMsg::Input("Main Level".into())));
         harness.send(Message::Dialog(DialogMsg::Ok));
-        assert!(harness.shows("Main Level"), "renamed page tab missing at {label}");
+        assert!(
+            harness.shows("Main Level"),
+            "renamed page tab missing at {label}"
+        );
 
         // 4. Underlay toggle & move first/last.
         harness.send(Message::Ui(UiMsg::TogglePageMenu(Some(1))));
@@ -321,7 +372,10 @@ fn p4_pages_rename_search_undo_redo_and_export_work_at_all_sizes() {
         harness.send(Message::Ui(UiMsg::TogglePageMenu(Some(1))));
         harness.script(&["click \"Move first\""]);
         harness.send(Message::PagesNav(NavMsg::Toggle));
-        assert!(harness.shows("PAGES"), "All pages drawer missing at {label}");
+        assert!(
+            harness.shows("PAGES"),
+            "All pages drawer missing at {label}"
+        );
         harness.send(Message::PagesNav(NavMsg::Close));
         assert!(!harness.shows("PAGES"));
 
@@ -342,7 +396,10 @@ fn p4_pages_rename_search_undo_redo_and_export_work_at_all_sizes() {
         harness.send(Message::Key(KeyCmd::Buffer("12")));
         harness.send(Message::Key(KeyCmd::Enter));
         harness.send(Message::UndoHistory);
-        assert!(harness.shows("1. Draw Line"), "Undo history popup missing at {label}");
+        assert!(
+            harness.shows("1. Draw Line"),
+            "Undo history popup missing at {label}"
+        );
         harness.send(Message::Ui(UiMsg::CloseOverlays));
         harness.send(Message::Undo);
         harness.send(Message::Redo);
@@ -400,7 +457,10 @@ fn p5_tray_and_flyouts_enter_every_mode_and_follow_shortcuts_at_four_sizes() {
         for step in steps {
             if let Err(failed) = h.step(step) {
                 let shot = h.screenshot_in("e2e-next", &format!("failed-tray-{tool:?}"));
-                panic!("instruction failed: {failed}; screenshot: {}", shot.display());
+                panic!(
+                    "instruction failed: {failed}; screenshot: {}",
+                    shot.display()
+                );
             }
             h.wait(15);
         }
@@ -419,12 +479,15 @@ fn p5_tray_and_flyouts_enter_every_mode_and_follow_shortcuts_at_four_sizes() {
     };
 
     // Every one of the 15 view_state::Mode values entered via the tray or fly-outs.
-    assert_tool(&["click \"Select\""], vec![], Mode::Select, TrayTool::Select);
+    assert_tool(
+        &["click \"Select\""],
+        vec![],
+        Mode::Select,
+        TrayTool::Select,
+    );
     assert_tool(
         &[],
-        vec![
-            Message::Ui(UiMsg::ToggleTrayFlyout(Some(TrayTool::Select))),
-        ],
+        vec![Message::Ui(UiMsg::ToggleTrayFlyout(Some(TrayTool::Select)))],
         Mode::Select,
         TrayTool::Select,
     );
@@ -440,11 +503,26 @@ fn p5_tray_and_flyouts_enter_every_mode_and_follow_shortcuts_at_four_sizes() {
         Mode::DrawInterior,
         TrayTool::Inner,
     );
-    assert_tool(&["click \"Area\""], vec![], Mode::DefineArea, TrayTool::Area);
+    assert_tool(
+        &["click \"Area\""],
+        vec![],
+        Mode::DefineArea,
+        TrayTool::Area,
+    );
     assert_tool(&["click \"Curve\""], vec![], Mode::Curve, TrayTool::Curve);
-    assert_tool(&["click \"Freeform\""], vec![], Mode::Freeform, TrayTool::Freeform);
+    assert_tool(
+        &["click \"Freeform\""],
+        vec![],
+        Mode::Freeform,
+        TrayTool::Freeform,
+    );
     assert_tool(&["click \"Erase\""], vec![], Mode::Erase, TrayTool::Erase);
-    assert_tool(&["click \"Measure\""], vec![], Mode::Measure, TrayTool::Measure);
+    assert_tool(
+        &["click \"Measure\""],
+        vec![],
+        Mode::Measure,
+        TrayTool::Measure,
+    );
     assert_tool(&["click \"Pan\""], vec![], Mode::Pan, TrayTool::Pan);
     assert_tool(
         &["click \"Shape\""],
@@ -491,7 +569,9 @@ fn p5_tray_and_flyouts_enter_every_mode_and_follow_shortcuts_at_four_sizes() {
         harness.send(Message::Ui(UiMsg::ToggleTrayFlyout(Some(TrayTool::Curve))));
         harness.script(&["click \"Insert vertex\""]);
 
-        harness.send(Message::Ui(UiMsg::ToggleTrayFlyout(Some(TrayTool::Measure))));
+        harness.send(Message::Ui(UiMsg::ToggleTrayFlyout(Some(
+            TrayTool::Measure,
+        ))));
         harness.script(&["click \"Chain dimension\""]);
 
         harness.send(Message::Ui(UiMsg::ToggleTrayFlyout(Some(TrayTool::Pan))));
@@ -502,7 +582,10 @@ fn p5_tray_and_flyouts_enter_every_mode_and_follow_shortcuts_at_four_sizes() {
         harness.script(&["click \"Wall\""]);
         assert!(harness.shows("Rectangle"), "Wall flyout missing at {label}");
         harness.script(&["click \"Rectangle\""]);
-        assert!(harness.shows("Width in feet"), "Shape prompt missing at {label}");
+        assert!(
+            harness.shows("Width in feet"),
+            "Shape prompt missing at {label}"
+        );
         harness.send(Message::Dialog(DialogMsg::Cancel));
         harness.send(Message::Shapes(ShapesMsg::Dismiss));
 
@@ -514,7 +597,11 @@ fn p5_tray_and_flyouts_enter_every_mode_and_follow_shortcuts_at_four_sizes() {
         harness.send(Message::Key(KeyCmd::DrawExterior));
         harness.send(Message::Key(KeyCmd::InsertVertex));
         let app = state(harness);
-        assert_eq!(app.view.mode, Mode::InsertVertex, "shortcut failed at {label}");
+        assert_eq!(
+            app.view.mode,
+            Mode::InsertVertex,
+            "shortcut failed at {label}"
+        );
         assert!(TrayTool::Curve.is_active(&app));
     }
 
@@ -545,7 +632,9 @@ fn p5_tray_and_flyouts_enter_every_mode_and_follow_shortcuts_at_four_sizes() {
     }
     {
         let mut h = harness_next_at(VIEWPORT);
-        h.send(Message::Ui(UiMsg::ToggleTrayFlyout(Some(TrayTool::Measure))));
+        h.send(Message::Ui(UiMsg::ToggleTrayFlyout(Some(
+            TrayTool::Measure,
+        ))));
         h.script(&["click \"Chain dimension\""]);
         let app = state(h);
         assert_eq!(app.view.mode, Mode::ChainDim);
@@ -652,8 +741,14 @@ fn canvas_context_menu_closes_on_an_outside_press_and_on_escape() {
     h.send(Message::RightPress(at));
     // A press on empty canvas, away from the menu, dismisses it.
     let (px, py) = (r.x + r.width - 40.0, r.y + r.height - 40.0);
-    h.script(&[&format!("press ({px}, {py})"), &format!("release ({px}, {py})")]);
-    assert!(state(h).context.open.is_none(), "an outside press must close the menu");
+    h.script(&[
+        &format!("press ({px}, {py})"),
+        &format!("release ({px}, {py})"),
+    ]);
+    assert!(
+        state(h).context.open.is_none(),
+        "an outside press must close the menu"
+    );
 
     let mut h = harness_next_at(VIEWPORT);
     draw_closed_square(&mut h);
@@ -683,8 +778,17 @@ fn tree_ids() -> (String, String, i64) {
         .iter()
         .find(|l| l.area_poly_id.is_some())
         .expect("the area has a layer");
-    let folder = app.layers.items.iter().find(|l| l.is_group).expect("the new folder");
-    (area.id.clone(), folder.id.clone(), app.drawing.polygons[0].id)
+    let folder = app
+        .layers
+        .items
+        .iter()
+        .find(|l| l.is_group)
+        .expect("the new folder");
+    (
+        area.id.clone(),
+        folder.id.clone(),
+        app.drawing.polygons[0].id,
+    )
 }
 
 #[test]
@@ -702,6 +806,53 @@ fn areas_and_layers_show_as_one_tree_with_a_folder_button() {
     let folder = app.layers.items.iter().find(|l| l.is_group).unwrap();
     assert_eq!(folder.name, "Layer");
     assert!(folder.parent_id.is_none());
+}
+
+#[test]
+fn the_areas_list_keeps_plain_layers_out_of_the_area_rows() {
+    tree_harness!(h);
+    // The area row and the folder row are the list; a layer that holds no
+    // area is not an area, so it hangs in the Layers section instead of
+    // sitting among the areas.
+    assert!(h.shows("Undefined Area"));
+    assert!(h.shows("Layer"), "the folder row");
+    assert!(
+        !h.shows("Layer 1"),
+        "a layer holding no area is not an area row"
+    );
+    assert!(h.shows("Layers"), "the section header is there");
+    h.send(Message::Ui(UiMsg::ToggleLedgerLayers));
+    assert!(
+        h.shows("Layer 1"),
+        "opening the section lists the plain layer"
+    );
+}
+
+#[test]
+fn z_order_commands_restack_the_selection_and_invent_no_layers() {
+    let (area, _, poly) = tree_ids();
+    tree_harness!(h);
+    h.send(Message::CalcsArea(poly));
+    h.send(Message::LayerBringToFront);
+    assert!(h.shows("Moved selection to the front."));
+    let app = state(h);
+    assert!(
+        !app.layers.items.iter().any(|l| l.name == "Bring to Front"),
+        "the command is a restack, not a layer: {:?}",
+        app.layers.items.iter().map(|l| &l.name).collect::<Vec<_>>()
+    );
+    assert_eq!(app.layers.items.len(), 3, "no layer was invented");
+    let order: Vec<String> = app
+        .layers
+        .flatten_layer_order()
+        .iter()
+        .map(|l| l.id.clone())
+        .collect();
+    assert_eq!(
+        order.last(),
+        Some(&area),
+        "the area's layer paints last: {order:?}"
+    );
 }
 
 #[test]
@@ -727,8 +878,14 @@ fn a_folders_eye_hides_the_areas_inside_it() {
     h.send(Message::LayerMoveTo(area.clone(), Some(folder.clone())));
     h.send(Message::LayerToggleVisible(folder.clone()));
     let app = state(h);
-    assert_eq!(app.layers.layer(&area).unwrap().parent_id.as_deref(), Some(folder.as_str()));
-    assert!(app.layer_gates().hidden.contains(&poly), "the area is hidden with its folder");
+    assert_eq!(
+        app.layers.layer(&area).unwrap().parent_id.as_deref(),
+        Some(folder.as_str())
+    );
+    assert!(
+        app.layer_gates().hidden.contains(&poly),
+        "the area is hidden with its folder"
+    );
 }
 
 #[test]
@@ -803,7 +960,9 @@ macro_rules! two_labels {
     ($h:ident) => {
         let mut $h = harness_next_at(VIEWPORT);
         for x in [500.0_f32, 760.0] {
-            $h.send(Message::Dock(crate::dock::DockMsg::TextPick("Kitchen".into())));
+            $h.send(Message::Dock(crate::dock::DockMsg::TextPick(
+                "Kitchen".into(),
+            )));
             $h.script(&[&format!("click ({x:.1}, 430.0)")]);
             $h.wait(450);
         }
@@ -816,7 +975,9 @@ fn two_label_spots() -> [(f32, f32); 2] {
     assert_eq!(app.drawing.texts.len(), 2);
     let spot = |i: usize| {
         let t = &app.drawing.texts[i];
-        let (x, y) = app.view.to_screen(crate::view_state::World { x: t.x, y: t.y });
+        let (x, y) = app
+            .view
+            .to_screen(crate::view_state::World { x: t.x, y: t.y });
         (x as f32, y as f32)
     };
     [spot(0), spot(1)]
@@ -828,7 +989,12 @@ fn ctrl_click_adds_and_removes_labels_from_the_selection() {
     two_labels!(h);
     macro_rules! click {
         ($h:ident, $at:expr, $ctrl:expr) => {
-            $h.send(Message::CanvasClick { x: $at.0, y: $at.1, double: false, ctrl: $ctrl });
+            $h.send(Message::CanvasClick {
+                x: $at.0,
+                y: $at.1,
+                double: false,
+                ctrl: $ctrl,
+            });
         };
     }
     click!(h, a, false);
@@ -841,27 +1007,46 @@ fn ctrl_click_adds_and_removes_labels_from_the_selection() {
     click!(h, b, true);
     click!(h, b, true);
     let app = state(h);
-    assert_eq!(app.selection.texts.len(), 1, "Ctrl+click on a selected label removes it");
+    assert_eq!(
+        app.selection.texts.len(),
+        1,
+        "Ctrl+click on a selected label removes it"
+    );
 
     two_labels!(h);
     click!(h, a, false);
     click!(h, b, false);
-    assert_eq!(state(h).selection.texts.len(), 1, "a plain click replaces the selection");
+    assert_eq!(
+        state(h).selection.texts.len(),
+        1,
+        "a plain click replaces the selection"
+    );
 }
 
 #[test]
 fn apply_to_all_labels_gives_every_label_the_selected_ones_style() {
     let [a, _] = two_label_spots();
     two_labels!(h);
-    h.send(Message::CanvasClick { x: a.0, y: a.1, double: false, ctrl: false });
+    h.send(Message::CanvasClick {
+        x: a.0,
+        y: a.1,
+        double: false,
+        ctrl: false,
+    });
     h.send(Message::ToggleSelectedTextStyle("bold".into()));
     h.send(Message::AdjustSelectedTextSize(4));
-    h.send(Message::SetSelectedTextStyle("color".into(), "#dc2626".into()));
+    h.send(Message::SetSelectedTextStyle(
+        "color".into(),
+        "#dc2626".into(),
+    ));
     h.send(Message::ApplyTextStyleToAll);
     let app = state(h);
     assert_eq!(app.drawing.texts.len(), 2);
     let first = app.drawing.texts[0].clone();
-    assert!(first.bold && first.font_size > 12.0, "the selected label was styled");
+    assert!(
+        first.bold && first.font_size > 12.0,
+        "the selected label was styled"
+    );
     for t in &app.drawing.texts {
         assert_eq!(t.bold, first.bold);
         assert_eq!(t.font_size, first.font_size);
@@ -881,7 +1066,9 @@ fn arrow_keys_nudge_by_the_snap_pitch() {
             state(p).drawing.lines[0].start.x
         };
         if let Some((label, value)) = pitch {
-            h.send(Message::Status(StatusMsg::Pitch(crate::statusbar::PitchOption { label, value })));
+            h.send(Message::Status(StatusMsg::Pitch(
+                crate::statusbar::PitchOption { label, value },
+            )));
         }
         if !snap {
             h.send(Message::Status(StatusMsg::ToggleSnap));
@@ -891,11 +1078,258 @@ fn arrow_keys_nudge_by_the_snap_pitch() {
         state(h).drawing.lines[0].start.x - before
     };
     let inch = 1.0 / 12.0;
-    assert!((moved(Some(("1\"", inch)), true, 1.0) - inch).abs() < 1e-9, "one 1-inch pitch");
-    assert!((moved(Some(("1/2'", 0.5)), true, 1.0) - 0.5).abs() < 1e-9, "one half-foot pitch");
-    assert!((moved(Some(("1\"", inch)), true, -1.0) + inch).abs() < 1e-9, "left");
-    assert!((moved(Some(("1\"", inch)), true, 0.1) - 10.0 * inch).abs() < 1e-9, "Shift is ten pitches");
-    assert!((moved(None, false, 1.0) - 1.0).abs() < 1e-9, "snap off keeps the 1 ft step");
+    assert!(
+        (moved(Some(("1\"", inch)), true, 1.0) - inch).abs() < 1e-9,
+        "one 1-inch pitch"
+    );
+    assert!(
+        (moved(Some(("1/2'", 0.5)), true, 1.0) - 0.5).abs() < 1e-9,
+        "one half-foot pitch"
+    );
+    assert!(
+        (moved(Some(("1\"", inch)), true, -1.0) + inch).abs() < 1e-9,
+        "left"
+    );
+    assert!(
+        (moved(Some(("1\"", inch)), true, 0.1) - 10.0 * inch).abs() < 1e-9,
+        "Shift is ten pitches"
+    );
+    assert!(
+        (moved(None, false, 1.0) - 1.0).abs() < 1e-9,
+        "snap off keeps the 1 ft step"
+    );
+}
+
+#[test]
+fn arrow_nudge_with_zero_axis_keeps_that_axis_stationary() {
+    // Plain arrows arrive as Nudge(0, ±1) / Nudge(±1, 0). The zero axis
+    // must contribute zero motion. REGRESSION: f64::signum(+0.0) is 1.0 in
+    // Rust (Math.sign(0) is 0 in the JS original), so the old code turned
+    // every plain arrow into a ten-pitch sideways jump.
+    let (app, _) = crate::App::boot(1.0);
+    assert_eq!(app.nudge_step(0.0, -1.0), (0.0, -1.0));
+    assert_eq!(app.nudge_step(0.0, 1.0), (0.0, 1.0));
+    assert_eq!(app.nudge_step(1.0, 0.0), (1.0, 0.0));
+    assert_eq!(app.nudge_step(-1.0, 0.0), (-1.0, 0.0));
+    // Shift: 0.1 inputs scale to ten pitches — but still only on the
+    // nonzero axis.
+    assert_eq!(app.nudge_step(0.0, -0.1), (0.0, -10.0));
+}
+
+#[test]
+fn probe_real_file_nudge_variants() {
+    // Temporary diagnostic on the REAL subject sketch: which selection
+    // variant deforms on a nudge? Prints geometry per variant.
+    let path = std::path::PathBuf::from(
+        r"W:\2026\9410 Waddell Creek Rd SW, Olympia (SVI Conv 3.6 Purchase) 11-23 New\Subject Sketch.skx",
+    );
+    if !path.exists() {
+        eprintln!("subject sketch not present; skipping real-file probe");
+        return;
+    }
+    let run = |label: &str, select: fn(&mut crate::App)| {
+        let (mut app, _) = crate::App::boot(1.0);
+        let _ = app.open_sketch_path(path.clone());
+        assert!(
+            app.drawing.polygons.len() >= 10,
+            "real file loaded with its areas (found {})",
+            app.drawing.polygons.len()
+        );
+        println!(
+            "== {} == zoom={} edit_grid={:?} area_snap={} area_snap_size={} grid_size={} snap={}",
+            label,
+            app.view.zoom,
+            app.view.edit_grid(),
+            app.view.area_snap,
+            app.view.area_snap_size,
+            app.view.grid_size,
+            app.view.snap
+        );
+        select(&mut app);
+        let (sx, sy) = app.nudge_step(0.0, -1.0);
+        println!("   nudge_step(0,-1) -> ({sx},{sy})");
+        app.move_selection(sx, sy);
+        let line = |app: &crate::App, id: i64| {
+            app.drawing
+                .lines
+                .iter()
+                .find(|l| l.id == id)
+                .map(|l| {
+                    format!(
+                        "({:.2},{:.2})->({:.2},{:.2})",
+                        l.start.x, l.start.y, l.end.x, l.end.y
+                    )
+                })
+                .unwrap_or_default()
+        };
+        println!(
+            "   after move: line23={} line22={}",
+            line(&app, 23),
+            line(&app, 22)
+        );
+        let created = app.drawing.close_loops(app.view.zoom);
+        println!(
+            "   after close_loops (created {created}): line23={} line22={}",
+            line(&app, 23),
+            line(&app, 22)
+        );
+        let show = |p: &sketch_core::model::Polygon| {
+            format!(
+                "{}[{}]: {}",
+                p.name,
+                p.id,
+                p.points
+                    .iter()
+                    .map(|q| format!("({:.2},{:.2})", q.x, q.y))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            )
+        };
+        for name in ["Balcony", "Second Floor"] {
+            if let Some(p) = app.drawing.polygons.iter().find(|p| p.name == name) {
+                println!("  {}", show(p));
+            }
+        }
+    };
+    run(
+        "A: select line 23 (balcony top / second floor notch bottom)",
+        |app| {
+            app.selection.clear();
+            app.selection.lines.insert(23);
+        },
+    );
+    run("B: select line 22 (notch left side)", |app| {
+        app.selection.clear();
+        app.selection.lines.insert(22);
+    });
+    run("C: select balcony polygon", |app| {
+        app.selection.clear();
+        app.selection.polys.insert(32);
+    });
+    run("D: select second floor polygon", |app| {
+        app.selection.clear();
+        let id = app
+            .drawing
+            .polygons
+            .iter()
+            .find(|p| p.name == "Second Floor")
+            .unwrap()
+            .id;
+        app.selection.polys.insert(id);
+    });
+}
+
+#[test]
+fn arrow_nudge_of_one_selected_wall_moves_the_whole_wall() {
+    let (mut app, _) = crate::App::boot(1.0);
+    // A closed 10x10 square: pen down, then 10ft walls right/down/left/up.
+    let _ = app.update(Message::Key(KeyCmd::DrawExterior));
+    let _ = app.update(Message::Key(KeyCmd::Enter));
+    for dir in [2u8, 4, 6, 0] {
+        let _ = app.update(Message::Key(KeyCmd::Buffer("1")));
+        let _ = app.update(Message::Key(KeyCmd::Buffer("0")));
+        let _ = app.update(Message::Key(KeyCmd::Arrow {
+            dir,
+            ctrl: false,
+            shift: false,
+        }));
+        let _ = app.update(Message::Key(KeyCmd::Enter));
+    }
+    assert_eq!(app.drawing.lines.len(), 4, "four walls");
+    assert_eq!(
+        app.drawing.polygons.len(),
+        1,
+        "the closed loop made an area"
+    );
+    // Snap off keeps the nudge at the raw 1 ft step.
+    let _ = app.update(Message::Status(crate::statusbar::StatusMsg::ToggleSnap));
+    // Select only the bottom wall and press the Down arrow: the wall must
+    // translate as a whole (both endpoints -1 y), the side walls stretch at
+    // the shared corners while their far ends stay, the top wall does not
+    // move, and the area's corners follow the moved vertices.
+    let before: Vec<(i64, sketch_core::geometry::Pt, sketch_core::geometry::Pt)> = app
+        .drawing
+        .lines
+        .iter()
+        .map(|l| (l.id, l.start, l.end))
+        .collect();
+    let bottom = app.drawing.lines[0].clone();
+    app.selection.clear();
+    app.selection.lines.insert(bottom.id);
+    let _ = app.update(Message::Key(KeyCmd::Nudge(0.0, -1.0)));
+    let dump = |app: &crate::App| -> String {
+        app.drawing
+            .lines
+            .iter()
+            .map(|l| {
+                format!(
+                    "{} ({:.2},{:.2})-({:.2},{:.2})",
+                    l.id, l.start.x, l.start.y, l.end.x, l.end.y
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(" | ")
+    };
+    let after: Vec<(i64, sketch_core::geometry::Pt, sketch_core::geometry::Pt)> = app
+        .drawing
+        .lines
+        .iter()
+        .map(|l| (l.id, l.start, l.end))
+        .collect();
+    let moved = app
+        .drawing
+        .lines
+        .iter()
+        .find(|l| l.id == bottom.id)
+        .unwrap();
+    assert!(
+        (moved.start.y - (bottom.start.y - 1.0)).abs() < 1e-9
+            && (moved.end.y - (bottom.end.y - 1.0)).abs() < 1e-9,
+        "the selected wall translates whole, not one endpoint: before {before:?} after {after:?}"
+    );
+    // Every OTHER wall moved at most ONE endpoint, and only where it shares
+    // a corner with the nudged wall.
+    for (id, b0, b1) in &before {
+        if *id == bottom.id {
+            continue;
+        }
+        let a = after.iter().find(|(i, _, _)| i == id).unwrap();
+        let same_start = (a.1.x - b0.x).abs() < 1e-9 && (a.1.y - b0.y).abs() < 1e-9;
+        let same_end = (a.2.x - b1.x).abs() < 1e-9 && (a.2.y - b1.y).abs() < 1e-9;
+        let start_followed = (a.1.y - b0.y).abs() < 1e-9 || (a.1.y - (b0.y - 1.0)).abs() < 1e-9;
+        let end_followed = (a.2.y - b1.y).abs() < 1e-9 || (a.2.y - (b1.y - 1.0)).abs() < 1e-9;
+        assert!(
+            (same_start || start_followed) && (same_end || end_followed),
+            "a side wall deformed: before {before:?} after {after:?} — {}",
+            dump(&app)
+        );
+    }
+    // The area's points: the two corners on the nudged wall follow; the other
+    // two stay. The polygon may store points in either winding.
+    let poly = &app.drawing.polygons[0];
+    let followed = poly
+        .points
+        .iter()
+        .filter(|p| {
+            (p.y - (bottom.start.y - 1.0)).abs() < 1e-9
+                || (p.y - bottom.end.y).abs() < 1e-9 && false
+        })
+        .count();
+    let _ = followed;
+    let on_bottom = |p: &sketch_core::geometry::Pt| (p.y - bottom.start.y).abs() < 1e-9;
+    let bottom_now = poly
+        .points
+        .iter()
+        .filter(|p| (p.y - (bottom.start.y - 1.0)).abs() < 1e-9)
+        .count();
+    assert_eq!(
+        bottom_now,
+        2,
+        "exactly the two bottom corners follow the wall: {:?} — {}",
+        poly.points,
+        dump(&app)
+    );
+    let _ = on_bottom;
 }
 
 #[test]
@@ -926,7 +1360,10 @@ fn the_areas_list_deletes_areas_and_layers_and_offers_no_layer_export() {
     tree_harness!(h);
     h.send(Message::LayerDelete(area.clone()));
     h.send(Message::LayerDelete("layer-1".into()));
-    assert!(state(h).layers.layer("layer-1").is_some(), "keep at least one layer");
+    assert!(
+        state(h).layers.layer("layer-1").is_some(),
+        "keep at least one layer"
+    );
 }
 
 #[test]
@@ -935,15 +1372,26 @@ fn a_reopened_areas_leftover_layer_is_listed_and_can_be_deleted() {
     let (area, _, _) = tree_ids();
     tree_harness!(h);
     h.send(Message::Key(KeyCmd::Select));
-    h.send(Message::CanvasClick { x: mx, y: my, double: false, ctrl: false });
+    h.send(Message::CanvasClick {
+        x: mx,
+        y: my,
+        double: false,
+        ctrl: false,
+    });
     h.send(Message::Delete);
     h.send(Message::Dialog(DialogMsg::Ok));
     // The area is open now; its layer still holds the three walls left.
     h.send(Message::LayerDelete(area.clone()));
     let app = state(h);
-    assert!(app.layers.layer(&area).is_none(), "the leftover layer is deleted");
+    assert!(
+        app.layers.layer(&area).is_none(),
+        "the leftover layer is deleted"
+    );
     assert!(app.drawing.lines.is_empty(), "with the walls on it");
-    assert!(app.drawing.reopened_areas.is_empty(), "and its open-area record");
+    assert!(
+        app.drawing.reopened_areas.is_empty(),
+        "and its open-area record"
+    );
 }
 
 #[test]
@@ -955,7 +1403,9 @@ fn a_dragged_wall_end_joins_a_nearby_endpoint_before_it_snaps_to_the_grid() {
     let grabbed = app.drawing.lines[0].start;
     // 0.3 ft off a corner is inside 10 px at this zoom: the end joins it.
     let near = sketch_core::geometry::Pt::new(corner.x + 0.3, corner.y - 0.2);
-    let got = app.endpoint_snap(near, grabbed).expect("an endpoint is within reach");
+    let got = app
+        .endpoint_snap(near, grabbed)
+        .expect("an endpoint is within reach");
     assert!((got.x - corner.x).abs() < 1e-9 && (got.y - corner.y).abs() < 1e-9);
     // Far from every endpoint: nothing to join (the grid takes over).
     let far = sketch_core::geometry::Pt::new(corner.x + 5.0, corner.y + 5.0);
@@ -981,7 +1431,10 @@ fn deleting_a_folder_keeps_the_areas_that_were_in_it() {
 #[test]
 fn areas_and_layers_tree_screenshots() {
     let (area, folder, _) = tree_ids();
-    for (label, density) in [("comfortable", Density::Comfortable), ("touch", Density::Touch)] {
+    for (label, density) in [
+        ("comfortable", Density::Comfortable),
+        ("touch", Density::Touch),
+    ] {
         tree_harness!(h);
         h.send(Message::Ui(UiMsg::SetDensity(density)));
         h.send(Message::LayerMoveTo(area.clone(), Some(folder.clone())));
@@ -1084,10 +1537,19 @@ fn p6_ledger_drawn_types_layers_totals_and_resize_across_sizes() {
 
         // Expand area row to see the 6 calculation figures.
         h_app.script(&["click \"First Floor\""]);
-        assert!(h_app.shows("Base area"), "Base area detail missing at {label}");
+        assert!(
+            h_app.shows("Base area"),
+            "Base area detail missing at {label}"
+        );
         assert!(h_app.shows("Factor"), "Factor detail missing at {label}");
-        assert!(h_app.shows("Subtracted"), "Subtracted detail missing at {label}");
-        assert!(h_app.shows("Perimeter"), "Perimeter detail missing at {label}");
+        assert!(
+            h_app.shows("Subtracted"),
+            "Subtracted detail missing at {label}"
+        );
+        assert!(
+            h_app.shows("Perimeter"),
+            "Perimeter detail missing at {label}"
+        );
 
         // "Show the math" opens breakdown modal.
         h_app.script(&["click \"Show the math\""]);
@@ -1095,12 +1557,14 @@ fn p6_ledger_drawn_types_layers_totals_and_resize_across_sizes() {
             h_app.shows("Breakdown Details"),
             "Breakdown modal should open at {label}"
         );
-        h_app.send(Message::Breakdown(crate::breakdown_dialog::BreakdownMsg::Close));
+        h_app.send(Message::Breakdown(
+            crate::breakdown_dialog::BreakdownMsg::Close,
+        ));
 
         // Deleting a type turns its areas back into Undefined.
-        h_app.send(Message::AreaWorkflow(crate::area_workflow::Msg::ConfirmDelete(
-            "GLA1".into(),
-        )));
+        h_app.send(Message::AreaWorkflow(
+            crate::area_workflow::Msg::ConfirmDelete("GLA1".into()),
+        ));
         assert!(
             h_app.shows("Needs a type · 100.0 sf"),
             "Deleting GLA1 should revert area to Needs a type at {label}"
@@ -1165,7 +1629,9 @@ fn p6_ledger_drawn_types_layers_totals_and_resize_across_sizes() {
         assert!(h.shows("Label defaults & area tools…"));
         h.script(&["click \"Label defaults & area tools…\""]);
         assert!(h.shows("AREA OPERATIONS"));
-        h.send(Message::AreaWorkflow(crate::area_workflow::Msg::Advanced(false)));
+        h.send(Message::AreaWorkflow(crate::area_workflow::Msg::Advanced(
+            false,
+        )));
 
         let app = state(h);
         assert_eq!(app.ui.ledger_width, Some(340.0));
@@ -1212,7 +1678,9 @@ fn drawn_square_chain_mid_on_screen(w: f32, h: f32) -> (f32, f32) {
     let mut tmp = harness_next_at(iced::Size::new(w, h));
     draw_closed_square(&mut tmp);
     let wall_mid = drawn_square_wall_mid_on_screen(w, h);
-    tmp.send(Message::Ui(UiMsg::ToggleTrayFlyout(Some(TrayTool::Measure))));
+    tmp.send(Message::Ui(UiMsg::ToggleTrayFlyout(Some(
+        TrayTool::Measure,
+    ))));
     tmp.script(&["click \"Chain dimension\""]);
     tmp.script(&[&format!("click ({:.1}, {:.1})", wall_mid.0, wall_mid.1)]);
     let app = state(tmp);
@@ -1248,7 +1716,10 @@ fn p7_inspector_controls_across_selection_kinds_and_sizes() {
             h_app.script(&["click \"Inspect\""]);
         }
         assert!(h_app.shows("DIMENSIONS"), "wall section missing at {label}");
-        assert!(h_app.shows("APPEARANCE"), "appearance section missing at {label}");
+        assert!(
+            h_app.shows("APPEARANCE"),
+            "appearance section missing at {label}"
+        );
         assert!(h_app.shows("CURVE"), "curve section missing at {label}");
         if matches!(class, SizeClass::Wide) {
             assert!(h_app.shows("Copy"), "wall edit actions missing at {label}");
@@ -1282,7 +1753,8 @@ fn p7_inspector_controls_across_selection_kinds_and_sizes() {
             "wall dimension toggle failed at {label}"
         );
         if matches!(class, SizeClass::Wide) {
-            let expected_cw = w - app.ui.effective_ledger_width() - Density::Comfortable.inspector_w();
+            let expected_cw =
+                w - app.ui.effective_ledger_width() - Density::Comfortable.inspector_w();
             assert!((app.canvas_rect().width - expected_cw).abs() < 1.0);
         }
     }
@@ -1301,7 +1773,11 @@ fn p7_inspector_controls_across_selection_kinds_and_sizes() {
 
         h.send(Message::AreaDialog(AreaDialogMsg::Name("Sunroom".into())));
         h.script(&["click \"Apply\""]);
-        h.script(&["click \"Subtracts (-)\"", "click \"Code\"", "click \"Clone\""]);
+        h.script(&[
+            "click \"Subtracts (-)\"",
+            "click \"Code\"",
+            "click \"Clone\"",
+        ]);
 
         let mut app = state(h);
         assert!(
@@ -1357,7 +1833,9 @@ fn p7_inspector_controls_across_selection_kinds_and_sizes() {
     // 3. Text label inspector.
     {
         let mut h = harness_next_at(VIEWPORT);
-        h.send(Message::Dock(crate::dock::DockMsg::TextPick("Kitchen".into())));
+        h.send(Message::Dock(crate::dock::DockMsg::TextPick(
+            "Kitchen".into(),
+        )));
         let (cx, cy) = (700.0_f32, 430.0_f32);
         h.script(&[&format!("click ({cx:.1}, {cy:.1})")]);
         // Offset horizontally so the selection click stays inside the label hitbox
@@ -1376,11 +1854,7 @@ fn p7_inspector_controls_across_selection_kinds_and_sizes() {
     // 4. Symbol + hosted wall opening inspector.
     {
         let lib = symlib::library();
-        let door_id = lib
-            .as_ref()
-            .as_ref()
-            .expect("symbols loaded")
-            .favorites[0]
+        let door_id = lib.as_ref().as_ref().expect("symbols loaded").favorites[0]
             .id
             .clone();
         let mut h = harness_next_at(VIEWPORT);
@@ -1407,7 +1881,9 @@ fn p7_inspector_controls_across_selection_kinds_and_sizes() {
         draw_closed_square(&mut h);
         let (wx, wy) = drawn_square_wall_mid_on_screen(VIEWPORT.width, VIEWPORT.height);
         let (chx, chy) = drawn_square_chain_mid_on_screen(VIEWPORT.width, VIEWPORT.height);
-        h.send(Message::Ui(UiMsg::ToggleTrayFlyout(Some(TrayTool::Measure))));
+        h.send(Message::Ui(UiMsg::ToggleTrayFlyout(Some(
+            TrayTool::Measure,
+        ))));
         h.script(&["click \"Chain dimension\""]);
         h.script(&[&format!("click ({wx:.1}, {wy:.1})")]);
         h.send(Message::Rail(crate::view_state::RailTool::Select));
@@ -1471,16 +1947,20 @@ fn p7_inspector_controls_across_selection_kinds_and_sizes() {
 
 #[test]
 fn p8_insert_drawer_symbols_and_labels_across_sizes() {
-        let lib = symlib::library();
-        let ix = (*lib).as_ref().expect("symbol library loads");
-        let first_fav = ix.favorites.first().expect("default favorites exist").clone();
-        let non_fav = ix
-            .categories
-            .iter()
-            .flat_map(|c| c.items.iter())
-            .find(|item| !ix.favorites.iter().any(|f| f.id == item.id))
-            .expect("non-favorite symbol exists")
-            .clone();
+    let lib = symlib::library();
+    let ix = (*lib).as_ref().expect("symbol library loads");
+    let first_fav = ix
+        .favorites
+        .first()
+        .expect("default favorites exist")
+        .clone();
+    let non_fav = ix
+        .categories
+        .iter()
+        .flat_map(|c| c.items.iter())
+        .find(|item| !ix.favorites.iter().any(|f| f.id == item.id))
+        .expect("non-favorite symbol exists")
+        .clone();
 
     for &(size_label, w, h, _) in SIZES {
         let cx = w * 0.40;
@@ -1539,7 +2019,10 @@ fn p8_insert_drawer_symbols_and_labels_across_sizes() {
                 crate::ui::tray::DrawerTab::Symbols,
             ))));
             harness.script(&["click \"Pin\""]);
-            assert!(harness.shows("Pinned"), "pin label should update at {size_label}");
+            assert!(
+                harness.shows("Pinned"),
+                "pin label should update at {size_label}"
+            );
             harness.script(&[&format!("click {:?}", first_fav.label)]);
             if !matches!(SizeClass::of(w), SizeClass::Compact) {
                 let cx2 = cx * 0.6;
@@ -1571,13 +2054,19 @@ fn p8_insert_drawer_symbols_and_labels_across_sizes() {
                 "room labels controls missing at {size_label}"
             );
             harness.script(&["click \"ABC\""]);
-            assert!(harness.shows("Bath"), "ABC filter should include Bath at {size_label}");
+            assert!(
+                harness.shows("Bath"),
+                "ABC filter should include Bath at {size_label}"
+            );
             assert!(
                 !harness.shows("Kitchen"),
                 "ABC filter should exclude Kitchen at {size_label}"
             );
             harness.script(&["click \"All\""]);
-            assert!(harness.shows("Kitchen"), "All filter restores Kitchen at {size_label}");
+            assert!(
+                harness.shows("Kitchen"),
+                "All filter restores Kitchen at {size_label}"
+            );
 
             harness.send(Message::Dock(crate::dock::DockMsg::TextSearch(
                 "Sunroom".into(),
@@ -1613,9 +2102,9 @@ fn p8_insert_drawer_symbols_and_labels_across_sizes() {
     {
         let mut h = harness_next_at(VIEWPORT);
         h.script(&["click \"Insert\""]);
-        h.send(Message::SymbolManager(
-            crate::symbol_manager::Msg::Context(non_fav.id.clone()),
-        ));
+        h.send(Message::SymbolManager(crate::symbol_manager::Msg::Context(
+            non_fav.id.clone(),
+        )));
         assert!(h.shows("Symbol actions"));
         h.script(&["click \"Favorite\""]);
         assert!(
@@ -1665,7 +2154,9 @@ fn measurement_format_applies_to_the_sketch_and_saves_with_it() {
     assert_eq!(app.drawing.options.units.length(10.5), "10' 6\"");
 
     let saved = app.build_save_model();
-    let _ = app.update(Message::Status(StatusMsg::LengthFormat { feet_and_inches: false }));
+    let _ = app.update(Message::Status(StatusMsg::LengthFormat {
+        feet_and_inches: false,
+    }));
     assert_eq!(app.drawing.options.units.length(10.5), "10.5'");
     app.apply_settings(saved.get("settings"));
     assert_eq!(app.drawing.options.units.length(10.5), "10' 6\"");
@@ -1682,9 +2173,10 @@ fn zoom_fence_button_zooms_to_a_dragged_rectangle() {
         // The magnifier is the icon between plus and Fit in the top-left bar.
         let button = format!("click ({}, {})", canvas.x + 125.0, canvas.y + 24.0);
         let center = canvas.center() + iced::Vector::new(35.0, 25.0);
-        let selected = initial
-            .view
-            .to_world(f64::from(center.x - canvas.x), f64::from(center.y - canvas.y));
+        let selected = initial.view.to_world(
+            f64::from(center.x - canvas.x),
+            f64::from(center.y - canvas.y),
+        );
         let end = format!("({}, {})", center.x + 50.0, center.y + 40.0);
         harness.script(&[
             &button,
@@ -1695,9 +2187,17 @@ fn zoom_fence_button_zooms_to_a_dragged_rectangle() {
 
         let app = state(harness);
         assert!(app.view.zoom > 1.0, "rectangle did not zoom at {label}");
-        let at_center = app.view.to_world(app.view.canvas.0 / 2.0, app.view.canvas.1 / 2.0);
-        assert!((at_center.x - selected.x).abs() < 1e-6, "x center at {label}");
-        assert!((at_center.y - selected.y).abs() < 1e-6, "y center at {label}");
+        let at_center = app
+            .view
+            .to_world(app.view.canvas.0 / 2.0, app.view.canvas.1 / 2.0);
+        assert!(
+            (at_center.x - selected.x).abs() < 1e-6,
+            "x center at {label}"
+        );
+        assert!(
+            (at_center.y - selected.y).abs() < 1e-6,
+            "y center at {label}"
+        );
         assert_eq!(app.view.mode, Mode::Select);
         assert!(app.view.fence.is_none());
     }
@@ -1715,26 +2215,49 @@ fn drawing_chrome_laid_out_controls_never_overlap_the_tray() {
     // Includes the reported desktop layout, logical sizes at 125%/150%
     // Windows scaling, a very wide bottom dock, and a narrow canvas with
     // both the resized ledger and inspector taking space.
-    for (w, height) in [(2600.0, 1100.0), (2048.0, 1218.0), (1638.4, 974.4),
-        (1920.0, 1080.0), (1280.0, 800.0), (1100.0, 800.0), (800.0, 1000.0), (372.0, 800.0)] {
+    for (w, height) in [
+        (2600.0, 1100.0),
+        (2048.0, 1218.0),
+        (1638.4, 974.4),
+        (1920.0, 1080.0),
+        (1280.0, 800.0),
+        (1100.0, 800.0),
+        (800.0, 1000.0),
+        (372.0, 800.0),
+    ] {
         for density in [Density::Comfortable, Density::Touch] {
             for inspect in [false, true] {
                 app.window_size = iced::Size::new(w, height);
                 app.ui.density = density;
                 app.ui.ledger_width = Some(if inspect { 400.0 } else { density.ledger_w() });
                 app.selection.clear();
-                if inspect { app.selection.lines.insert(line); }
+                if inspect {
+                    app.selection.lines.insert(line);
+                }
                 let canvas = crate::ui::layout::canvas_rect(&app);
                 let areas = scroll_areas(&app, app.window_size);
-                let find = |name: &str| areas.iter().find(|a| a.id.as_ref().is_some_and(|id| id.contains(name)))
-                    .unwrap_or_else(|| panic!("missing {name}: {w} {density:?} inspector={inspect}"));
+                let find = |name: &str| {
+                    areas
+                        .iter()
+                        .find(|a| a.id.as_ref().is_some_and(|id| id.contains(name)))
+                        .unwrap_or_else(|| {
+                            panic!("missing {name}: {w} {density:?} inspector={inspect}")
+                        })
+                };
                 let zoom = find("drawing-zoom").bounds;
                 let snap = find("drawing-snap").bounds;
                 let compact = SizeClass::of(w) == SizeClass::Compact;
-                let tray = find(if compact { "drawing-compact-tray" } else { "drawing-tool-tray" }).bounds;
+                let tray = find(if compact {
+                    "drawing-compact-tray"
+                } else {
+                    "drawing-tool-tray"
+                })
+                .bounds;
                 let expanded = |r: iced::Rectangle, pad: f32| iced::Rectangle {
-                    x: r.x - pad, y: r.y - pad,
-                    width: r.width + pad * 2.0, height: r.height + pad * 2.0,
+                    x: r.x - pad,
+                    y: r.y - pad,
+                    width: r.width + pad * 2.0,
+                    height: r.height + pad * 2.0,
                 };
                 let tray_card = expanded(tray, if compact { 0.0 } else { 6.0 });
                 for control in [zoom, snap] {
@@ -1743,13 +2266,24 @@ fn drawing_chrome_laid_out_controls_never_overlap_the_tray() {
                         && card.x + card.width > tray_card.x
                         && card.y < tray_card.y + tray_card.height
                         && card.y + card.height > tray_card.y;
-                    assert!(!overlaps, "overlap at {w} {density:?} inspector={inspect}: {card:?} vs {tray_card:?}");
-                    assert!(control.x >= canvas.x && control.x + control.width <= canvas.x + canvas.width + 0.5,
-                        "control outside canvas at {w}: {control:?} vs {canvas:?}");
+                    assert!(
+                        !overlaps,
+                        "overlap at {w} {density:?} inspector={inspect}: {card:?} vs {tray_card:?}"
+                    );
+                    assert!(
+                        control.x >= canvas.x
+                            && control.x + control.width <= canvas.x + canvas.width + 0.5,
+                        "control outside canvas at {w}: {control:?} vs {canvas:?}"
+                    );
                 }
-                assert!(zoom.intersection(&snap).is_none(), "top controls overlap at {w}");
-                assert!(tray.x >= canvas.x && tray.x + tray.width <= canvas.x + canvas.width + 0.5,
-                    "tray outside canvas at {w}: {tray:?}");
+                assert!(
+                    zoom.intersection(&snap).is_none(),
+                    "top controls overlap at {w}"
+                );
+                assert!(
+                    tray.x >= canvas.x && tray.x + tray.width <= canvas.x + canvas.width + 0.5,
+                    "tray outside canvas at {w}: {tray:?}"
+                );
             }
         }
     }
@@ -1776,7 +2310,10 @@ fn help_about_is_reachable_in_short_windows() {
         // A click lands only on a row that is laid out inside the window.
         let mut h = open_help();
         h.script(&["click \"About Sketch Rust\""]);
-        assert!(h.shows(&crate::about_text()), "About did not open at {name}");
+        assert!(
+            h.shows(&crate::about_text()),
+            "About did not open at {name}"
+        );
         let shot = open_help().screenshot_in("e2e-next", &format!("help-flyout-{name}"));
         assert!(shot.exists());
     }
@@ -1791,8 +2328,14 @@ fn drawing_chrome_buttons_and_popovers_work_after_reflow() {
     ] {
         let mut h = harness_next_at(iced::Size::new(w, height));
         h.send(Message::Ui(UiMsg::SetDensity(density)));
-        h.script(&["click \"Freeform\"", "click \"Erase\"", "click \"Pan\"",
-            "click \"Grid\"", "click \"Snap\"", "click \"Dims: Out\""]);
+        h.script(&[
+            "click \"Freeform\"",
+            "click \"Erase\"",
+            "click \"Pan\"",
+            "click \"Grid\"",
+            "click \"Snap\"",
+            "click \"Dims: Out\"",
+        ]);
         h.script(&["click \"100%\""]);
         assert!(h.shows("Zoom & Scale"));
         h.send(Message::Ui(UiMsg::CloseOverlays));
@@ -1826,7 +2369,10 @@ fn p9_controls_length_strip_and_area_chooser_across_sizes() {
 
             // Zoom popover + slider + Scale submit.
             harness.script(&["click \"100%\""]);
-            assert!(harness.shows("Zoom & Scale"), "Zoom popover missing at {label}");
+            assert!(
+                harness.shows("Zoom & Scale"),
+                "Zoom popover missing at {label}"
+            );
             harness.send(Message::Status(StatusMsg::ZoomSlider(150.0)));
             assert!(harness.shows("150%"), "Zoom pct did not update at {label}");
             harness.send(Message::Status(StatusMsg::ScaleEdit("20".into())));
@@ -1919,16 +2465,25 @@ fn p9_controls_length_strip_and_area_chooser_across_sizes() {
             harness.send(Message::Key(KeyCmd::DrawExterior));
             assert!(harness.shows("pen up"), "wall strip missing at {label}");
             harness.send(Message::Key(KeyCmd::Enter));
-            assert!(harness.shows("pen down"), "pen down indicator missing at {label}");
+            assert!(
+                harness.shows("pen down"),
+                "pen down indicator missing at {label}"
+            );
             harness.send(Message::Key(KeyCmd::Buffer("1")));
             harness.send(Message::Key(KeyCmd::Buffer("2")));
-            assert!(harness.shows("12'"), "typed buffer length missing in strip at {label}");
+            assert!(
+                harness.shows("12'"),
+                "typed buffer length missing in strip at {label}"
+            );
             harness.send(Message::Key(KeyCmd::Arrow {
                 dir: 2,
                 ctrl: false,
                 shift: false,
             }));
-            assert!(harness.shows("12.0'"), "moved length missing in strip at {label}");
+            assert!(
+                harness.shows("12.0'"),
+                "moved length missing in strip at {label}"
+            );
 
             // Measure mode strip & actions.
             harness.send(Message::Rail(crate::view_state::RailTool::Measure));
@@ -1968,7 +2523,10 @@ fn p9_controls_length_strip_and_area_chooser_across_sizes() {
             assert!(harness.shows("All"), "All group chip missing at {label}");
             assert!(harness.shows("Apply"), "Apply button missing at {label}");
             // Both GLA and non-GLA area types visible when search is empty.
-            assert!(harness.shows("First Floor"), "First Floor type missing at {label}");
+            assert!(
+                harness.shows("First Floor"),
+                "First Floor type missing at {label}"
+            );
             assert!(harness.shows("Garage"), "Garage type missing at {label}");
 
             harness.script(&["click \"Label switches ▸\""]);
@@ -2043,32 +2601,44 @@ fn p10_touch_input_pad_and_gestures_across_sizes() {
         {
             let mut harness = harness_next_at(iced::Size::new(w, h));
             harness.send(Message::Ui(UiMsg::TouchDetected));
-            assert!(!harness.shows("Turn L"), "Pad should not auto-show in Select mode at {label}");
+            assert!(
+                !harness.shows("Turn L"),
+                "Pad should not auto-show in Select mode at {label}"
+            );
             harness.send(Message::Rail(crate::view_state::RailTool::DrawExterior));
             assert!(harness.shows("Pen: Up"), "Pad header missing at {label}");
             assert!(harness.shows("Turn L"), "Pad Turn L key missing at {label}");
-            assert!(harness.shows("Close area"), "Pad Close area key missing at {label}");
+            assert!(
+                harness.shows("Close area"),
+                "Pad Close area key missing at {label}"
+            );
 
             harness.send(Message::Ui(UiMsg::HardwareKeyPressed));
-            assert!(!harness.shows("Turn L"), "Hardware key must hide Pad at {label}");
+            assert!(
+                !harness.shows("Turn L"),
+                "Hardware key must hide Pad at {label}"
+            );
             harness.send(Message::Ui(UiMsg::TouchDetected));
-            assert!(harness.shows("Turn L"), "Touch after hardware key must re-show Pad at {label}");
+            assert!(
+                harness.shows("Turn L"),
+                "Touch after hardware key must re-show Pad at {label}"
+            );
 
             if matches!(class, SizeClass::Compact) {
                 harness.script(&["click \"Pad\""]);
-                assert!(!harness.shows("Close area"), "Pad chip toggle must close Pad in Compact");
+                assert!(
+                    !harness.shows("Close area"),
+                    "Pad chip toggle must close Pad in Compact"
+                );
                 harness.send(Message::Ui(UiMsg::MenuRunId("touch-panel")));
-                assert!(harness.shows("Close area"), "Menu > View > Pad must re-open Pad");
+                assert!(
+                    harness.shows("Close area"),
+                    "Menu > View > Pad must re-open Pad"
+                );
                 let app = state(harness);
-                let expected_open_h = crate::ui::layout::canvas_rect_next(
-                    w,
-                    h,
-                    Density::Touch,
-                    0.0,
-                    false,
-                    true,
-                )
-                .height;
+                let expected_open_h =
+                    crate::ui::layout::canvas_rect_next(w, h, Density::Touch, 0.0, false, true)
+                        .height;
                 assert!(
                     (app.canvas_rect().height - expected_open_h).abs() < 1.0,
                     "Compact Pad must dock above bottom toolbar and shrink canvas height"
@@ -2221,7 +2791,8 @@ fn p10_touch_input_pad_and_gestures_across_sizes() {
             h.send(Message::CanvasTouchTap { x: rx, y: ry });
             let app = state(h);
             assert!(
-                app.workflow.status.contains("Preview:") && app.workflow.status.contains("100.0 sf"),
+                app.workflow.status.contains("Preview:")
+                    && app.workflow.status.contains("100.0 sf"),
                 "first touch tap in DefineArea must preview size: {:?}",
                 app.workflow.status
             );
@@ -2253,8 +2824,12 @@ fn p10_touch_input_pad_and_gestures_across_sizes() {
             draw_closed_square(&mut peek);
             let app = state(peek);
             let r = app.canvas_rect();
-            let (sx0, sy0) = app.view.to_screen(crate::view_state::World { x: 5.0, y: 0.0 });
-            let (sx1, sy1) = app.view.to_screen(crate::view_state::World { x: 10.0, y: -5.0 });
+            let (sx0, sy0) = app
+                .view
+                .to_screen(crate::view_state::World { x: 5.0, y: 0.0 });
+            let (sx1, sy1) = app
+                .view
+                .to_screen(crate::view_state::World { x: 10.0, y: -5.0 });
             (sx0 as f32, sy0 as f32, sx1 as f32, sy1 as f32, r)
         };
 
@@ -2262,11 +2837,17 @@ fn p10_touch_input_pad_and_gestures_across_sizes() {
         draw_closed_square(&mut h);
         h.send(Message::Ui(UiMsg::TouchDetected));
         h.send(Message::Rail(crate::view_state::RailTool::Select));
-        assert!(h.shows("Select more"), "Select more pill missing in Select mode");
+        assert!(
+            h.shows("Select more"),
+            "Select more pill missing in Select mode"
+        );
         h.script(&["click \"Select more\""]);
         h.send(Message::CanvasTouchTap { x: sx0, y: sy0 });
         h.send(Message::CanvasTouchTap { x: sx1, y: sy1 });
-        h.send(Message::RightPress(iced::Point::new(r.x + 100.0, r.y + 100.0)));
+        h.send(Message::RightPress(iced::Point::new(
+            r.x + 100.0,
+            r.y + 100.0,
+        )));
         h.send(Message::Options(crate::options_dialog::OptMsg::Open));
         h.send(Message::Options(crate::options_dialog::OptMsg::Str(
             crate::options::StrKey::InputMode,
@@ -2293,7 +2874,10 @@ fn p10_touch_input_pad_and_gestures_across_sizes() {
             ),
             "Touch density endpoint handle must hit within 24 px radius (48 px diameter)"
         );
-        assert!(app.context.open.is_some(), "RightPress must open canvas context menu");
+        assert!(
+            app.context.open.is_some(),
+            "RightPress must open canvas context menu"
+        );
         assert_eq!(app.drawing.options.input_mode, "pen-ink");
     }
 
@@ -2366,8 +2950,10 @@ fn area_type_palette_paints_boundaries_and_fills_on_canvas() {
         let x = 16.0 * (index % 3) as f64;
         let y = 16.0 * (index / 3) as f64;
         let points = [
-            Pt::new(x, y), Pt::new(x + 12.0, y),
-            Pt::new(x + 12.0, y + 12.0), Pt::new(x, y + 12.0),
+            Pt::new(x, y),
+            Pt::new(x + 12.0, y),
+            Pt::new(x + 12.0, y + 12.0),
+            Pt::new(x, y + 12.0),
         ];
         for (edge, (start, end)) in points.iter().zip(points.iter().cycle().skip(1)).enumerate() {
             let id = fixture.drawing.gen_id();
@@ -2390,16 +2976,26 @@ fn area_type_palette_paints_boundaries_and_fills_on_canvas() {
         }))
         .unwrap();
         fixture.drawing.polygons.push(poly);
-        samples.push((code, rgb, Pt::new(x + 12.0, y + 4.0), Pt::new(x + 2.0, y + 9.0)));
+        samples.push((
+            code,
+            rgb,
+            Pt::new(x + 12.0, y + 4.0),
+            Pt::new(x + 2.0, y + 9.0),
+        ));
     }
-    let file = std::env::temp_dir().join(format!("sketch-rust-canvas-palette-{}.skx", std::process::id()));
+    let file = std::env::temp_dir().join(format!(
+        "sketch-rust-canvas-palette-{}.skx",
+        std::process::id()
+    ));
     let bytes = sketch_core::skx::write(&fixture.build_save_model(), &Default::default()).unwrap();
     std::fs::write(&file, bytes).unwrap();
 
     let mut harness = harness_next_at(VIEWPORT);
     harness.send(Message::FileDropped(file.clone()));
     std::fs::remove_file(file).unwrap();
-    harness.send(Message::PopupMenu(PopupMsg::Canvas(crate::canvas_theme::CanvasTheme::Dark)));
+    harness.send(Message::PopupMenu(PopupMsg::Canvas(
+        crate::canvas_theme::CanvasTheme::Dark,
+    )));
     harness.send(Message::Status(StatusMsg::CenterFit));
     harness.send(Message::Status(StatusMsg::ZoomOut));
     let screenshot = image::open(harness.screenshot_in("e2e-next", "canvas-area-colors"))
@@ -2409,7 +3005,9 @@ fn area_type_palette_paints_boundaries_and_fills_on_canvas() {
     assert_eq!(app.drawing.polygons.len(), areas.len());
     let origin = app.canvas_origin();
     let pixel = |at: Pt| {
-        let (x, y) = app.view.to_screen(crate::view_state::World { x: at.x, y: at.y });
+        let (x, y) = app
+            .view
+            .to_screen(crate::view_state::World { x: at.x, y: at.y });
         let px = (x + f64::from(origin.x)).round() as u32;
         let py = (y + f64::from(origin.y)).round() as u32;
         &screenshot.get_pixel(px, py).0
@@ -2418,14 +3016,26 @@ fn area_type_palette_paints_boundaries_and_fills_on_canvas() {
     for (code, rgb, edge, inside) in samples {
         let color = [(rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8];
         for (actual, expected) in pixel(edge).iter().zip(color) {
-            assert!(actual.abs_diff(expected) <= 3, "{code} boundary {:?}", pixel(edge));
+            assert!(
+                actual.abs_diff(expected) <= 3,
+                "{code} boundary {:?}",
+                pixel(edge)
+            );
         }
         for ((actual, background), source) in pixel(inside).iter().zip(background).zip(color) {
             let blended = (f32::from(*background) * 0.9 + f32::from(source) * 0.1).round() as u8;
-            assert!(actual.abs_diff(blended) <= 5, "{code} fill {:?}", pixel(inside));
+            assert!(
+                actual.abs_diff(blended) <= 5,
+                "{code} fill {:?}",
+                pixel(inside)
+            );
         }
     }
-    assert_eq!(pixel(Pt::new(4.0, 12.0)), &[219, 39, 119], "custom wall colour");
+    assert_eq!(
+        pixel(Pt::new(4.0, 12.0)),
+        &[219, 39, 119],
+        "custom wall colour"
+    );
 }
 
 #[test]
@@ -2472,12 +3082,20 @@ fn p11_area_type_editor_and_default_colors_across_sizes() {
         assert!(h.shows("Count in gross living area"));
 
         // Edit fields on selected GLA1 and open ColorDialog for Line & Fill.
-        h.send(Message::Ui(UiMsg::TypeEditor(TypeMsg::Name("Main Living".into()))));
-        h.send(Message::Ui(UiMsg::TypeEditor(TypeMsg::Description("Primary GLA".into()))));
-        h.send(Message::Ui(UiMsg::TypeEditor(TypeMsg::Multiplier("1.25".into()))));
+        h.send(Message::Ui(UiMsg::TypeEditor(TypeMsg::Name(
+            "Main Living".into(),
+        ))));
+        h.send(Message::Ui(UiMsg::TypeEditor(TypeMsg::Description(
+            "Primary GLA".into(),
+        ))));
+        h.send(Message::Ui(UiMsg::TypeEditor(TypeMsg::Multiplier(
+            "1.25".into(),
+        ))));
         h.send(Message::Ui(UiMsg::TypeEditor(TypeMsg::Sign(false))));
         h.send(Message::Ui(UiMsg::TypeEditor(TypeMsg::IncludeGla(false))));
-        h.send(Message::Ui(UiMsg::TypeEditor(TypeMsg::FillStyle("Crosshatch".into()))));
+        h.send(Message::Ui(UiMsg::TypeEditor(TypeMsg::FillStyle(
+            "Crosshatch".into(),
+        ))));
         h.send(Message::Ui(UiMsg::TypeEditor(TypeMsg::FillOpacity(35.0))));
         h.send(Message::Ui(UiMsg::TypeEditor(TypeMsg::PickLineColor)));
         h.send(Message::Color(ColorMsg::Preset("#E53E3E")));
@@ -2592,7 +3210,11 @@ fn p11_area_type_editor_and_default_colors_across_sizes() {
         )));
         let _ = app.update(Message::Ui(UiMsg::TypeEditor(TypeMsg::RequestDelete)));
         assert!(
-            app.ui.type_editor.drafts.iter().any(|d| d.area.code == "UND"),
+            app.ui
+                .type_editor
+                .drafts
+                .iter()
+                .any(|d| d.area.code == "UND"),
             "UND must not be deletable"
         );
         let tmp_dir = std::env::temp_dir().join("sketch_rust_p11_io");
@@ -2613,8 +3235,12 @@ fn p11_area_type_editor_and_default_colors_across_sizes() {
             session,
             Some(export_path.clone()),
         ))));
-        let _ = app.update(Message::Ui(UiMsg::TypeEditor(TypeMsg::RequestRestoreDefaults)));
-        let _ = app.update(Message::Ui(UiMsg::TypeEditor(TypeMsg::ConfirmRestoreDefaults)));
+        let _ = app.update(Message::Ui(UiMsg::TypeEditor(
+            TypeMsg::RequestRestoreDefaults,
+        )));
+        let _ = app.update(Message::Ui(UiMsg::TypeEditor(
+            TypeMsg::ConfirmRestoreDefaults,
+        )));
         let _ = app.update(Message::Ui(UiMsg::TypeEditor(TypeMsg::Save)));
         assert_eq!(app.area_codes.len(), 26);
         assert!(app.area_codes.iter().any(|c| c.code == "GAR"));
@@ -2654,11 +3280,10 @@ fn p11_area_type_editor_and_default_colors_across_sizes() {
 #[test]
 fn p12_symbol_library_and_shape_editing_across_sizes() {
     use crate::ui::symbol_library::{
-        import_dxf_paths, import_library_file, CompactPage, ConfirmAction, Msg as SymMsg,
-        ALL_KEY,
+        import_dxf_paths, import_library_file, CompactPage, ConfirmAction, Msg as SymMsg, ALL_KEY,
     };
     use sketch_core::geometry::Pt;
-    use sketch_core::symbols::{WallSnap, world_corners};
+    use sketch_core::symbols::{world_corners, WallSnap};
 
     // 1. Missing symbols.original.json leaves original_library_path() empty (disables Restore).
     symlib::with_temp_library_opts(false, || {
@@ -2738,9 +3363,9 @@ fn p12_symbol_library_and_shape_editing_across_sizes() {
                 cat0.clone(),
             ))));
             assert_eq!(app.symbols_lib().categories[1].key, cat0);
-            let _ = app.update(Message::Ui(UiMsg::SymbolLibrary(SymMsg::MoveSymbolEarlier(
-                dup_id.clone(),
-            ))));
+            let _ = app.update(Message::Ui(UiMsg::SymbolLibrary(
+                SymMsg::MoveSymbolEarlier(dup_id.clone()),
+            )));
             assert_eq!(app.drawing.symbols[0].symbol_type, dup_id);
             let _ = app.update(Message::Ui(UiMsg::SymbolLibrary(SymMsg::Close)));
 
@@ -2776,9 +3401,15 @@ fn p12_symbol_library_and_shape_editing_across_sizes() {
             let desk_sym = app.symbols_lib().symbol(&desk_id).unwrap().clone();
             let corners = world_corners(desk_sym.bounds, 10.0, 10.0, 0.0, 1.0, false);
             let min_x = corners.iter().map(|p| p.x).fold(f64::INFINITY, f64::min);
-            let max_x = corners.iter().map(|p| p.x).fold(f64::NEG_INFINITY, f64::max);
+            let max_x = corners
+                .iter()
+                .map(|p| p.x)
+                .fold(f64::NEG_INFINITY, f64::max);
             let min_y = corners.iter().map(|p| p.y).fold(f64::INFINITY, f64::min);
-            let max_y = corners.iter().map(|p| p.y).fold(f64::NEG_INFINITY, f64::max);
+            let max_y = corners
+                .iter()
+                .map(|p| p.y)
+                .fold(f64::NEG_INFINITY, f64::max);
             assert!(((max_x - min_x) - 4.0).abs() < 1e-3);
             assert!(((max_y - min_y) - 2.0).abs() < 1e-3);
 
@@ -2837,11 +3468,9 @@ fn p12_symbol_library_and_shape_editing_across_sizes() {
 
             // Re-importing same subset reports conflicts cleanly (0 added).
             let _ = import_library_file(&mut app, &export_path);
-            let report = sketch_core::symbol_edit::import_with_report(
-                &symlib::library_path(),
-                &export_path,
-            )
-            .unwrap();
+            let report =
+                sketch_core::symbol_edit::import_with_report(&symlib::library_path(), &export_path)
+                    .unwrap();
             assert_eq!(report.added, 0);
             assert!(report.conflicts.contains(&desk_id));
             let _ = std::fs::remove_dir_all(&tmp_dir);
@@ -2857,8 +3486,14 @@ fn p12_symbol_library_and_shape_editing_across_sizes() {
                 Some(ConfirmAction::DeleteCategory(del_cat.clone()))
             );
             let _ = app.update(Message::Ui(UiMsg::SymbolLibrary(SymMsg::Confirm)));
-            assert!(!app.symbols_lib().categories.iter().any(|c| c.key == del_cat));
-            assert!(symlib::library_path().with_file_name("symbols.json.bak").exists());
+            assert!(!app
+                .symbols_lib()
+                .categories
+                .iter()
+                .any(|c| c.key == del_cat));
+            assert!(symlib::library_path()
+                .with_file_name("symbols.json.bak")
+                .exists());
 
             let _ = app.update(Message::Ui(UiMsg::SymbolLibrary(
                 SymMsg::RequestRestoreOriginal,
@@ -3005,7 +3640,10 @@ fn p13_start_screen_dialogs_and_guide_across_sizes() {
         harness.send(Message::Ui(UiMsg::Start(StartMsg::ReportChecked(
             ReportStatus::Open("124 Maple St · File #441".into()),
         ))));
-        assert!(harness.shows("Start a sketch"), "start screen header missing at {label}");
+        assert!(
+            harness.shows("Start a sketch"),
+            "start screen header missing at {label}"
+        );
         assert!(harness.shows("New sketch"));
         assert!(harness.shows("Draw the sketch for this report"));
         assert!(harness.shows("Recent sketches"));
@@ -3103,9 +3741,9 @@ fn p13_start_screen_dialogs_and_guide_across_sizes() {
             harness.send(Message::Key(KeyCmd::Enter));
         }
         harness.send(Message::Key(KeyCmd::SelectAll));
-        harness.send(Message::AreaWorkflow(crate::area_workflow::Msg::AssignSelected(
-            "GLA1".into(),
-        )));
+        harness.send(Message::AreaWorkflow(
+            crate::area_workflow::Msg::AssignSelected("GLA1".into()),
+        ));
         harness.send(Message::OpenBreakdown);
         assert!(harness.shows("Breakdown Details"));
         let shot = harness.screenshot_in("e2e-next", "p13-breakdown-wide");
@@ -3126,9 +3764,9 @@ fn p13_start_screen_dialogs_and_guide_across_sizes() {
             harness.send(Message::Key(KeyCmd::Enter));
         }
         harness.send(Message::Key(KeyCmd::SelectAll));
-        harness.send(Message::AreaWorkflow(crate::area_workflow::Msg::AssignSelected(
-            "GLA1".into(),
-        )));
+        harness.send(Message::AreaWorkflow(
+            crate::area_workflow::Msg::AssignSelected("GLA1".into()),
+        ));
 
         harness.send(Message::RoomShapeOpen);
         assert!(harness.shows("Insert Room Shape"));
@@ -3202,7 +3840,9 @@ fn p14_coverage_audit_themes_and_menu_workflows_across_sizes() {
         h.send(Message::Dialog(crate::dialog::DialogMsg::Cancel));
 
         // Menu > View > Interface theme -> Light + Canvas Light.
-        h.send(Message::PopupMenu(PopupMsg::Interface(InterfaceTheme::Light)));
+        h.send(Message::PopupMenu(PopupMsg::Interface(
+            InterfaceTheme::Light,
+        )));
         h.send(Message::PopupMenu(PopupMsg::Canvas(CanvasTheme::Light)));
         assert_eq!(crate::theme::interface_theme(), InterfaceTheme::Light);
         let shot_light = h.screenshot_in("e2e-next", "p14-theme-light-wide");
@@ -3222,14 +3862,18 @@ fn p14_coverage_audit_themes_and_menu_workflows_across_sizes() {
             }));
             h.send(Message::Key(KeyCmd::Enter));
         }
-        h.send(Message::PopupMenu(PopupMsg::Interface(InterfaceTheme::Blue)));
+        h.send(Message::PopupMenu(PopupMsg::Interface(
+            InterfaceTheme::Blue,
+        )));
         h.send(Message::PopupMenu(PopupMsg::Canvas(CanvasTheme::Blue)));
         assert_eq!(crate::theme::interface_theme(), InterfaceTheme::Blue);
         let shot_blue = h.screenshot_in("e2e-next", "p14-theme-blue-wide");
         assert!(shot_blue.exists());
 
         // Restore default Dark UI + Light canvas before finishing.
-        h.send(Message::PopupMenu(PopupMsg::Interface(InterfaceTheme::Dark)));
+        h.send(Message::PopupMenu(PopupMsg::Interface(
+            InterfaceTheme::Dark,
+        )));
         h.send(Message::PopupMenu(PopupMsg::Canvas(CanvasTheme::Light)));
     }
 
@@ -3276,7 +3920,9 @@ fn p14_coverage_audit_themes_and_menu_workflows_across_sizes() {
         h.send(Message::RotateSketchBy(-90.0));
         h.send(Message::Ui(UiMsg::MenuRunId("flip-horizontal")));
         h.send(Message::Status(crate::statusbar::StatusMsg::PageAdd));
-        h.send(Message::Status(crate::statusbar::StatusMsg::Underlay(Some(0))));
+        h.send(Message::Status(crate::statusbar::StatusMsg::Underlay(
+            Some(0),
+        )));
 
         let app = state(h);
         assert_eq!(app.pages.pages.len(), 2, "second page added at {label}");
@@ -3293,8 +3939,12 @@ fn drawn_square_wall_point(w: f32, h: f32, t: f64) -> ((f32, f32), f32) {
     let line = &app.drawing.lines[0];
     let wx = line.start.x + (line.end.x - line.start.x) * t;
     let wy = line.start.y + (line.end.y - line.start.y) * t;
-    let (sx, sy) = app.view.to_screen(crate::view_state::World { x: wx, y: wy });
-    let (ox, _) = app.view.to_screen(crate::view_state::World { x: wx + 1.0, y: wy });
+    let (sx, sy) = app
+        .view
+        .to_screen(crate::view_state::World { x: wx, y: wy });
+    let (ox, _) = app
+        .view
+        .to_screen(crate::view_state::World { x: wx + 1.0, y: wy });
     ((sx as f32, sy as f32), (ox - sx).abs() as f32)
 }
 
@@ -3381,10 +4031,12 @@ fn selected_area_corner_moves_connected_walls_and_can_be_undone() {
         let mut harness = harness_next_at(VIEWPORT);
         draw_closed_square(&mut harness);
         harness.script(&["click \"Select\"", &format!("click ({cx:.1}, {cy:.1})")]);
-        harness.send(Message::Status(StatusMsg::Pitch(crate::statusbar::PitchOption {
-            label: "1/2'",
-            value: 0.5,
-        })));
+        harness.send(Message::Status(StatusMsg::Pitch(
+            crate::statusbar::PitchOption {
+                label: "1/2'",
+                value: 0.5,
+            },
+        )));
         if !snap {
             harness.send(Message::Status(StatusMsg::ToggleSnap));
         }
@@ -3397,14 +4049,22 @@ fn selected_area_corner_moves_connected_walls_and_can_be_undone() {
         assert!(app.selection.is_poly_selected(area_id));
         let moved = app.drawing.polygons[0].points[0];
         assert_eq!(
-            app.drawing.lines.iter().filter(|wall| wall.start == moved || wall.end == moved).count(),
+            app.drawing
+                .lines
+                .iter()
+                .filter(|wall| wall.start == moved || wall.end == moved)
+                .count(),
             2,
             "both walls should follow the corner"
         );
         let _ = app.update(Message::Undo);
         let original = app.drawing.polygons[0].points[0];
         let k = sketch_core::geometry::PIXELS_PER_FOOT * app.view.zoom;
-        let (dx, dy) = if snap { (1.0, 0.5) } else { (24.0 / k, 12.0 / k) };
+        let (dx, dy) = if snap {
+            (1.0, 0.5)
+        } else {
+            (24.0 / k, 12.0 / k)
+        };
         let expected = Pt::new(original.x + dx, original.y + dy);
         assert!(sketch_core::geometry::distance(moved, expected) < 1e-5);
     }
@@ -3416,7 +4076,10 @@ fn select_more_pill_is_only_on_screen_for_touch() {
     let mut h = harness_next_at(VIEWPORT);
     draw_closed_square(&mut h);
     h.send(Message::Rail(crate::view_state::RailTool::Select));
-    assert!(!h.shows("Select more"), "the pill must not show with a mouse");
+    assert!(
+        !h.shows("Select more"),
+        "the pill must not show with a mouse"
+    );
     h.send(Message::Ui(UiMsg::TouchDetected));
     assert!(h.shows("Select more"), "the pill must show for touch");
 }
@@ -3428,7 +4091,10 @@ fn wall_end_drags_and_selection_moves_land_on_the_grid_when_snap_is_on() {
     let on_grid = |v: f64, pitch: f64| ((v / pitch).round() * pitch - v).abs() < 1e-6;
     for (label, pitch) in [("1'", 1.0), ("1/2'", 0.5), ("1\"", 1.0 / 12.0)] {
         for snap in [true, false] {
-            let pick = crate::statusbar::PitchOption { label, value: pitch };
+            let pick = crate::statusbar::PitchOption {
+                label,
+                value: pitch,
+            };
             let prepare = || {
                 let mut h = harness_next_at(VIEWPORT);
                 draw_closed_square(&mut h);
@@ -3468,7 +4134,9 @@ fn wall_end_drags_and_selection_moves_land_on_the_grid_when_snap_is_on() {
                 let n = poly.points.len() as f64;
                 let wx = poly.points.iter().map(|p| p.x).sum::<f64>() / n;
                 let wy = poly.points.iter().map(|p| p.y).sum::<f64>() / n;
-                let (x, y) = app.view.to_screen(crate::view_state::World { x: wx, y: wy });
+                let (x, y) = app
+                    .view
+                    .to_screen(crate::view_state::World { x: wx, y: wy });
                 (x as f32, y as f32)
             };
             let mut h = prepare();
@@ -3533,9 +4201,10 @@ fn select_drag_on_empty_canvas_marquee_selects_across_sizes() {
     for &(label, w, h, _) in SIZES {
         let bounds = |app: &crate::App, pad: f64, hi: bool| {
             let pts = &app.drawing.polygons[0].points;
-            let pick = |f: fn(f64, f64) -> f64, init: f64, get: fn(&sketch_core::geometry::Pt) -> f64| {
-                pts.iter().map(get).fold(init, f)
-            };
+            let pick =
+                |f: fn(f64, f64) -> f64, init: f64, get: fn(&sketch_core::geometry::Pt) -> f64| {
+                    pts.iter().map(get).fold(init, f)
+                };
             if hi {
                 (
                     pick(f64::max, f64::NEG_INFINITY, |p| p.x) + pad,
@@ -3558,7 +4227,11 @@ fn select_drag_on_empty_canvas_marquee_selects_across_sizes() {
         h_app.send(Message::CanvasDrag(bx, by, false));
         h_app.send(Message::CanvasDragEnd);
         let app = state(h_app);
-        assert_eq!(app.selection.lines.len(), 4, "marquee selects the four walls at {label}");
+        assert_eq!(
+            app.selection.lines.len(),
+            4,
+            "marquee selects the four walls at {label}"
+        );
         assert!(app.view.fence.is_none(), "marquee ends at {label}");
     }
 }
@@ -3595,7 +4268,12 @@ fn select_drag_on_the_rotate_handle_turns_the_area_across_sizes() {
                 x: area.center_world.x,
                 y: area.center_world.y,
             });
-            (area.handle.0 as f32, area.handle.1 as f32, px as f32, py as f32)
+            (
+                area.handle.0 as f32,
+                area.handle.1 as f32,
+                px as f32,
+                py as f32,
+            )
         };
         let (dx, dy) = (hx - pcx, hy - pcy);
         let (s, c) = std::f32::consts::FRAC_PI_4.sin_cos();
@@ -3618,14 +4296,20 @@ fn select_drag_on_the_rotate_handle_turns_the_area_across_sizes() {
             (width - 200.0_f64.sqrt()).abs() < 0.05,
             "a 45 degree turn makes the 10 ft square 14.14 ft wide at {label}: got {width}"
         );
-        assert!((ring_area(pts) - 100.0).abs() < 0.01, "area is kept at {label}");
+        assert!(
+            (ring_area(pts) - 100.0).abs() < 0.01,
+            "area is kept at {label}"
+        );
     }
 }
 
 /// Capture the unified area and wall inspector at desktop and tablet sizes.
 #[test]
 fn unified_inspector_renders_on_desktop_and_tablet() {
-    for (name, w, h, touch) in [("wide", 1400.0, 860.0, false), ("tablet", 1280.0, 800.0, true)] {
+    for (name, w, h, touch) in [
+        ("wide", 1400.0, 860.0, false),
+        ("tablet", 1280.0, 800.0, true),
+    ] {
         let (cx, cy) = drawn_square_center_on_screen(w, h);
         let (wx, wy) = drawn_square_wall_mid_on_screen(w, h);
         for (kind, x, y) in [("area", cx, cy), ("wall", wx, wy)] {
@@ -3666,9 +4350,9 @@ fn dialogs_that_scroll_at(size: iced::Size, tag: &str) -> Vec<String> {
         let mut h = harness_next_at(full_hd);
         draw_closed_square(&mut h);
         h.send(Message::Key(KeyCmd::SelectAll));
-        h.send(Message::AreaWorkflow(crate::area_workflow::Msg::AssignSelected(
-            "GLA1".into(),
-        )));
+        h.send(Message::AreaWorkflow(
+            crate::area_workflow::Msg::AssignSelected("GLA1".into()),
+        ));
         h.send(Message::Key(KeyCmd::SelectAll));
         h
     };
@@ -3684,13 +4368,19 @@ fn dialogs_that_scroll_at(size: iced::Size, tag: &str) -> Vec<String> {
     for tab in OptTab::ALL {
         cases.push((
             format!("options-{}", tab.label()),
-            vec![Message::Options(OptMsg::Open), Message::Options(OptMsg::Tab(*tab))],
+            vec![
+                Message::Options(OptMsg::Open),
+                Message::Options(OptMsg::Tab(*tab)),
+            ],
         ));
     }
     for tab in [SubjectTab::Parcel, SubjectTab::Comments, SubjectTab::Tables] {
         cases.push((
             format!("property-details-{tab:?}"),
-            vec![Message::OpenSubjectInfo, Message::SubjectInfo(SubjectMsg::Tab(tab))],
+            vec![
+                Message::OpenSubjectInfo,
+                Message::SubjectInfo(SubjectMsg::Tab(tab)),
+            ],
         ));
     }
     for tab in [ColorTab::Standard, ColorTab::Custom] {
@@ -3703,7 +4393,10 @@ fn dialogs_that_scroll_at(size: iced::Size, tag: &str) -> Vec<String> {
         ));
     }
     for (i, _) in TOPICS.iter().enumerate() {
-        cases.push((format!("guide-{i}"), vec![Message::Guide(GuideMsg::Open(i))]));
+        cases.push((
+            format!("guide-{i}"),
+            vec![Message::Guide(GuideMsg::Open(i))],
+        ));
     }
     for (name, steps) in [
         ("page-layout", vec![Message::PageLayout(LayoutMsg::Open)]),
@@ -3713,7 +4406,10 @@ fn dialogs_that_scroll_at(size: iced::Size, tag: &str) -> Vec<String> {
         ("area-properties", vec![Message::AreaProps]),
         ("room-shapes", vec![Message::RoomShapeOpen]),
         ("laser", vec![Message::Disto(DistoMsg::Connect)]),
-        ("room-labels", vec![Message::TextLibraryManager(TextManagerMsg::Open)]),
+        (
+            "room-labels",
+            vec![Message::TextLibraryManager(TextManagerMsg::Open)],
+        ),
         ("undo-history", vec![Message::UndoHistory]),
         ("shortcuts", vec![Message::Shortcuts(ShortcutsMsg::Open)]),
         ("map", vec![Message::GeoLoadMap]),
@@ -3785,13 +4481,18 @@ fn dialogs_that_scroll_at(size: iced::Size, tag: &str) -> Vec<String> {
 #[test]
 fn dialogs_fit_1920x1080_without_scrolling() {
     let mut failures = dialogs_that_scroll_at(iced::Size::new(1920.0, 1080.0), "1920");
-    failures.extend(dialogs_that_scroll_at(iced::Size::new(1382.0, 816.0), "1382"));
+    failures.extend(dialogs_that_scroll_at(
+        iced::Size::new(1382.0, 816.0),
+        "1382",
+    ));
     assert!(
         failures.is_empty(),
         "dialogs that scroll:
 {}",
-        failures.join("
-")
+        failures.join(
+            "
+"
+        )
     );
 }
 
@@ -3824,10 +4525,24 @@ fn readme_floor_plan_screenshot() {
     let areas: [(&str, &[(f64, f64)]); 3] = [
         (
             "GLA1",
-            &[(0., 0.), (44., 0.), (44., 28.), (24., 28.), (24., 38.), (0., 38.), (0., 0.)],
+            &[
+                (0., 0.),
+                (44., 0.),
+                (44., 28.),
+                (24., 28.),
+                (24., 38.),
+                (0., 38.),
+                (0., 0.),
+            ],
         ),
-        ("GAR", &[(44., 0.), (68., 0.), (68., 24.), (44., 24.), (44., 0.)]),
-        ("OFP", &[(24., 28.), (44., 28.), (44., 36.), (24., 36.), (24., 28.)]),
+        (
+            "GAR",
+            &[(44., 0.), (68., 0.), (68., 24.), (44., 24.), (44., 0.)],
+        ),
+        (
+            "OFP",
+            &[(24., 28.), (44., 28.), (44., 36.), (24., 36.), (24., 28.)],
+        ),
     ];
     for (code, pts) in areas {
         let known: std::collections::BTreeSet<i64> =
@@ -3885,7 +4600,12 @@ fn readme_floor_plan_screenshot() {
     h.wait(5000); // let the "opened" toast go
     assert!(h.screenshot_in("e2e-next", "readme-floor-plan").exists());
     let opened = state(h);
-    let mut codes: Vec<&str> = opened.drawing.polygons.iter().map(|p| p.kind.as_str()).collect();
+    let mut codes: Vec<&str> = opened
+        .drawing
+        .polygons
+        .iter()
+        .map(|p| p.kind.as_str())
+        .collect();
     codes.sort();
     assert_eq!(codes, ["GAR", "GLA1", "OFP"]);
     assert_eq!(opened.drawing.symbols.len(), 14);
@@ -3899,13 +4619,15 @@ fn dark_palette_on_dark_drawing_background_screenshots() {
     // selected and plain views each get their own.
     for selected in [true, false] {
         let mut h = harness_next_at(VIEWPORT);
-        h.send(Message::PopupMenu(PopupMsg::Interface(InterfaceTheme::Dark)));
+        h.send(Message::PopupMenu(PopupMsg::Interface(
+            InterfaceTheme::Dark,
+        )));
         h.send(Message::PopupMenu(PopupMsg::Canvas(CanvasTheme::Dark)));
         draw_closed_square(&mut h);
         h.send(Message::Key(KeyCmd::SelectAll));
-        h.send(Message::AreaWorkflow(crate::area_workflow::Msg::AssignSelected(
-            "GLA1".into(),
-        )));
+        h.send(Message::AreaWorkflow(
+            crate::area_workflow::Msg::AssignSelected("GLA1".into()),
+        ));
         h.send(Message::Key(KeyCmd::SelectAll));
         if !selected {
             h.send(Message::Key(KeyCmd::Escape));
@@ -3933,7 +4655,12 @@ fn deleting_a_wall_of_a_closed_area_and_redrawing_it_closes_the_area_again() {
     let mut h = harness_next_at(VIEWPORT);
     draw_closed_square(&mut h);
     h.send(Message::Key(KeyCmd::Select));
-    h.send(Message::CanvasClick { x: mx, y: my, double: false, ctrl: false });
+    h.send(Message::CanvasClick {
+        x: mx,
+        y: my,
+        double: false,
+        ctrl: false,
+    });
     h.send(Message::Delete);
     h.send(Message::Dialog(DialogMsg::Ok));
     let app = state(h);
@@ -3948,12 +4675,27 @@ fn deleting_a_wall_of_a_closed_area_and_redrawing_it_closes_the_area_again() {
     let mut h = harness_next_at(VIEWPORT);
     draw_closed_square(&mut h);
     h.send(Message::Key(KeyCmd::Select));
-    h.send(Message::CanvasClick { x: mx, y: my, double: false, ctrl: false });
+    h.send(Message::CanvasClick {
+        x: mx,
+        y: my,
+        double: false,
+        ctrl: false,
+    });
     h.send(Message::Delete);
     h.send(Message::Dialog(DialogMsg::Ok));
     h.send(Message::Key(KeyCmd::DrawExterior));
-    h.send(Message::CanvasClick { x: sx, y: sy, double: false, ctrl: false });
-    h.send(Message::CanvasClick { x: ex, y: ey, double: false, ctrl: false });
+    h.send(Message::CanvasClick {
+        x: sx,
+        y: sy,
+        double: false,
+        ctrl: false,
+    });
+    h.send(Message::CanvasClick {
+        x: ex,
+        y: ey,
+        double: false,
+        ctrl: false,
+    });
     let app = state(h);
     println!(
         "after redraw: lines={} polys={} pen_down={} reopened={}",
@@ -3963,6 +4705,9 @@ fn deleting_a_wall_of_a_closed_area_and_redrawing_it_closes_the_area_again() {
         app.drawing.reopened_areas.len()
     );
     assert_eq!(app.drawing.lines.len(), 4);
-    assert_eq!(app.drawing.polygons.len(), 1, "the redrawn wall closes the area again");
+    assert_eq!(
+        app.drawing.polygons.len(),
+        1,
+        "the redrawn wall closes the area again"
+    );
 }
-

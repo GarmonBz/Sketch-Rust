@@ -665,7 +665,10 @@ mod tests {
     }
 
     fn order(l: &Layers) -> Vec<&str> {
-        l.flatten_layer_order().iter().map(|x| x.id.as_str()).collect()
+        l.flatten_layer_order()
+            .iter()
+            .map(|x| x.id.as_str())
+            .collect()
     }
 
     #[test]
@@ -673,30 +676,51 @@ mod tests {
         let mut l = tree();
         // Kitchen (top level) dropped before Room B joins the Areas folder.
         assert!(l.move_layer("kitchen", "room-b", DragPos::Before));
-        assert_eq!(l.layer("kitchen").unwrap().parent_id.as_deref(), Some("grp"));
-        assert_eq!(order(&l), vec!["layer-1", "grp", "room-a", "kitchen", "room-b"]);
+        assert_eq!(
+            l.layer("kitchen").unwrap().parent_id.as_deref(),
+            Some("grp")
+        );
+        assert_eq!(
+            order(&l),
+            vec!["layer-1", "grp", "room-a", "kitchen", "room-b"]
+        );
         // Room A dropped after Layer 1 leaves the folder.
         assert!(l.move_layer("room-a", "layer-1", DragPos::After));
         assert!(l.layer("room-a").unwrap().parent_id.is_none());
-        assert_eq!(order(&l), vec!["layer-1", "room-a", "grp", "kitchen", "room-b"]);
+        assert_eq!(
+            order(&l),
+            vec!["layer-1", "room-a", "grp", "kitchen", "room-b"]
+        );
     }
 
     #[test]
     fn move_into_appends_to_a_folder_or_the_top_level() {
         let mut l = tree();
         assert!(l.move_into("kitchen", Some("grp")));
-        assert_eq!(l.layer("kitchen").unwrap().parent_id.as_deref(), Some("grp"));
-        assert_eq!(order(&l), vec!["layer-1", "grp", "room-a", "room-b", "kitchen"]);
+        assert_eq!(
+            l.layer("kitchen").unwrap().parent_id.as_deref(),
+            Some("grp")
+        );
+        assert_eq!(
+            order(&l),
+            vec!["layer-1", "grp", "room-a", "room-b", "kitchen"]
+        );
         assert!(l.move_into("room-a", None));
         assert!(l.layer("room-a").unwrap().parent_id.is_none());
-        assert_eq!(order(&l), vec!["layer-1", "grp", "room-b", "kitchen", "room-a"]);
+        assert_eq!(
+            order(&l),
+            vec!["layer-1", "grp", "room-b", "kitchen", "room-a"]
+        );
         // An empty folder takes its first child, unfolded.
         let mut empty = Layer::new("empty", "Empty");
         empty.is_group = true;
         empty.collapsed = true;
         l.items.push(empty);
         assert!(l.move_into("room-b", Some("empty")));
-        assert_eq!(l.layer("room-b").unwrap().parent_id.as_deref(), Some("empty"));
+        assert_eq!(
+            l.layer("room-b").unwrap().parent_id.as_deref(),
+            Some("empty")
+        );
         assert!(!l.layer("empty").unwrap().collapsed);
         // Not into a plain layer, nor into itself.
         assert!(!l.move_into("room-b", Some("kitchen")));

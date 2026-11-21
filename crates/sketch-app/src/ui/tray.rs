@@ -1,8 +1,7 @@
 //! Floating tool tray (`Wide`/`Medium`), bottom scrollable tool bar (`Compact`), and tool fly-outs for `Shell::Next`.
 
 use iced::widget::{
-    button, column, container, mouse_area, opaque, row, scrollable, text, tooltip::Position,
-    Stack,
+    button, column, container, mouse_area, opaque, row, scrollable, text, tooltip::Position, Stack,
 };
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding};
 use sketch_core::model::WallType;
@@ -16,8 +15,7 @@ use crate::ui::fonts::{BARLOW_MEDIUM, BARLOW_SEMIBOLD, BSC_SEMIBOLD};
 use crate::ui::kit::{self, MenuEntry};
 use crate::ui::layout::{self, DrawingChrome, SizeClass, CHROME_INSET, TRAY_GAP, TRAY_PAD};
 use crate::ui::tokens::{
-    self, Density, RADIUS_CONTROL, RADIUS_SHEET, SPACE_1, SPACE_2, SPACE_3, TEXT_11,
-    TEXT_12,
+    self, Density, RADIUS_CONTROL, RADIUS_SHEET, SPACE_1, SPACE_2, SPACE_3, TEXT_11, TEXT_12,
 };
 use crate::ui::Msg as UiMsg;
 use crate::view_state::{Mode, RailTool};
@@ -111,18 +109,24 @@ impl TrayTool {
 
     pub fn tooltip(self) -> &'static str {
         match self {
-            TrayTool::Select => "Select and edit (P) — click active or right-click for Fence / Lasso",
+            TrayTool::Select => {
+                "Select and edit (P) — click active or right-click for Fence / Lasso"
+            }
             TrayTool::Wall => "Draw exterior walls (E) — click active or right-click for shapes",
             TrayTool::Inner => "Draw interior lines (I) — click active or right-click for shapes",
             TrayTool::Freeform => "Freeform draw: drag to draw without snapping",
-            TrayTool::Erase => "Erase: click or drag across lines, labels, or symbols (Ctrl+Z to undo)",
+            TrayTool::Erase => {
+                "Erase: click or drag across lines, labels, or symbols (Ctrl+Z to undo)"
+            }
             TrayTool::Area => "Area tool: click inside an outline",
             TrayTool::Shape => "Insert a room shape (M)",
             TrayTool::Curve => "Curve wall — click active or right-click for Insert vertex",
             TrayTool::Measure => "Measure runs — click active or right-click for Chain dimension",
             TrayTool::Label => "Open Insert drawer on Room labels (T)",
             TrayTool::Insert => "Open Insert drawer on Symbols (S)",
-            TrayTool::Pan => "Drag to pan (Space) — click active or right-click for Zoom to rectangle",
+            TrayTool::Pan => {
+                "Drag to pan (Space) — click active or right-click for Zoom to rectangle"
+            }
         }
     }
 
@@ -155,9 +159,7 @@ impl TrayTool {
             TrayTool::Shape => mode == Mode::PlaceShape || app.room_shapes.open,
             TrayTool::Curve => matches!(mode, Mode::Curve | Mode::InsertVertex),
             TrayTool::Measure => matches!(mode, Mode::Measure | Mode::ChainDim),
-            TrayTool::Label => {
-                mode == Mode::PlaceText || app.ui.drawer == Some(DrawerTab::Labels)
-            }
+            TrayTool::Label => mode == Mode::PlaceText || app.ui.drawer == Some(DrawerTab::Labels),
             TrayTool::Insert => {
                 mode == Mode::PlaceSymbol || app.ui.drawer == Some(DrawerTab::Symbols)
             }
@@ -276,10 +278,7 @@ fn tray_tile<'a>(app: &'a App, tool: TrayTool, d: Density) -> Element<'a, Messag
     };
 
     let interactive: Element<'a, Message> = if has_fly {
-        kit::context_press(
-            with_mark,
-            Message::Ui(UiMsg::ToggleTrayFlyout(Some(tool))),
-        )
+        kit::context_press(with_mark, Message::Ui(UiMsg::ToggleTrayFlyout(Some(tool))))
     } else {
         kit::tooltip(with_mark, tool.tooltip(), Position::Top)
     };
@@ -527,10 +526,7 @@ fn wall_shape_entries(kind: WallType, line_checked: bool) -> Vec<MenuEntry<'stat
             shortcut: None,
             checked: false,
             focused: false,
-            on_press: Some(Message::Ui(UiMsg::TrayWallShape(
-                kind,
-                WallShape::Polygon,
-            ))),
+            on_press: Some(Message::Ui(UiMsg::TrayWallShape(kind, WallShape::Polygon))),
         },
     ]
 }
@@ -572,12 +568,23 @@ fn flyout_overlay<'a>(app: &'a App, tool: TrayTool) -> Element<'a, Message> {
     let canvas = layout::canvas_rect(app);
     let chrome = DrawingChrome::for_app(app);
     let index = TrayTool::ALL.iter().position(|t| *t == tool).unwrap_or(0) as f32;
-    let natural = TrayTool::ALL.len() as f32 * (d.tray_button().0 + TRAY_GAP)
-        - TRAY_GAP + TRAY_PAD * 2.0;
-    let scroll_x = app.ui.tray_scroll_x.clamp(0.0, (natural - chrome.tray_width).max(0.0));
-    let tool_x = canvas.x + (canvas.width - chrome.tray_width) / 2.0 + TRAY_PAD
-        + index * (d.tray_button().0 + TRAY_GAP) + d.tray_button().0 / 2.0 - scroll_x;
-    let center = if class == SizeClass::Compact { canvas.x + canvas.width / 2.0 } else { tool_x };
+    let natural =
+        TrayTool::ALL.len() as f32 * (d.tray_button().0 + TRAY_GAP) - TRAY_GAP + TRAY_PAD * 2.0;
+    let scroll_x = app
+        .ui
+        .tray_scroll_x
+        .clamp(0.0, (natural - chrome.tray_width).max(0.0));
+    let tool_x = canvas.x
+        + (canvas.width - chrome.tray_width) / 2.0
+        + TRAY_PAD
+        + index * (d.tray_button().0 + TRAY_GAP)
+        + d.tray_button().0 / 2.0
+        - scroll_x;
+    let center = if class == SizeClass::Compact {
+        canvas.x + canvas.width / 2.0
+    } else {
+        tool_x
+    };
     let left = (center - width / 2.0).clamp(
         canvas.x + CHROME_INSET,
         (canvas.x + canvas.width - width - CHROME_INSET).max(canvas.x + CHROME_INSET),
@@ -595,8 +602,5 @@ fn flyout_overlay<'a>(app: &'a App, tool: TrayTool) -> Element<'a, Message> {
         .align_x(Alignment::Start)
         .align_y(iced::alignment::Vertical::Bottom);
 
-    opaque(
-        mouse_area(positioned)
-            .on_press(Message::Ui(UiMsg::ToggleTrayFlyout(None))),
-    )
+    opaque(mouse_area(positioned).on_press(Message::Ui(UiMsg::ToggleTrayFlyout(None))))
 }

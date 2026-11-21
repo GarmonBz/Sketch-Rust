@@ -1,4 +1,31 @@
-Sketch Rust 0.3.7 - Windows x64
+Sketch Rust 0.3.12 - Windows x64
+
+0.3.12 fixes arrow-key nudging of a selected wall or area: the selection moved
+diagonally, about ten feet sideways per key press, because the port used Rust's
+f64::signum (which returns 1.0 for zero) where the original used JavaScript's
+Math.sign (which returns 0). Nudge steps now use the JS sign semantics, so an
+arrow key moves the selection exactly one snap pitch along the arrow — Shift
+still moves ten pitches — and shared walls stretch cleanly without shearing the
+areas they border.
+
+0.3.11 stops File > Open and Save freezing for good. The window no longer runs
+a nested Win32 message pump while a native file dialog initializes — that pump
+deadlocked the interface thread whenever the Shell's dialog start stalled (a
+remembered network share was enough). Dialogs now open on their own thread and
+are awaited by the event loop, every dialog flow is a message-driven
+continuation, and each dialog starts in an explicit local folder (Documents
+fallback) instead of the last-visited one (0.3.9/0.3.10 hardened the same
+anchor).
+
+Sketch Rust 0.3.8 - Windows x64
+
+0.3.8 fixes UI hangs and freezes during drawing, dragging, and panning:
+exterior wall-join healing no longer stalls on multi-room floorplans with open
+wall chains, T-junction welds split the host wall cleanly, area label placement
+skips expensive cell refinement when a room's centroid is already well clear of
+its walls, unsaved-change checks no longer re-serialize .sketchie backing data
+or run mid-drag, chrome and menu hovers keep the cached floorplan render intact,
+and dotted/hatched area patterns clip to the visible canvas viewport.
 
 0.3.7 stops the window freezing ("Not Responding") while an Open or Save
 dialog is open and speeds up redrawing sketches with many layers. Dragging a

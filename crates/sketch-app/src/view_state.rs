@@ -116,8 +116,12 @@ pub struct World {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Drag {
     /// Unsnapped drawing / eraser stroke, grouped into one undo step.
-    Freeform { last: World },
-    Erase { last: World },
+    Freeform {
+        last: World,
+    },
+    Erase {
+        last: World,
+    },
     /// `type: 'chain-offset'` — reposition a chain's offset line (S9-035).
     ChainOffset {
         chain_id: i64,
@@ -696,11 +700,18 @@ mod tests {
         let mut view = View::new(100.0, 100.0);
         view.area_snap = true;
         view.drag_start_move(World { x: 0.0, y: 0.0 }, World { x: 0.2, y: -0.2 });
-        assert_eq!(view.drag_move(World { x: 0.01, y: 0.0 }, 0.5, true, &|t, _| t), None);
-        let delta = view.drag_move(World { x: 0.4, y: 0.3 }, 0.5, true, &|t, _| t).unwrap();
+        assert_eq!(
+            view.drag_move(World { x: 0.01, y: 0.0 }, 0.5, true, &|t, _| t),
+            None
+        );
+        let delta = view
+            .drag_move(World { x: 0.4, y: 0.3 }, 0.5, true, &|t, _| t)
+            .unwrap();
         assert!((0.2 + delta.0 - 0.5).abs() < 1e-9);
         assert!((-0.2 + delta.1).abs() < 1e-9);
-        let next = view.drag_move(World { x: 0.9, y: 0.3 }, 0.5, true, &|t, _| t).unwrap();
+        let next = view
+            .drag_move(World { x: 0.9, y: 0.3 }, 0.5, true, &|t, _| t)
+            .unwrap();
         assert!((next.0 - 0.5).abs() < 1e-9);
         assert!(next.1.abs() < 1e-9);
     }
@@ -721,16 +732,42 @@ mod tests {
             }
         };
         let mut view = View::new(100.0, 100.0);
-        view.drag_start_move(World { x: 0.0, y: 0.0 }, World { x: corner.0, y: corner.1 });
+        view.drag_start_move(
+            World { x: 0.0, y: 0.0 },
+            World {
+                x: corner.0,
+                y: corner.1,
+            },
+        );
         // Pointer at x = 3.0: the grid says 3.0 but the endpoint is 0.3 away.
-        let (dx, dy) = view.drag_move(World { x: 3.0, y: 0.0 }, 1.0, true, &pull).unwrap();
-        assert!((corner.0 + dx - endpoint.0).abs() < 1e-9, "x {}", corner.0 + dx);
-        assert!((corner.1 + dy - endpoint.1).abs() < 1e-9, "y {}", corner.1 + dy);
+        let (dx, dy) = view
+            .drag_move(World { x: 3.0, y: 0.0 }, 1.0, true, &pull)
+            .unwrap();
+        assert!(
+            (corner.0 + dx - endpoint.0).abs() < 1e-9,
+            "x {}",
+            corner.0 + dx
+        );
+        assert!(
+            (corner.1 + dy - endpoint.1).abs() < 1e-9,
+            "y {}",
+            corner.1 + dy
+        );
         // Pointer far away: back on the grid, nothing sticky. The corner's
         // origin (0.2 + 6.0) snaps to x = 6.0.
-        let (ex, ey) = view.drag_move(World { x: 6.0, y: 0.0 }, 1.0, true, &pull).unwrap();
-        assert!((corner.0 + dx + ex - 6.0).abs() < 1e-9, "x {}", corner.0 + dx + ex);
-        assert!((corner.1 + dy + ey).abs() < 1e-9, "y {}", corner.1 + dy + ey);
+        let (ex, ey) = view
+            .drag_move(World { x: 6.0, y: 0.0 }, 1.0, true, &pull)
+            .unwrap();
+        assert!(
+            (corner.0 + dx + ex - 6.0).abs() < 1e-9,
+            "x {}",
+            corner.0 + dx + ex
+        );
+        assert!(
+            (corner.1 + dy + ey).abs() < 1e-9,
+            "y {}",
+            corner.1 + dy + ey
+        );
     }
 
     #[test]
@@ -738,7 +775,9 @@ mod tests {
         let mut view = View::new(100.0, 100.0);
         view.drag_start_move(World { x: 0.0, y: 0.0 }, World { x: 0.2, y: 0.2 });
         // Origin (0.2, 0.2) + (0.8, 0.2) = (1.0, 0.4) -> snaps to (1.0, 0.0).
-        let (dx, dy) = view.drag_move(World { x: 0.8, y: 0.2 }, 1.0, true, &|t, _| t).unwrap();
+        let (dx, dy) = view
+            .drag_move(World { x: 0.8, y: 0.2 }, 1.0, true, &|t, _| t)
+            .unwrap();
         assert!((0.2 + dx - 1.0).abs() < 1e-9);
         assert!((0.2 + dy).abs() < 1e-9);
         view.drag_start_move(World { x: 0.0, y: 0.0 }, World { x: 0.2, y: 0.2 });

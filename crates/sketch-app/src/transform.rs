@@ -259,11 +259,17 @@ pub fn move_selected(d: &mut Drawing, sel: &Selection, dx: f64, dy: f64) -> bool
         .polygons
         .iter()
         .map(|p| {
-            (
-                p.id,
-                crate::handles::label_position(d, p),
-                crate::handles::size_position(d, p),
-            )
+            if !sel.polys.contains(&p.id)
+                && (sel.area_labels.contains(&p.id) || sel.area_sizes.contains(&p.id))
+            {
+                (
+                    p.id,
+                    crate::handles::label_position(d, p),
+                    crate::handles::size_position(d, p),
+                )
+            } else {
+                (p.id, Pt::new(0.0, 0.0), Pt::new(0.0, 0.0))
+            }
         })
         .collect();
 
@@ -414,10 +420,7 @@ pub fn move_area_corner(d: &mut Drawing, area_id: i64, vertex: usize, next: Pt) 
 }
 
 pub(crate) fn move_joined_vertex(d: &mut Drawing, old: Pt, next: Pt) -> bool {
-    if !next.x.is_finite()
-        || !next.y.is_finite()
-        || (next.x - old.x).hypot(next.y - old.y) < 1e-8
-    {
+    if !next.x.is_finite() || !next.y.is_finite() || (next.x - old.x).hypot(next.y - old.y) < 1e-8 {
         return false;
     }
     let matches = |p: Pt| (p.x - old.x).hypot(p.y - old.y) < 1e-5;

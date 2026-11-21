@@ -605,11 +605,18 @@ mod tests {
         let kitchen = ix.categories.iter().find(|c| c.key == "kitchen").unwrap();
         assert_eq!(kitchen.name, "Kitchen");
         assert!(kitchen.items.iter().any(|i| i.id == "caddillo/fridge-36"));
-        assert!(kitchen.items.iter().all(|i| i.id != "kitchen/refrigerator-36in"));
+        assert!(kitchen
+            .items
+            .iter()
+            .all(|i| i.id != "kitchen/refrigerator-36in"));
         // Retired duplicates are gone; their ids alias the replacements.
         assert!(ix.library.symbol("kitchen/refrigerator-36in").is_none());
         assert!(ix.by_id("kitchen/refrigerator-36in").is_none());
-        assert_eq!(ix.library.aliases.len(), 68, "retired duplicates, plus the old double garage door");
+        assert_eq!(
+            ix.library.aliases.len(),
+            68,
+            "retired duplicates, plus the old double garage door"
+        );
         assert_eq!(
             ix.library.aliases["kitchen/refrigerator-36in"],
             "caddillo/fridge-36"

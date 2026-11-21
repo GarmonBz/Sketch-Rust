@@ -169,7 +169,11 @@ mod tests {
             // The wall is cut from the origin across the width (side snap)
             // or about the origin (centre snap); either way the symbol must
             // sit centred on that cut, with its frame overhanging equally.
-            let cut_centre = if snap == WallSnap::Side { width / 2.0 } else { 0.0 };
+            let cut_centre = if snap == WallSnap::Side {
+                width / 2.0
+            } else {
+                0.0
+            };
             assert!(
                 ((s.bounds.min_x + s.bounds.max_x) / 2.0 - cut_centre).abs() < 1e-6,
                 "{name}"

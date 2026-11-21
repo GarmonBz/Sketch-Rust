@@ -162,7 +162,10 @@ mod tests {
         let mut full: Vec<RecentFile> = (0..MAX_FILES)
             .map(|i| RecentFile::new(&format!("f{i}.skx"), "{}").unwrap())
             .collect();
-        assert!(!add_demo(&mut full, demo()), "a full list keeps the user's files");
+        assert!(
+            !add_demo(&mut full, demo()),
+            "a full list keeps the user's files"
+        );
         assert_eq!(full.len(), MAX_FILES);
     }
 

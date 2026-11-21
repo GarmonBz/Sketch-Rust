@@ -12,9 +12,7 @@ use iced::widget::{
     button, canvas, column, container, mouse_area, opaque, row, scrollable as scroll_box, stack,
     text, text_input, Column, Row, Space,
 };
-use iced::{
-    alignment, Alignment, Background, Border, Color, Element, Length, Padding, Rectangle,
-};
+use iced::{alignment, Alignment, Background, Border, Color, Element, Length, Padding, Rectangle};
 use sketch_core::symbols::Symbol;
 
 use crate::dock::{CategoryOption, DockMsg, DragItem, ALPHA};
@@ -142,12 +140,7 @@ fn header<'a>(app: &'a App, tab: DrawerTab, d: Density) -> Element<'a, Message> 
         "Pin"
     };
     let pin_btn = pin_button(pin_label, app.ui.drawer_pinned, d);
-    let close_btn = kit::icon_button(
-        "x",
-        false,
-        Some(Message::Ui(UiMsg::OpenDrawer(None))),
-        d,
-    );
+    let close_btn = kit::icon_button("x", false, Some(Message::Ui(UiMsg::OpenDrawer(None))), d);
 
     row![tabs, Space::new().width(Length::Fill), pin_btn, close_btn]
         .spacing(SPACE_1)
@@ -172,7 +165,11 @@ fn pin_button<'a>(label: &'a str, pinned: bool, d: Density) -> Element<'a, Messa
             row![
                 icons::mono("push-pin", 14.0, fg),
                 text(label)
-                    .font(if pinned { BARLOW_SEMIBOLD } else { BARLOW_MEDIUM })
+                    .font(if pinned {
+                        BARLOW_SEMIBOLD
+                    } else {
+                        BARLOW_MEDIUM
+                    })
                     .size(TEXT_12)
                     .color(fg),
             ]
@@ -215,12 +212,7 @@ fn pin_button<'a>(label: &'a str, pinned: bool, d: Density) -> Element<'a, Messa
 // Symbols mode
 // ---------------------------------------------------------------------------
 
-fn symbols_body<'a>(
-    app: &'a App,
-    d: Density,
-    inner_w: f32,
-    sc: SizeClass,
-) -> Element<'a, Message> {
+fn symbols_body<'a>(app: &'a App, d: Density, inner_w: f32, sc: SizeClass) -> Element<'a, Message> {
     let ix = app.symbols_lib();
     let search = search_row(
         "Find symbols…",
@@ -252,11 +244,10 @@ fn symbols_body<'a>(
     } else {
         92.0
     };
-    let category_chips = wrapped_category_chips(&cats, &app.dock.symbol_category, inner_w, chip_bar_h, d);
+    let category_chips =
+        wrapped_category_chips(&cats, &app.dock.symbol_category, inner_w, chip_bar_h, d);
 
-    let items = app
-        .dock
-        .symbol_items(ix, app.symbol_favorites.as_deref());
+    let items = app.dock.symbol_items(ix, app.symbol_favorites.as_deref());
     let fav_ids: HashSet<String> = match app.symbol_favorites.as_deref() {
         Some(list) => list.iter().cloned().collect(),
         None => ix.favorites.iter().map(|i| i.id.clone()).collect(),
@@ -346,11 +337,18 @@ fn symbols_body<'a>(
         d,
     ));
 
-    column![search, category_chips, kit::divider(), list_scroll, kit::divider(), footer]
-        .spacing(SPACE_2)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+    column![
+        search,
+        category_chips,
+        kit::divider(),
+        list_scroll,
+        kit::divider(),
+        footer
+    ]
+    .spacing(SPACE_2)
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .into()
 }
 
 fn wrapped_category_chips<'a>(
@@ -413,7 +411,11 @@ fn symbol_tile<'a>(
     is_fav: bool,
     d: Density,
 ) -> Element<'a, Message> {
-    let tile_h = if matches!(d, Density::Touch) { 98.0 } else { 90.0 };
+    let tile_h = if matches!(d, Density::Touch) {
+        98.0
+    } else {
+        90.0
+    };
     let bg = if selected {
         tokens::accent_soft()
     } else {
@@ -520,12 +522,11 @@ fn symbol_tile<'a>(
     .align_x(Alignment::End);
 
     let overlay_items: Element<'a, Message> = if is_fav {
-        let star = container(icons::mono("star", 10.0, tokens::accent()))
-            .padding(Padding {
-                top: 5.0,
-                left: 6.0,
-                ..Padding::ZERO
-            });
+        let star = container(icons::mono("star", 10.0, tokens::accent())).padding(Padding {
+            top: 5.0,
+            left: 6.0,
+            ..Padding::ZERO
+        });
         stack![trigger_area, star, menu_btn].into()
     } else {
         stack![trigger_area, menu_btn].into()
@@ -646,11 +647,18 @@ fn labels_body<'a>(app: &'a App, d: Density, inner_w: f32) -> Element<'a, Messag
     .align_y(Alignment::Center)
     .width(Length::Fill);
 
-    column![top_row, alpha_chips, kit::divider(), scroll, kit::divider(), footer]
-        .spacing(SPACE_2)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+    column![
+        top_row,
+        alpha_chips,
+        kit::divider(),
+        scroll,
+        kit::divider(),
+        footer
+    ]
+    .spacing(SPACE_2)
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .into()
 }
 
 fn wrapped_alpha_chips<'a>(active_range: &str, inner_w: f32, d: Density) -> Element<'a, Message> {
@@ -699,9 +707,21 @@ fn label_row<'a>(label: &str, active: bool, d: Density) -> Element<'a, Message> 
         tokens::rule()
     };
     let row_content = row![
-        icons::mono("text-t", 14.0, if active { tokens::accent() } else { tokens::muted() }),
+        icons::mono(
+            "text-t",
+            14.0,
+            if active {
+                tokens::accent()
+            } else {
+                tokens::muted()
+            }
+        ),
         text(label.to_string())
-            .font(if active { BARLOW_SEMIBOLD } else { BARLOW_MEDIUM })
+            .font(if active {
+                BARLOW_SEMIBOLD
+            } else {
+                BARLOW_MEDIUM
+            })
             .size(TEXT_13)
             .color(fg),
         Space::new().width(Length::Fill),

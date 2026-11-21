@@ -96,6 +96,8 @@ pub enum Msg {
     MeasureClear,
     MeasureCopy,
     SetLedgerView(LedgerView),
+    /// Opens / folds the Layers section under the area rows.
+    ToggleLedgerLayers,
     ToggleLedgerMenu,
     TypeFilterChanged(String),
     LedgerResizeStart,
@@ -133,6 +135,9 @@ pub struct UiState {
     pub gallery_input: String,
     pub ledger_open: bool,
     pub ledger_view: LedgerView,
+    /// The Layers section under the area rows starts folded: only layers
+    /// holding no area are listed there, so the areas stay the list.
+    pub ledger_layers_open: bool,
     pub ledger_width: Option<f32>,
     pub ledger_resizing: bool,
     pub ledger_handle_hover: bool,
@@ -180,6 +185,7 @@ impl Default for UiState {
             gallery_input: "24'-6\"".to_owned(),
             ledger_open: false,
             ledger_view: LedgerView::Drawn,
+            ledger_layers_open: false,
             ledger_width: None,
             ledger_resizing: false,
             ledger_handle_hover: false,
