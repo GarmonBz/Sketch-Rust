@@ -1,7 +1,8 @@
 //! Start screen (`Shell::Next`, spec §5.10).
 //!
 //! Shown at launch when no file was passed on the command line and nothing is
-//! drawn yet, or when reopened via Menu/Commands. Left column: "Start a sketch"
+//! drawn yet (unless "Show this screen when Sketch Rust starts" is unticked),
+//! or when reopened via Menu/Commands. Left column: "Start a sketch"
 //! actions + Appraise-It Pro status; right column: recent sketch cards with
 //! cached outline thumbnails from their first page (or a clean placeholder).
 //! Zero `theme::at`, `theme::ink`, or `INK_PASSES`.
@@ -43,6 +44,8 @@ pub struct RecentThumb {
 #[derive(Debug, Clone, Default)]
 pub struct StartState {
     pub open: bool,
+    /// "Show this screen when Sketch Rust starts" unticked (shown by default).
+    pub hide_at_launch: bool,
     pub report: ReportStatus,
     thumbs: HashMap<String, RecentThumb>,
 }
@@ -60,6 +63,21 @@ pub enum Msg {
     CheckReport,
     ReportChecked(ReportStatus),
     DrawForReport,
+    ShowAtLaunch(bool),
+}
+
+/// `%APPDATA%\SketchRust\start-screen.json`.
+const PREFS_FILE: &str = "start-screen.json";
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct StartPrefs {
+    #[serde(rename = "showAtLaunch")]
+    show_at_launch: bool,
+}
+
+/// The stored choice; a missing or unreadable file means "show it".
+pub fn load_hide_at_launch() -> bool {
+    crate::persist::read_json::<StartPrefs>(PREFS_FILE).is_some_and(|p| !p.show_at_launch)
 }
 
 fn m(msg: Msg) -> Message {
@@ -275,6 +293,17 @@ pub fn update(app: &mut App, msg: Msg) -> iced::Task<Message> {
         }
         Msg::ReportChecked(status) => {
             app.ui.start.report = status;
+            iced::Task::none()
+        }
+        Msg::ShowAtLaunch(show) => {
+            app.ui.start.hide_at_launch = !show;
+            if crate::persist::write_json(PREFS_FILE, &StartPrefs { show_at_launch: show })
+                == Some(false)
+            {
+                return app
+                    .toasts
+                    .show("Could not save the start screen setting.".to_string());
+            }
             iced::Task::none()
         }
         Msg::DrawForReport => {
@@ -515,9 +544,16 @@ pub fn layer<'a>(app: &'a App, size_class: SizeClass, d: Density) -> Option<Elem
     .align_y(Alignment::Center)
     .width(Length::Fill);
 
+    let show_at_launch = crate::ui::dialogs::check_row(
+        "Show this screen when Sketch Rust starts",
+        !app.ui.start.hide_at_launch,
+        |show| m(Msg::ShowAtLaunch(show)),
+        d,
+    );
+
     let content: Element<'a, Message> = if compact {
         scrollable(
-            column![header, kit::divider(), left_col, right_col]
+            column![header, kit::divider(), left_col, right_col, show_at_launch]
                 .spacing(SPACE_3)
                 .padding(SPACE_3)
                 .width(Length::Fill),
@@ -539,6 +575,8 @@ pub fn layer<'a>(app: &'a App, size_class: SizeClass, d: Density) -> Option<Elem
                         .width(Length::Fill),
                 )
                 .height(Length::Fill),
+                kit::divider(),
+                show_at_launch,
             ]
             .spacing(SPACE_3)
             .padding(SPACE_4)
@@ -727,4 +765,26 @@ fn recent_card<'a>(app: &'a App, index: usize, rec: &RecentFile) -> Element<'a, 
             }
         })
         .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn show_at_launch_defaults_on_and_the_untick_is_remembered() {
+        crate::persist::with_temp_store(|| {
+            assert!(!load_hide_at_launch(), "shown by default");
+            let (mut app, _) = crate::App::boot(1.0);
+            assert!(!app.ui.start.hide_at_launch);
+            let _ = update(&mut app, Msg::ShowAtLaunch(false));
+            assert!(app.ui.start.hide_at_launch);
+            assert!(load_hide_at_launch(), "the untick persists");
+            let (reopened, _) = crate::App::boot(1.0);
+            assert!(reopened.ui.start.hide_at_launch);
+            assert!(!reopened.ui.start.open, "hidden at the next launch");
+            let _ = update(&mut app, Msg::ShowAtLaunch(true));
+            assert!(!load_hide_at_launch());
+        });
+    }
 }

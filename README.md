@@ -3,7 +3,7 @@
 A native Windows floor-plan sketching program for appraisers: draw walls to scale,
 define areas, and get living-area and building-area calculations.
 
-![Sketch Rust with a sample house: living area, garage and porch, with the Areas ledger and its totals on the left](docs/images/sketch-rust.png)
+![Sketch Rust with the Fallingwater demo: first floor, terraces, entry loggia and bridge over Bear Run, with the Areas list and its totals on the left](docs/images/sketch-rust.png)
 
 ## Install
 
@@ -13,7 +13,9 @@ Download the latest release and use one of:
   WiX Toolset 5). Installs for the current Windows user (no administrator permission), with
   a licence page, a choice of folder, an optional desktop shortcut and a Start Menu shortcut.
   Later versions upgrade it in place, and it is removed from Windows Settings > Apps >
-  Installed apps. Silent install: `msiexec /i SketchRust-<version>-x64.msi /qn`.
+  Installed apps. It opens `.sketchie` and `.skx` files on a double click and adds Sketch
+  Rust to **Open with** for `.json` (so `.sketchie.json` files open with it), and lists the
+  Fallingwater demo under Recent sketches on the first start. Silent install: `msiexec /i SketchRust-<version>-x64.msi /qn`.
 - **Portable zip** — `SketchRust-<version>-native-preview-<date>-windows-x64.zip`.
   Extract it anywhere and run `sketch-app.exe`.
 

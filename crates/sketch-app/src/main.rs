@@ -455,6 +455,20 @@ const SKETCH_OPEN_EXTENSIONS: &[&str] = &[
 /// A sketch file named on the command line, opened once the window is up.
 static STARTUP_FILE: std::sync::Mutex<Option<std::path::PathBuf>> = std::sync::Mutex::new(None);
 
+/// The demo sketch the package ships beside the exe.
+const DEMO_SKETCH: &str = "fallingwater.sketchie";
+
+/// A Recent sketches entry for `path` (the model JSON drives the thumbnail;
+/// the path reopens the real file).
+fn demo_recent_entry(path: &std::path::Path) -> Option<recent::RecentFile> {
+    let (model, _, _) = read_sketch_path(path).ok()?;
+    model.get("pages")?.as_array()?;
+    let name = path.file_name()?.to_str()?;
+    let mut entry = recent::RecentFile::new(name, &model.to_string())?;
+    entry.path = Some(path.to_path_buf());
+    Some(entry)
+}
+
 /// Help > About: the version this exe was built as.
 fn about_text() -> String {
     format!(
@@ -1136,6 +1150,7 @@ impl App {
                 };
                 if std::env::var_os("SKETCH_PERSIST").is_some() {
                     app.load_recent();
+                    app.seed_demo_recent();
                     app.load_default_comments();
                     app.load_interface_theme();
                 }
@@ -1149,12 +1164,14 @@ impl App {
                 let (cw, ch) = app.view.canvas;
                 app.view.pan = (cw / 2.0, ch / 2.0);
                 app.ui.start.sync_thumbs(&app.recent);
+                app.ui.start.hide_at_launch = ui::start::load_hide_at_launch();
                 let has_startup_file = STARTUP_FILE
                     .lock()
                     .ok()
                     .is_some_and(|file| file.is_some());
                 if std::env::var_os("SKETCH_PERSIST").is_some()
                     && !has_startup_file
+                    && !app.ui.start.hide_at_launch
                     && app.drawing.lines.is_empty()
                     && app.drawing.polygons.is_empty()
                 {
@@ -3109,8 +3126,11 @@ impl App {
                             let target = if moved_pointer {
                                 let target =
                                     sketch_core::geometry::Pt::new(origin.x + dx, origin.y + dy);
+                                // Snap on: an endpoint nearby wins, else the grid.
                                 self.view.edit_grid().map_or(target, |pitch| {
-                                    self.drawing.engine().snap_to_grid(target, pitch)
+                                    self.endpoint_snap(target, origin).unwrap_or_else(|| {
+                                        self.drawing.engine().snap_to_grid(target, pitch)
+                                    })
                                 })
                             } else {
                                 origin
@@ -3171,9 +3191,32 @@ impl App {
                                 || !self.selection.lines.is_empty()
                                 || !self.selection.polys.is_empty()
                         });
-                        if let Some((dx, dy)) =
-                            self.view.drag_move(w, grid.unwrap_or(1.0), grid.is_some())
-                        {
+                        let (moving, fixed) = if grid.is_some() {
+                            self.moving_and_fixed_vertices()
+                        } else {
+                            (Vec::new(), Vec::new())
+                        };
+                        let reach = selection::tolerance(self.view.zoom, 10.0);
+                        // Pull the moved geometry onto an endpoint that stays.
+                        let align = move |total: (f64, f64), last: (f64, f64)| {
+                            let mut best: Option<(f64, (f64, f64))> = None;
+                            for m in &moving {
+                                let at = (m.x + total.0 - last.0, m.y + total.1 - last.1);
+                                for f in &fixed {
+                                    let gap = (f.x - at.0).hypot(f.y - at.1);
+                                    if gap <= reach && best.is_none_or(|(b, _)| gap < b) {
+                                        best = Some((gap, (f.x - at.0, f.y - at.1)));
+                                    }
+                                }
+                            }
+                            best.map_or(total, |(_, adj)| (total.0 + adj.0, total.1 + adj.1))
+                        };
+                        if let Some((dx, dy)) = self.view.drag_move(
+                            w,
+                            grid.unwrap_or(1.0),
+                            grid.is_some(),
+                            &align,
+                        ) {
                             if (dx != 0.0 || dy != 0.0) && !self.drag_banked {
                                 self.push_undo("Move");
                                 self.drag_banked = true;
@@ -7195,6 +7238,62 @@ impl App {
         Task::none()
     }
 
+    /// A dragged wall end or area corner joins a wall end or area corner
+    /// within 10 px (not the vertex being dragged, nor ones joined to it).
+    fn endpoint_snap(
+        &self,
+        target: sketch_core::geometry::Pt,
+        grabbed: sketch_core::geometry::Pt,
+    ) -> Option<sketch_core::geometry::Pt> {
+        let reach = selection::tolerance(self.view.zoom, 10.0);
+        let joined = |p: sketch_core::geometry::Pt| {
+            (p.x - grabbed.x).hypot(p.y - grabbed.y) < 1e-5
+        };
+        let points = self
+            .drawing
+            .lines
+            .iter()
+            .flat_map(|l| [l.start, l.end])
+            .chain(self.drawing.polygons.iter().flat_map(|p| p.points.iter().copied()))
+            .filter(|p| !joined(*p));
+        points
+            .map(|p| ((p.x - target.x).hypot(p.y - target.y), p))
+            .filter(|(gap, _)| *gap <= reach)
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, p)| p)
+    }
+
+    /// The corners that move with the selection, and every other wall end and
+    /// area corner (the ones a move can snap onto).
+    fn moving_and_fixed_vertices(
+        &self,
+    ) -> (
+        Vec<sketch_core::geometry::Pt>,
+        Vec<sketch_core::geometry::Pt>,
+    ) {
+        let mut moving_lines: std::collections::HashSet<i64> =
+            self.selection.lines.iter().copied().collect();
+        let mut moving = Vec::new();
+        let mut fixed = Vec::new();
+        for poly in &self.drawing.polygons {
+            if self.selection.polys.contains(&poly.id) {
+                moving.extend(poly.points.iter().copied());
+                moving_lines.extend(poly.edges.iter().filter_map(|e| e.line_id));
+            } else {
+                fixed.extend(poly.points.iter().copied());
+            }
+        }
+        for line in &self.drawing.lines {
+            let ends = [line.start, line.end];
+            if moving_lines.contains(&line.id) {
+                moving.extend(ends);
+            } else {
+                fixed.extend(ends);
+            }
+        }
+        (moving, fixed)
+    }
+
     /// The arrow-key step in feet. With snap on, one press moves by the snap
     /// pitch (Shift: ten pitches); with snap off it stays 1 ft (Shift: 0.1 ft).
     /// `dx` and `dy` arrive as plus or minus 1.0, or 0.1 with Shift.
@@ -7651,6 +7750,30 @@ impl App {
         if let Ok(text) = std::fs::read_to_string(path) {
             self.recent = recent::parse(&text);
         }
+    }
+
+    /// First run after an install: list the bundled Fallingwater demo (the
+    /// `fallingwater.sketchie` beside the exe) under Recent sketches, once.
+    /// A marker remembers it was offered, so clearing the list or removing
+    /// the entry keeps it gone.
+    fn seed_demo_recent(&mut self) {
+        const MARKER: &str = "demo-recent-seeded";
+        if persist::path(MARKER).is_none_or(|marker| marker.exists()) {
+            return;
+        }
+        let Some(demo) = std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(|dir| dir.join(DEMO_SKETCH)))
+            .filter(|path| path.is_file())
+        else {
+            return;
+        };
+        if let Some(entry) = demo_recent_entry(&demo) {
+            if recent::add_demo(&mut self.recent, entry) {
+                self.persist_recent();
+            }
+        }
+        let _ = persist::write(MARKER, env!("CARGO_PKG_VERSION"));
     }
 
     /// The effective favorites: the saved list when set, else the library
@@ -10647,6 +10770,18 @@ mod tests {
     use sketch_core::geometry::Pt;
     use sketch_core::model::WallType;
     use sketch_core::symbols::WallSnap;
+
+    #[test]
+    fn bundled_demo_makes_a_recent_entry() {
+        let demo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples")
+            .join(DEMO_SKETCH);
+        let entry =
+            demo_recent_entry(&demo).expect("the demo converts and fits the recent-file size cap");
+        assert_eq!(entry.name, DEMO_SKETCH);
+        assert_eq!(entry.path.as_deref(), Some(demo.as_path()));
+        assert!(serde_json::from_str::<serde_json::Value>(&entry.data).is_ok());
+    }
 
     #[test]
     fn axf_paths_are_openable_and_converted_not_bound() {

@@ -1,5 +1,10 @@
 # Sketch Rust — STATUS ledger
 
+0.3.7 fixes freezes (dialog wait, per-layer redraw cost) and snaps drags and
+moves onto nearby endpoints. The MSI registers .sketchie/.skx (and Open with
+for .json); the demo is seeded into Recent sketches once; the start screen has
+a show-at-launch checkbox (start-screen.json).
+
 0.3.6 re-closes an area opened by deleting a wall from its own record; the
 Areas list shows and deletes any layer or area; layer export removed.
 

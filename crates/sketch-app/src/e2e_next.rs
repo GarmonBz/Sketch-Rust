@@ -947,6 +947,27 @@ fn a_reopened_areas_leftover_layer_is_listed_and_can_be_deleted() {
 }
 
 #[test]
+fn a_dragged_wall_end_joins_a_nearby_endpoint_before_it_snaps_to_the_grid() {
+    let mut h = harness_next_at(VIEWPORT);
+    draw_closed_square(&mut h);
+    let app = state(h);
+    let corner = app.drawing.lines[0].end;
+    let grabbed = app.drawing.lines[0].start;
+    // 0.3 ft off a corner is inside 10 px at this zoom: the end joins it.
+    let near = sketch_core::geometry::Pt::new(corner.x + 0.3, corner.y - 0.2);
+    let got = app.endpoint_snap(near, grabbed).expect("an endpoint is within reach");
+    assert!((got.x - corner.x).abs() < 1e-9 && (got.y - corner.y).abs() < 1e-9);
+    // Far from every endpoint: nothing to join (the grid takes over).
+    let far = sketch_core::geometry::Pt::new(corner.x + 5.0, corner.y + 5.0);
+    assert!(app.endpoint_snap(far, grabbed).is_none());
+    // The grabbed corner never snaps to itself.
+    let on_grabbed = sketch_core::geometry::Pt::new(grabbed.x + 0.1, grabbed.y);
+    if let Some(p) = app.endpoint_snap(on_grabbed, grabbed) {
+        assert!((p.x - grabbed.x).abs() > 1e-6 || (p.y - grabbed.y).abs() > 1e-6);
+    }
+}
+
+#[test]
 fn deleting_a_folder_keeps_the_areas_that_were_in_it() {
     let (area, folder, _) = tree_ids();
     tree_harness!(h);

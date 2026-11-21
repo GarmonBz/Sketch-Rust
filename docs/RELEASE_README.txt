@@ -1,4 +1,12 @@
-Sketch Rust 0.3.6 - Windows x64
+Sketch Rust 0.3.7 - Windows x64
+
+0.3.7 stops the window freezing ("Not Responding") while an Open or Save
+dialog is open and speeds up redrawing sketches with many layers. Dragging a
+wall end or area corner, or moving lines and areas, now snaps onto nearby
+endpoints as well as the grid. The installer opens .sketchie and .skx files on
+a double click and adds Sketch Rust to Open with for .json (.sketchie.json).
+The Fallingwater demo is listed under Recent sketches on the first start, and
+the start screen has a "Show this screen when Sketch Rust starts" checkbox.
 
 0.3.6 brings an area back when you redraw a wall you deleted from it, even next
 to neighbouring areas (it failed on areas whose walls other areas touch). The

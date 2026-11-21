@@ -8,7 +8,8 @@
   Per-user: installs under %LOCALAPPDATA%\Programs\SketchRust with no
   administrator permission, adds a Start Menu shortcut and an optional
   desktop shortcut, registers under Settings > Apps with the app icon, and
-  upgrades or removes cleanly. Never touches the user's sketches or the
+  upgrades or removes cleanly. Opens .sketchie and .skx files on a double
+  click and offers itself under Open with for .sketchie.json. Never touches the user's sketches or the
   settings under %APPDATA%\SketchRust.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
@@ -54,6 +55,7 @@
       <ComponentGroupRef Id="AppFiles" />
       <ComponentRef Id="StartMenuShortcutComponent" />
       <ComponentRef Id="CleanupComponent" />
+      <ComponentRef Id="FileAssociationsComponent" />
       <Feature Id="DesktopShortcut" Title="Desktop shortcut" Description="Put a Sketch Rust shortcut on the desktop."
                Level="1" AllowAdvertise="no">
         <ComponentRef Id="DesktopShortcutComponent" />
@@ -81,6 +83,42 @@
       <RegistryValue Root="HKCU" Key="Software\SketchRust" Name="InstallLocation"
                      Type="string" Value="[INSTALLFOLDER]" KeyPath="yes" />
       <RemoveFile Id="RemoveSymbolsBak" Name="symbols.json.bak" On="uninstall" />
+    </Component>
+
+    <!--
+      File types, per user (HKCU\Software\Classes), removed on uninstall.
+      .sketchie and .skx open in Sketch Rust on a double click. Windows matches
+      only the last extension, so *.sketchie.json is a .json file to Explorer:
+      Sketch Rust is listed under Open with for .json rather than taking over
+      every JSON file.
+    -->
+    <Component Id="FileAssociationsComponent" Directory="INSTALLFOLDER">
+      <RegistryValue Root="HKCU" Key="Software\SketchRust" Name="FileAssociations"
+                     Type="integer" Value="1" KeyPath="yes" />
+
+      <RegistryValue Root="HKCU" Key="Software\Classes\SketchRust.Sketchie" Type="string" Value="Sketchie sketch" />
+      <RegistryValue Root="HKCU" Key="Software\Classes\SketchRust.Sketchie\DefaultIcon" Type="string" Value="&quot;[INSTALLFOLDER]sketch-app.exe&quot;,0" />
+      <RegistryValue Root="HKCU" Key="Software\Classes\SketchRust.Sketchie\shell\open\command" Type="string" Value="&quot;[INSTALLFOLDER]sketch-app.exe&quot; &quot;%1&quot;" />
+      <RegistryValue Root="HKCU" Key="Software\Classes\.sketchie" Type="string" Value="SketchRust.Sketchie" />
+      <RegistryValue Root="HKCU" Key="Software\Classes\.sketchie\OpenWithProgids" Name="SketchRust.Sketchie" Type="string" Value="" />
+
+      <RegistryValue Root="HKCU" Key="Software\Classes\SketchRust.Skx" Type="string" Value="Sketch Rust sketch" />
+      <RegistryValue Root="HKCU" Key="Software\Classes\SketchRust.Skx\DefaultIcon" Type="string" Value="&quot;[INSTALLFOLDER]sketch-app.exe&quot;,0" />
+      <RegistryValue Root="HKCU" Key="Software\Classes\SketchRust.Skx\shell\open\command" Type="string" Value="&quot;[INSTALLFOLDER]sketch-app.exe&quot; &quot;%1&quot;" />
+      <RegistryValue Root="HKCU" Key="Software\Classes\.skx" Type="string" Value="SketchRust.Skx" />
+      <RegistryValue Root="HKCU" Key="Software\Classes\.skx\OpenWithProgids" Name="SketchRust.Skx" Type="string" Value="" />
+
+      <RegistryValue Root="HKCU" Key="Software\Classes\SketchRust.SketchieJson" Type="string" Value="Sketchie sketch (JSON)" />
+      <RegistryValue Root="HKCU" Key="Software\Classes\SketchRust.SketchieJson\DefaultIcon" Type="string" Value="&quot;[INSTALLFOLDER]sketch-app.exe&quot;,0" />
+      <RegistryValue Root="HKCU" Key="Software\Classes\SketchRust.SketchieJson\shell\open\command" Type="string" Value="&quot;[INSTALLFOLDER]sketch-app.exe&quot; &quot;%1&quot;" />
+      <RegistryValue Root="HKCU" Key="Software\Classes\.json\OpenWithProgids" Name="SketchRust.SketchieJson" Type="string" Value="" />
+
+      <!-- Open with: the app's own name and the types it takes. -->
+      <RegistryValue Root="HKCU" Key="Software\Classes\Applications\sketch-app.exe" Name="FriendlyAppName" Type="string" Value="Sketch Rust" />
+      <RegistryValue Root="HKCU" Key="Software\Classes\Applications\sketch-app.exe\shell\open\command" Type="string" Value="&quot;[INSTALLFOLDER]sketch-app.exe&quot; &quot;%1&quot;" />
+      <RegistryValue Root="HKCU" Key="Software\Classes\Applications\sketch-app.exe\SupportedTypes" Name=".sketchie" Type="string" Value="" />
+      <RegistryValue Root="HKCU" Key="Software\Classes\Applications\sketch-app.exe\SupportedTypes" Name=".skx" Type="string" Value="" />
+      <RegistryValue Root="HKCU" Key="Software\Classes\Applications\sketch-app.exe\SupportedTypes" Name=".json" Type="string" Value="" />
     </Component>
 
     <!-- Interface: welcome, licence, feature tree with a location button, ready, progress, finish. -->

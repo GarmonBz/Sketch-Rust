@@ -417,7 +417,7 @@ fn editor_style(
     }
 }
 
-fn check_row<'a>(
+pub(crate) fn check_row<'a>(
     label: impl Into<String>,
     checked: bool,
     on_toggle: impl Fn(bool) -> Message + 'a,

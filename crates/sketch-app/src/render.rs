@@ -582,7 +582,7 @@ pub fn draw_clean(frame: &mut Frame, scene: &Scene, layers: &[crate::layers::Lay
             ..scene.clone()
         };
         draw_areas(frame, &layer, None);
-        draw_lines(frame, &layer, None);
+        draw_lines(frame, &layer, None, &line_prep(&layer));
         if scene.filters[4] {
             draw_texts(frame, &layer);
         }
@@ -603,11 +603,17 @@ fn dimension_font(opts: &crate::options::Options) -> Font {
 }
 
 /// `drawLines(layerId)` — unselected walls, no wall solids (off by default).
-fn draw_lines(frame: &mut Frame, scene: &Scene, only_rank: Option<usize>) {
+/// What every wall pass of a frame shares, worked out once per frame however
+/// many layers the walls are painted in.
+struct LinePrep {
+    boundary_colors: std::collections::HashMap<i64, Color>,
+    covered: std::collections::HashSet<i64>,
+    solids: Option<sketch_core::solids::WallSolids>,
+}
+
+fn line_prep(scene: &Scene) -> LinePrep {
     let d = scene.drawing;
-    let in_rank = |id: i64| only_rank.is_none_or(|rank| scene.gates.z_of(id) == rank);
     let boundary_colors = area_boundary_colors(d, scene.area_codes, scene.gates);
-    let ink = |line: &SketchLine| wall_ink(d, line, boundary_colors.get(&line.id).copied());
     // Chain coverage: walls a dimension chain covers skip their own labels
     // (canvas-engine.js:1660's `!this.chainCoverage?.has(line.id)`).
     let covered = if d.dimension_chains.is_empty() {
@@ -627,6 +633,19 @@ fn draw_lines(frame: &mut Frame, scene: &Scene, only_rank: Option<usize>) {
     } else {
         None
     };
+    LinePrep {
+        boundary_colors,
+        covered,
+        solids,
+    }
+}
+
+fn draw_lines(frame: &mut Frame, scene: &Scene, only_rank: Option<usize>, prep: &LinePrep) {
+    let d = scene.drawing;
+    let in_rank = |id: i64| only_rank.is_none_or(|rank| scene.gates.z_of(id) == rank);
+    let ink = |line: &SketchLine| wall_ink(d, line, prep.boundary_colors.get(&line.id).copied());
+    let covered = &prep.covered;
+    let solids = &prep.solids;
     if let Some(solids) = &solids {
         for interior_pass in [true, false] {
             for solid in &solids.solids {
@@ -2396,13 +2415,14 @@ pub fn draw_scene_base(frame: &mut Frame, scene: &Scene) {
     let mut ranks: Vec<usize> = scene.gates.z.values().copied().collect();
     ranks.sort_unstable();
     ranks.dedup();
+    let prep = line_prep(scene);
     if ranks.len() <= 1 {
         draw_areas(frame, scene, None);
-        draw_lines(frame, scene, None);
+        draw_lines(frame, scene, None, &prep);
     } else {
         for rank in ranks {
             draw_areas(frame, scene, Some(rank));
-            draw_lines(frame, scene, Some(rank));
+            draw_lines(frame, scene, Some(rank), &prep);
         }
     }
 }

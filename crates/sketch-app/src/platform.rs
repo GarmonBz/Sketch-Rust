@@ -194,14 +194,39 @@ pub fn activation_stream(path: &std::path::PathBuf) -> impl iced::futures::Strea
 /// dialog gets its own message loop and COM apartment, the way it has in a
 /// program that does nothing else.
 fn on_dialog_thread<T: Send + 'static>(show: impl FnOnce() -> Option<T> + Send + 'static) -> Option<T> {
-    std::thread::Builder::new()
+    let dialog = std::thread::Builder::new()
         .name("file-dialog".into())
         .spawn(show)
-        .ok()?
-        .join()
-        .ok()
-        .flatten()
+        .ok()?;
+    // Wait without freezing the window: keep handling its messages, so Windows
+    // never marks it "Not Responding" while the dialog is open.
+    while !dialog.is_finished() {
+        pump_window_messages();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    dialog.join().ok().flatten()
 }
+
+/// Handles the messages waiting for this thread's windows (paint, resize,
+/// activate), as the dialog's own loop did when it ran on this thread.
+#[cfg(windows)]
+fn pump_window_messages() {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        DispatchMessageW, PeekMessageW, TranslateMessage, MSG, PM_REMOVE,
+    };
+    let mut msg = MSG::default();
+    // SAFETY: `msg` is a valid MSG; these calls only read and dispatch this
+    // thread's own queue.
+    unsafe {
+        while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() {
+            let _ = TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn pump_window_messages() {}
 
 /// Ask for one existing file whose extension is in `extensions`.
 pub fn pick_file(filter: &str, extensions: &[&str]) -> Option<std::path::PathBuf> {
