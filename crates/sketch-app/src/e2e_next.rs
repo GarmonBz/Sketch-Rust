@@ -1756,6 +1756,33 @@ fn drawing_chrome_laid_out_controls_never_overlap_the_tray() {
 }
 
 #[test]
+fn help_about_is_reachable_in_short_windows() {
+    // Help sits near the bottom of the Menu; its fly-out used to run past the
+    // window's bottom edge and lose its last row, About (the version check).
+    for (name, w, height, density) in [
+        ("short", 1200.0, 700.0, Density::Comfortable),
+        ("reported", 1536.0, 914.0, Density::Comfortable),
+        ("touch", 1280.0, 800.0, Density::Touch),
+    ] {
+        let open_help = || {
+            let mut h = harness_next_at(iced::Size::new(w, height));
+            h.send(Message::Ui(UiMsg::SetDensity(density)));
+            h.send(Message::Ui(UiMsg::CloseOverlays));
+            h.script(&["click \"Menu\""]);
+            h.send(Message::Ui(UiMsg::MenuSub(Some(MenuSub::Help))));
+            assert!(h.shows("About Sketch Rust"), "About missing at {name}");
+            h
+        };
+        // A click lands only on a row that is laid out inside the window.
+        let mut h = open_help();
+        h.script(&["click \"About Sketch Rust\""]);
+        assert!(h.shows(&crate::about_text()), "About did not open at {name}");
+        let shot = open_help().screenshot_in("e2e-next", &format!("help-flyout-{name}"));
+        assert!(shot.exists());
+    }
+}
+
+#[test]
 fn drawing_chrome_buttons_and_popovers_work_after_reflow() {
     for (name, w, height, density) in [
         ("reported", 1536.0, 914.0, Density::Comfortable),
