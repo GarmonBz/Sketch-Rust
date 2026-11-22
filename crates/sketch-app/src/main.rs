@@ -7752,13 +7752,56 @@ impl App {
                 }
             }
             M::AutoFill => {
-                // The suite hook (`window.parent.__collectSketchSubjectInfo`)
-                // does not exist in the standalone.
+                #[cfg(windows)]
+                {
+                    let pid = self.guide.report_process_id();
+                    return Task::perform(appraise_it::read_report_details(pid), |result| {
+                        Message::SubjectInfo(M::AutoFillResult(result))
+                    });
+                }
+                #[cfg(not(windows))]
                 return self.toasts.show(
-                    "Auto-Fill is available when the sketch is open in the appraisal suite."
-                        .to_string(),
+                    "Appraise-It Pro report integration runs on Windows.".to_string(),
                 );
             }
+            #[cfg(windows)]
+            M::AutoFillResult(result) => match result {
+                Ok(Some(details)) => {
+                    let mut filled_file_no = false;
+                    if let Some(file_no) = &details.file_no {
+                        if self.subject_info.file_no.trim().is_empty() {
+                            self.subject_info.file_no = file_no.clone();
+                            filled_file_no = true;
+                        }
+                        if self.subject_dialog.open && self.subject_dialog.fields[1].trim().is_empty()
+                        {
+                            self.subject_dialog.fields[1] = file_no.clone();
+                        }
+                    }
+                    self.subject_auto_filled = true;
+                    let summary = details.report.summary();
+                    self.guide
+                        .set_checked_report(details.report, details.area_target);
+                    let msg = if filled_file_no {
+                        format!(
+                            "Updated File No. from Appraise-It Pro ({}).",
+                            summary.lines().next().unwrap_or("open report")
+                        )
+                    } else {
+                        format!(
+                            "Connected to Appraise-It Pro ({}).",
+                            summary.lines().next().unwrap_or("open report")
+                        )
+                    };
+                    return self.toasts.show(msg);
+                }
+                Ok(None) => {
+                    return self
+                        .toasts
+                        .show("Appraise-It Pro connection cancelled.".to_string());
+                }
+                Err(err) => return self.toasts.show(err),
+            },
             M::SaveDefault => {
                 self.default_comments = self.subject_dialog.comments_text();
                 if std::env::var_os("SKETCH_PERSIST").is_some() {

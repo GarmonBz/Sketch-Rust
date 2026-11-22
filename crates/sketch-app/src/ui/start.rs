@@ -64,6 +64,8 @@ pub enum Msg {
     ClearRecent,
     CheckReport,
     ReportChecked(ReportStatus),
+    #[cfg(windows)]
+    ComReportChecked(Result<crate::appraise_it::ReportStatus, String>),
     DrawForReport,
     ShowAtLaunch(bool),
 }
@@ -301,6 +303,20 @@ pub fn update(app: &mut App, msg: Msg) -> iced::Task<Message> {
             app.ui.start.report = status;
             iced::Task::none()
         }
+        #[cfg(windows)]
+        Msg::ComReportChecked(result) => {
+            app.ui.start.report = match result {
+                Ok(crate::appraise_it::ReportStatus::Open(report, area_target)) => {
+                    let summary = report.summary();
+                    app.guide.set_checked_report(report, area_target);
+                    ReportStatus::Open(summary)
+                }
+                Ok(crate::appraise_it::ReportStatus::NoReport) => ReportStatus::NoReport,
+                Ok(crate::appraise_it::ReportStatus::Cancelled) => ReportStatus::Idle,
+                Err(e) => ReportStatus::Unavailable(e),
+            };
+            iced::Task::none()
+        }
         Msg::ShowAtLaunch(show) => {
             app.ui.start.hide_at_launch = !show;
             if crate::persist::write_json(
@@ -332,19 +348,9 @@ pub fn update(app: &mut App, msg: Msg) -> iced::Task<Message> {
 
 #[cfg(windows)]
 fn check_report_task() -> iced::Task<Message> {
-    iced::Task::perform(
-        async {
-            match crate::appraise_it::check_report().await {
-                Ok(crate::appraise_it::ReportStatus::Open(report, _)) => {
-                    ReportStatus::Open(report.summary())
-                }
-                Ok(crate::appraise_it::ReportStatus::NoReport) => ReportStatus::NoReport,
-                Ok(crate::appraise_it::ReportStatus::Cancelled) => ReportStatus::Idle,
-                Err(e) => ReportStatus::Unavailable(e),
-            }
-        },
-        |status| m(Msg::ReportChecked(status)),
-    )
+    iced::Task::perform(crate::appraise_it::check_report(), |result| {
+        m(Msg::ComReportChecked(result))
+    })
 }
 
 struct ThumbCanvas {
