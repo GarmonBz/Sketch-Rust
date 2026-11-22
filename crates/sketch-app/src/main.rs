@@ -11233,6 +11233,8 @@ fn apply_type_remaps_to_polygons(
 }
 
 fn main() -> iced::Result {
+    #[cfg(target_arch = "wasm32")]
+    console_error_panic_hook::set_once();
     if std::env::args().any(|arg| arg == "--check-installation") {
         let check = || -> Result<(), String> {
             let _ = app_icon();

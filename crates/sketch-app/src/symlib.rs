@@ -198,6 +198,20 @@ static LIBRARY: Mutex<Option<Arc<Result<SymIndex, String>>>> = Mutex::new(None);
 /// again after [`delete_from_library`] rewrites it.
 /// `Err` carries the message shown in place of the list.
 pub fn library() -> Arc<Result<SymIndex, String>> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let mut cached = LIBRARY.lock().unwrap_or_else(|e| e.into_inner());
+        return cached
+            .get_or_insert_with(|| {
+                let loaded = serde_json::from_str::<SymbolLibrary>(include_str!(
+                    "../../../assets/symbols.json"
+                ))
+                .map(SymIndex::build)
+                .map_err(|e| format!("Embedded symbol library invalid: {e}"));
+                Arc::new(loaded)
+            })
+            .clone();
+    }
     #[cfg(test)]
     if TEST_LIBRARY.with(|p| p.borrow().is_some()) {
         return load_library(&library_path());
