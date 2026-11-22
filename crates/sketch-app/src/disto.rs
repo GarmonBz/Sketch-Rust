@@ -268,11 +268,11 @@ impl Disto {
 // Transport (btleplug on a worker thread)
 // ---------------------------------------------------------------------------
 
-#[cfg(not(test))]
+#[cfg(all(not(test), not(target_arch = "wasm32")))]
 #[path = "disto_transport.rs"]
 mod transport;
 
-#[cfg(test)]
+#[cfg(any(test, target_arch = "wasm32"))]
 mod transport {
     use super::{Device, DistoMsg, Failure};
     pub async fn scan_devices(_manual: bool) -> Result<Vec<Device>, Failure> {

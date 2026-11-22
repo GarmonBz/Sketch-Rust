@@ -87,6 +87,8 @@ mod ui;
 mod undo;
 mod undo_history;
 mod view_state;
+#[cfg(target_arch = "wasm32")]
+mod web_io;
 mod window_state;
 
 use std::sync::Arc;
@@ -454,6 +456,18 @@ pub enum Message {
     /// A native file dialog resolved: the flow named by the request runs its
     /// continuation with the picked path (None = the user cancelled).
     DialogPicked(DialogRequest, Option<std::path::PathBuf>),
+    #[cfg(target_arch = "wasm32")]
+    WebFileOpened(WebFileKind, Option<(String, Vec<u8>)>),
+    #[cfg(target_arch = "wasm32")]
+    WebDownloadDone(Result<(), String>),
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Debug, Clone, Copy)]
+pub enum WebFileKind {
+    OpenSketch,
+    PhotoImage,
+    ImportCad,
 }
 
 /// The flow a native file dialog was opened for. `Message::DialogPicked`
@@ -731,7 +745,7 @@ pub struct App {
     /// The document differs from `saved_hash` (see `refresh_dirty`).
     dirty: bool,
     dirty_revision: u64,
-    dirty_checked: std::time::Instant,
+    dirty_checked: web_time::Instant,
     dirty_cost: std::time::Duration,
     /// The window is maximized — the title bar shows the restore icon.
     maximized: bool,
@@ -919,8 +933,8 @@ fn area_codes_save(codes: &[sketch_core::geometry::AreaCode]) -> serde_json::Val
 /// `new Date().toISOString()` — UTC ISO-8601 from the Unix epoch without
 /// pulling in a date dependency (Howard Hinnant's `civil_from_days`).
 pub fn iso_now() -> String {
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
+    let secs = web_time::SystemTime::now()
+        .duration_since(web_time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
     let (hours, minutes, seconds) = ((secs % 86_400) / 3_600, (secs % 3_600) / 60, secs % 60);
@@ -1129,7 +1143,7 @@ impl App {
                     saved_hash: String::new(),
                     dirty: false,
                     dirty_revision: 0,
-                    dirty_checked: std::time::Instant::now(),
+                    dirty_checked: web_time::Instant::now(),
                     dirty_cost: std::time::Duration::ZERO,
                     maximized: placement.is_some_and(|p| p.maximized),
                     placement,
@@ -3573,11 +3587,37 @@ impl App {
                 self.autosave_baseline();
                 Task::none()
             }
+            #[cfg(not(target_arch = "wasm32"))]
             Message::OpenFile => Task::perform(file_dialogs::open_sketch(), |path| {
                 Message::DialogPicked(DialogRequest::OpenSketch, path)
             }),
+            #[cfg(target_arch = "wasm32")]
+            Message::OpenFile => Task::perform(
+                web_io::pick_file_bytes(
+                    "Sketch".to_owned(),
+                    SKETCH_OPEN_EXTENSIONS.iter().map(|e| (*e).to_owned()).collect(),
+                ),
+                |file| Message::WebFileOpened(WebFileKind::OpenSketch, file),
+            ),
+            #[cfg(not(target_arch = "wasm32"))]
             Message::SaveFile => self.save_to_file(false, false),
+            #[cfg(not(target_arch = "wasm32"))]
             Message::SaveFileAs => self.save_to_file(true, false),
+            #[cfg(target_arch = "wasm32")]
+            Message::SaveFile | Message::SaveFileAs => {
+                let model = self.build_save_model();
+                match sketch_core::skx::write(&model, &Default::default()) {
+                    Ok(bytes) => {
+                        self.autosave_baseline();
+                        Task::perform(
+                            web_io::download_bytes(format!("{}.skx", self.file_name), bytes),
+                            Message::WebDownloadDone,
+                        )
+                    }
+                    Err(e) => self.toasts.show(format!("Could not save sketch: {e}")),
+                }
+            }
+            #[cfg(not(target_arch = "wasm32"))]
             Message::ExportPng => Task::perform(
                 crate::platform::save_file_async(
                     "PNG image".to_owned(),
@@ -3586,6 +3626,17 @@ impl App {
                 ),
                 |path| Message::DialogPicked(DialogRequest::ExportPng, path),
             ),
+            #[cfg(target_arch = "wasm32")]
+            Message::ExportPng => match self.png_export_bytes() {
+                Some(bytes) => Task::perform(
+                    web_io::download_bytes(format!("{}.png", self.file_name), bytes),
+                    Message::WebDownloadDone,
+                ),
+                None => self
+                    .toasts
+                    .show("Export as PNG could not fit the sketch.".to_string()),
+            },
+            #[cfg(not(target_arch = "wasm32"))]
             Message::ExportSvg => Task::perform(
                 crate::platform::save_file_async(
                     "SVG image".to_owned(),
@@ -3594,6 +3645,25 @@ impl App {
                 ),
                 |path| Message::DialogPicked(DialogRequest::ExportSvg, path),
             ),
+            #[cfg(target_arch = "wasm32")]
+            Message::ExportSvg => {
+                let north = self.pages.page().north_angle;
+                let page = exporter::build_export_page(&self.drawing, north, &self.area_codes);
+                let options = exporter::export_options(&self.drawing);
+                let codes = self.area_codes.clone();
+                let library = self
+                    .symbols
+                    .as_ref()
+                    .as_ref()
+                    .ok()
+                    .map(|index| &index.library);
+                let svg = sketch_core::export_svg::export_svg(&page, &options, &codes, library);
+                Task::perform(
+                    web_io::download_bytes(format!("{}.svg", self.file_name), svg.into_bytes()),
+                    Message::WebDownloadDone,
+                )
+            }
+            #[cfg(not(target_arch = "wasm32"))]
             Message::ExportDxf => Task::perform(
                 crate::platform::save_file_async(
                     "DXF drawing".to_owned(),
@@ -3602,6 +3672,19 @@ impl App {
                 ),
                 |path| Message::DialogPicked(DialogRequest::ExportDxf, path),
             ),
+            #[cfg(target_arch = "wasm32")]
+            Message::ExportDxf => {
+                let north = self.pages.page().north_angle;
+                let page = exporter::build_export_page(&self.drawing, north, &self.area_codes);
+                let options = exporter::export_options(&self.drawing);
+                let codes = self.area_codes.clone();
+                let dxf = sketch_core::export_dxf::export_dxf(&page, &options, &codes);
+                Task::perform(
+                    web_io::download_bytes(format!("{}.dxf", self.file_name), dxf.into_bytes()),
+                    Message::WebDownloadDone,
+                )
+            }
+            #[cfg(not(target_arch = "wasm32"))]
             Message::ExportPdf => Task::perform(
                 crate::platform::save_file_async(
                     "PDF document".to_owned(),
@@ -3610,6 +3693,15 @@ impl App {
                 ),
                 |path| Message::DialogPicked(DialogRequest::ExportPdf, path),
             ),
+            #[cfg(target_arch = "wasm32")]
+            Message::ExportPdf => {
+                let bytes = self.report_pdf();
+                Task::perform(
+                    web_io::download_bytes(format!("{}.pdf", self.file_name), bytes),
+                    Message::WebDownloadDone,
+                )
+            }
+            #[cfg(not(target_arch = "wasm32"))]
             Message::ImportCad => {
                 // `importFromFile` for a DXF: read, scale via the unit
                 // choice, offset by (2, 2) like the original, and append the
@@ -3626,6 +3718,14 @@ impl App {
                     |path| Message::DialogPicked(DialogRequest::ImportCad, path),
                 )
             }
+            #[cfg(target_arch = "wasm32")]
+            Message::ImportCad => Task::perform(
+                web_io::pick_file_bytes(
+                    "CAD drawing".to_owned(),
+                    vec!["dxf".to_owned(), "dwg".to_owned()],
+                ),
+                |file| Message::WebFileOpened(WebFileKind::ImportCad, file),
+            ),
             Message::ImportAxf => {
                 // Import › Apex AXF sketch: the picker, then the converted
                 // open (the same continuation File > Open uses for `.axf`).
@@ -3646,6 +3746,13 @@ impl App {
                 |path| Message::DialogPicked(DialogRequest::ExportAxf, path),
             ),
             Message::DialogPicked(request, path) => self.dialog_picked(request, path),
+            #[cfg(target_arch = "wasm32")]
+            Message::WebFileOpened(kind, file) => self.web_file_opened(kind, file),
+            #[cfg(target_arch = "wasm32")]
+            Message::WebDownloadDone(res) => match res {
+                Ok(()) => Task::none(),
+                Err(e) => self.toasts.show(format!("Could not save file: {e}")),
+            },
             Message::RotateSketch => self.update(Message::RotateSketchBy(90.0)),
             Message::RotateSelected(degrees) => {
                 // `rotateSelected`: with no wall or area selected it turns
@@ -9161,9 +9268,22 @@ impl App {
     /// intensity. The dialog runs on its own thread and the continuation
     /// lands in `DialogPicked(PhotoImage, ..)`.
     fn photo_load(&mut self) -> Task<Message> {
-        Task::perform(file_dialogs::open_image(), |path| {
-            Message::DialogPicked(DialogRequest::PhotoImage, path)
-        })
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            Task::perform(file_dialogs::open_image(), |path| {
+                Message::DialogPicked(DialogRequest::PhotoImage, path)
+            })
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            Task::perform(
+                web_io::pick_file_bytes(
+                    "Images".to_owned(),
+                    vec!["png".to_owned(), "jpg".to_owned(), "jpeg".to_owned()],
+                ),
+                |file| Message::WebFileOpened(WebFileKind::PhotoImage, file),
+            )
+        }
     }
 
     /// `resetToBlank()` (sketch-app.js:5306): drop every page and return to
@@ -9897,6 +10017,86 @@ impl App {
     /// A native file dialog resolved: run the flow's continuation with the
     /// picked path. A cancelled dialog (None) does nothing, exactly like
     /// the `if let Some(..)` it replaces.
+    #[cfg(target_arch = "wasm32")]
+    fn web_file_opened(
+        &mut self,
+        kind: WebFileKind,
+        file: Option<(String, Vec<u8>)>,
+    ) -> Task<Message> {
+        let Some((name, bytes)) = file else {
+            return Task::none();
+        };
+        let stem = std::path::Path::new(&name)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Untitled");
+        match kind {
+            WebFileKind::OpenSketch => {
+                if sketchy::store::is_sqlite(&bytes) {
+                    return self.toasts.show(
+                        "Sketchie SQLite stores are not supported in the web build.".into(),
+                    );
+                }
+                if name.to_ascii_lowercase().ends_with(".axf") {
+                    return match sketch_core::axf::read(&bytes) {
+                        Ok(doc) => {
+                            let import = doc.to_model(stem);
+                            let task = self.apply_model(&import.model, stem);
+                            self.autosave_baseline();
+                            task
+                        }
+                        Err(e) => self.toasts.show(format!("Could not open {name}: {e}")),
+                    };
+                }
+                match read_sketch_model(&bytes) {
+                    Ok((model, _format, _omitted)) => {
+                        let task = self.apply_model(&model, stem);
+                        self.autosave_baseline();
+                        task
+                    }
+                    Err(e) => self.toasts.show(format!("Could not open {name}: {e}")),
+                }
+            }
+            WebFileKind::PhotoImage => {
+                let size = reference_image::image_size(&bytes);
+                let handle = iced::widget::image::Handle::from_bytes(bytes);
+                self.bg_image = match size {
+                    Some((w, h)) => reference_image::BgImage::load(handle, w, h),
+                    None => reference_image::BgImage::load(handle, 1, 1),
+                };
+                Task::none()
+            }
+            WebFileKind::ImportCad => {
+                if name.to_ascii_lowercase().ends_with(".dwg") {
+                    return self.open_dialog(dialog::Dialog::alert(
+                        sketch_core::cad_import::cad_import_dwg_hint(),
+                    ));
+                }
+                let Ok(text) = String::from_utf8(bytes) else {
+                    return self.open_dialog(dialog::Dialog::alert(&format!(
+                        "Could not import {name}: the file is not valid UTF-8."
+                    )));
+                };
+                match sketch_core::cad_import::parse_dxf(&text, None, (2.0, 2.0)) {
+                    Ok(result) => {
+                        self.import_cad_sketch(&sketch_core::cad_import::ConvertedSketch {
+                            lines: result.lines.clone(),
+                            polygons: result.polygons.clone(),
+                            labels: result.labels.clone(),
+                            skipped: result.skipped.clone(),
+                        });
+                        self.open_dialog(dialog::Dialog::alert(
+                            &sketch_core::cad_import::describe_import(&result),
+                        ))
+                    }
+                    Err(reason) => self.open_dialog(dialog::Dialog::alert(&format!(
+                        "Could not import {name}: {reason}"
+                    ))),
+                }
+            }
+        }
+    }
+
     fn dialog_picked(
         &mut self,
         request: DialogRequest,
@@ -11225,7 +11425,7 @@ mod tests {
                 );
             }
             let _ = app.update(Message::Key(input::KeyCmd::DrawExterior));
-            let start = std::time::Instant::now();
+            let start = web_time::Instant::now();
             for i in 0..500 {
                 let _ = app.update(Message::CanvasHover((i % 900) as f32, 200.));
             }

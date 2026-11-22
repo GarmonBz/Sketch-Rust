@@ -28,12 +28,19 @@ impl Toasts {
         self.current = Some((id, message));
         Task::perform(
             async move {
-                let (tx, rx) = iced::futures::channel::oneshot::channel();
-                std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_millis(SHOW_MS));
-                    let _ = tx.send(());
-                });
-                let _ = rx.await;
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    let (tx, rx) = iced::futures::channel::oneshot::channel();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(SHOW_MS));
+                        let _ = tx.send(());
+                    });
+                    let _ = rx.await;
+                }
+                #[cfg(target_arch = "wasm32")]
+                {
+                    gloo_timers::future::TimeoutFuture::new(SHOW_MS as u32).await;
+                }
                 id
             },
             Message::ToastExpired,

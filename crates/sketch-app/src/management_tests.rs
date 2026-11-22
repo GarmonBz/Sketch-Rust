@@ -663,11 +663,11 @@ fn autosave_obeys_elapsed_interval_and_keeps_atomic_replacements_valid() {
         a.drawing.options.auto_save_interval = 1.;
         let _ = a.autosave_tick(false);
         assert!(a.autosave.path.is_none());
-        a.autosave.last = std::time::Instant::now() - std::time::Duration::from_secs(61);
+        a.autosave.last = web_time::Instant::now() - std::time::Duration::from_secs(61);
         let _ = a.autosave_tick(false);
         let path = a.autosave.path.clone().unwrap();
         a.file_name = "Updated snapshot".into();
-        a.autosave.last = std::time::Instant::now() - std::time::Duration::from_secs(61);
+        a.autosave.last = web_time::Instant::now() - std::time::Duration::from_secs(61);
         let _ = a.autosave_tick(false);
         assert_eq!(
             sketch_core::skx::read(&std::fs::read(path).unwrap())

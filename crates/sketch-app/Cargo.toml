@@ -12,20 +12,29 @@ gpu = ["iced/wgpu"]
 
 [dependencies]
 sketch-core = { path = "../sketch-core" }
-iced = { version = "0.14", default-features = false, features = ["tiny-skia", "crisp", "web-colors", "thread-pool", "linux-theme-detection", "x11", "wayland", "canvas", "image", "svg", "advanced"] }
+iced = { version = "0.14", default-features = false, features = ["tiny-skia", "crisp", "web-colors", "canvas", "image", "svg", "advanced"] }
 rfd = "0.15"
-btleplug = "0.11"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
-tokio = { version = "1", features = ["rt", "time"] }
 serde = { workspace = true }
 serde_json = { workspace = true, features = ["float_roundtrip"] }
+web-time = { workspace = true }
 getrandom = "0.3"
 uuid = "1"
-rusqlite = { version = "0.37", features = ["bundled"] }
 serde_json_canonicalizer = "0.3"
 # PNG export uses the canvas renderer on an offscreen software surface.
 iced_runtime = "0.14"
 resvg = "0.45.1"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+iced = { version = "0.14", default-features = false, features = ["thread-pool", "linux-theme-detection", "x11", "wayland"] }
+btleplug = "0.11"
+tokio = { version = "1", features = ["rt", "time"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+iced = { version = "0.14", default-features = false, features = ["webgl"] }
+getrandom = { version = "0.3", features = ["wasm_js"] }
+gloo-timers = { version = "0.3", features = ["futures"] }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61.3", features = ["Data_Pdf", "Storage_Streams", "Win32_System_Com", "Win32_System_Ole", "Win32_System_Variant", "Win32_System_WinRT", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi", "Win32_UI_HiDpi", "Win32_Security"] }

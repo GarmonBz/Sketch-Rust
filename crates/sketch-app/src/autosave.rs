@@ -3,8 +3,9 @@ use crate::{persist, App, Message};
 use iced::{Subscription, Task};
 use std::{
     path::{Path, PathBuf},
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::Duration,
 };
+use web_time::{Instant, SystemTime, UNIX_EPOCH};
 #[derive(Debug)]
 pub struct State {
     pub last: Instant,
@@ -80,7 +81,7 @@ pub fn latest() -> Option<(PathBuf, serde_json::Value)> {
         std::cmp::Reverse(
             e.metadata()
                 .and_then(|m| m.modified())
-                .unwrap_or(UNIX_EPOCH),
+                .unwrap_or(std::time::UNIX_EPOCH),
         )
     });
     for e in paths {
@@ -104,6 +105,7 @@ pub fn subscription(enabled: bool) -> Subscription<Message> {
     }
     Subscription::run(ticks).map(|_| Message::AutoSaveTick)
 }
+#[cfg(not(target_arch = "wasm32"))]
 fn ticks() -> impl iced::futures::Stream<Item = ()> {
     let (tx, rx) = iced::futures::channel::mpsc::unbounded();
     std::thread::spawn(move || {
@@ -115,6 +117,11 @@ fn ticks() -> impl iced::futures::Stream<Item = ()> {
         }
     });
     rx
+}
+
+#[cfg(target_arch = "wasm32")]
+fn ticks() -> impl iced::futures::Stream<Item = ()> {
+    iced::futures::stream::pending()
 }
 impl App {
     pub(crate) fn autosave_baseline(&mut self) {
