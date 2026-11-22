@@ -250,6 +250,15 @@ static COMMANDS: &[Command] = &[
         run: |_| Message::ImportCad,
     },
     Command {
+        id: "import-axf",
+        label: "Import Apex AXF...",
+        group: Group::File,
+        shortcut: "",
+        enabled: always,
+        checked: None,
+        run: |_| Message::ImportAxf,
+    },
+    Command {
         id: "import-layer",
         label: "Import layer...",
         group: Group::File,
@@ -284,6 +293,15 @@ static COMMANDS: &[Command] = &[
         enabled: always,
         checked: None,
         run: |_| Message::ExportDxf,
+    },
+    Command {
+        id: "export-axf",
+        label: "Export as Apex AXF",
+        group: Group::File,
+        shortcut: "",
+        enabled: always,
+        checked: None,
+        run: |_| Message::ExportAxf,
     },
     Command {
         id: "export-pdf",
@@ -1616,6 +1634,7 @@ pub fn icon_for(id: &str) -> Option<(&'static str, bool)> {
         "import" => ("arrow-square-in", true),
         "import-layer" => ("arrow-square-in", false),
         "import-cad" | "export-dxf" => ("blueprint", true),
+        "import-axf" | "export-axf" => ("blueprint", true),
         "export-png" => ("file-image", false),
         "export-svg" => ("arrow-square-out", true),
         "export-pdf" => ("file-pdf", true),
@@ -1770,10 +1789,12 @@ mod tests {
                 | "save-as"
                 | "import"
                 | "import-cad"
+                | "import-axf"
                 | "import-layer"
                 | "export-png"
                 | "export-svg"
                 | "export-dxf"
+                | "export-axf"
                 | "export-pdf"
                 | "print"
                 | "print-preview"

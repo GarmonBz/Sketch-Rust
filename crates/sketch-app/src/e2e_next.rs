@@ -1117,6 +1117,112 @@ fn arrow_nudge_with_zero_axis_keeps_that_axis_stationary() {
 }
 
 #[test]
+fn import_and_export_menus_offer_apex_axf() {
+    let mut h = harness_next_at(VIEWPORT);
+    h.send(Message::Ui(UiMsg::ToggleMenu));
+    h.send(Message::Ui(UiMsg::MenuSub(Some(MenuSub::Import))));
+    assert!(h.shows("Apex AXF sketch…"), "Import fly-out lists AXF");
+    h.send(Message::Ui(UiMsg::MenuSub(Some(MenuSub::Export))));
+    assert!(h.shows("Apex AXF"), "Export fly-out lists AXF");
+}
+
+#[test]
+fn axf_export_writes_a_file_that_reimports_as_areas() {
+    let mut h = harness_next_at(VIEWPORT);
+    draw_closed_square(&mut h);
+    let out = std::env::temp_dir().join(format!("sketch-rust-axf-test-{}.axf", std::process::id()));
+    let _ = std::fs::remove_file(&out);
+    h.send(Message::DialogPicked(
+        crate::DialogRequest::ExportAxf,
+        Some(out.clone()),
+    ));
+    let bytes = std::fs::read(&out).expect("the export wrote the file");
+    let doc = sketch_core::axf::read(&bytes).expect("the export re-imports");
+    assert_eq!(doc.areas.len(), 1, "the square exported as one area");
+    assert!(doc.warnings.is_empty(), "{:?}", doc.warnings);
+    // And the Import continuation opens that same file as a converted copy.
+    let mut h2 = harness_next_at(VIEWPORT);
+    h2.send(Message::DialogPicked(
+        crate::DialogRequest::ImportAxf,
+        Some(out.clone()),
+    ));
+    let app = state(h2);
+    assert_eq!(app.drawing.polygons.len(), 1, "the area opened");
+    assert!(app.save_as_sketchie, "an AXF open saves as a new sketch");
+    let _ = std::fs::remove_file(&out);
+}
+
+#[test]
+fn drawn_list_shows_only_the_current_pages_areas() {
+    // Layer ids are deterministic for a fixed message sequence, so a probe
+    // harness can hand the real one its ids (tree_ids() does the same).
+    let (page1_layer, page2_layer) = {
+        let mut p = harness_next_at(VIEWPORT);
+        draw_closed_square(&mut p);
+        p.send(Message::Status(StatusMsg::PageAdd));
+        draw_closed_square(&mut p);
+        let app = state(p);
+        let named: Vec<_> = app
+            .layers
+            .items
+            .iter()
+            .filter(|l| l.area_poly_id.is_some())
+            .collect();
+        assert_eq!(named.len(), 2, "one dedicated layer per area");
+        (named[0].id.clone(), named[1].id.clone())
+    };
+    let mut h = harness_next_at(VIEWPORT);
+    draw_closed_square(&mut h);
+    // Unique names: the toolbar's "Area" tool makes the generated names
+    // ("Area", "Area 2") impossible to assert on with shows().
+    h.send(Message::LayerStartRename(page1_layer.clone()));
+    h.send(Message::LayerRename(
+        page1_layer.clone(),
+        "Zone Alpha".into(),
+    ));
+    h.send(Message::LayerRenameCommit);
+    h.send(Message::Status(StatusMsg::PageAdd));
+    draw_closed_square(&mut h);
+    h.send(Message::LayerStartRename(page2_layer.clone()));
+    h.send(Message::LayerRename(
+        page2_layer.clone(),
+        "Zone Beta".into(),
+    ));
+    h.send(Message::LayerRenameCommit);
+    // On page 1: page 2's area layer must not read as a row here.
+    h.send(Message::PagesNav(NavMsg::Go(0)));
+    assert!(
+        !h.shows("Zone Beta"),
+        "page 2's dedicated layer leaked onto page 1's area list"
+    );
+    assert!(h.shows("Undefined Area"), "page 1's own area still lists");
+    // And page 2 lists its own areas, not page 1's.
+    h.send(Message::PagesNav(NavMsg::Go(1)));
+    assert!(
+        !h.shows("Zone Alpha"),
+        "page 1's dedicated layer leaked onto page 2's area list"
+    );
+    assert!(h.shows("Undefined Area"), "page 2 still lists its own area");
+}
+
+#[test]
+fn picking_a_page_closes_the_pages_navigator() {
+    let mut h = harness_next_at(VIEWPORT);
+    h.send(Message::Status(StatusMsg::PageAdd));
+    h.send(Message::PagesNav(NavMsg::Toggle));
+    // Selecting a page switches to it AND closes the navigator — no
+    // separate close click. `state` consumes the harness, so assert at
+    // the end.
+    h.send(Message::PagesNav(NavMsg::Go(0)));
+    let app = state(h);
+    assert_eq!(app.pages.current, 0, "Go switched the page");
+    assert!(
+        !app.pages_nav_open,
+        "selecting a page must close the navigator"
+    );
+}
+
+#[test]
 fn probe_real_file_nudge_variants() {
     // Temporary diagnostic on the REAL subject sketch: which selection
     // variant deforms on a nudge? Prints geometry per variant.

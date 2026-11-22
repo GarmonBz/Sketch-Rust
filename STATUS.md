@@ -1,5 +1,40 @@
 # Sketch Rust — STATUS ledger
 
+0.3.12 also closes the Pages navigator when a page is picked (user request:
+selecting a page left the panel open, forcing a separate close click).
+`NavMsg::Go` in `pages_nav_msg` (main.rs) now sets `pages_nav_open = false`,
+clears the hover row and re-syncs the canvas, then switches pages — the same
+bookkeeping the Close arm performs. Ghost/Delete keep the panel open (they
+are not page selections; the topbar's tab dropdown reuses `Go` harmlessly).
+RED→GREEN e2e: `picking_a_page_closes_the_pages_navigator` (failed on the
+pre-fix tree, passes after). Gate on the final tree: fmt 0, clippy 0, my
+test green; 4 pre-existing failures belong to the in-flight 0.3.13
+Areas-scoping work below (`drawn_list_shows_only_the_current_pages_areas`,
+`areas_and_layers_show_as_one_tree_with_a_folder_button`,
+`dragging_a_rows_grip_over_another_row_moves_it_there`,
+`p10_touch_input_pad_and_gestures_across_sizes` — each fails solo, in files
+this change never touched).
+
+0.3.13 adds Apex AXF import/export to the Menu and scopes the Areas list to
+the current page. New in sketch-core/axf.rs: a clean-room ENCODER
+(`encode`/`write` + `bow_to_bulge` + `AxfDocument::from_page`) writing the
+same APX4WIN layouts the reader documents — area-table entries, boundary
+vertices with DXF bulges, boundary markers between areas, Win16-LOGFONT text
+records, raw-deflated. No Apex or proprietary code; verified by round-trip
+tests (doc → write → read byte-exact; to_model → from_page → write → read)
+and an e2e export→reimport flow. Menu wiring: Import › "Apex AXF sketch…"
+(pick .axf → `open_axf_path`, the converted-untitled-copy open) and Export ›
+"Apex AXF" (save_file_async → `AxfDocument::from_page(current page)` →
+`axf::write`), both message-driven dialog continuations; docs/AXF_IMPORT.md
+gains the export section with the honest Apex-compat scope note. The Areas
+panel fix (the Site Plan screenshot): `drawn_view`'s "area is gone" branch
+rendered every dedicated layer whose polygon is not on the current page as an
+Other row — it now checks `app.pages` and only keeps layers whose area is
+gone NOWHERE (still deletable); cross-page layers appear on their own page
+(getAreaLayersForCurrentPage semantics). RED→GREEN e2e:
+`drawn_list_shows_only_the_current_pages_areas`. docs/RELEASE_README.txt
+updated.
+
 0.3.12 fixes the arrow-key nudge deform reported on the real subject sketch
 (9410 Waddell Creek Rd): selecting a wall and pressing an arrow moved it
 diagonally (~10 ft sideways) instead of one pitch along the arrow. Root cause:

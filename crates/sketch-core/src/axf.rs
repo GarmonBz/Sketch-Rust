@@ -678,6 +678,274 @@ impl AxfDocument {
 }
 
 // ---------------------------------------------------------------------------
+// Encoding — the same layouts written back out. Clean-room: derived from the
+// importer's own documented layout only; no vendor code is used.
+// ---------------------------------------------------------------------------
+
+/// Sketch Rust bow angle (degrees) → DXF-style bulge. Inverse of
+/// `bulge_to_bow`.
+pub fn bow_to_bulge(bow: f64) -> f64 {
+    if !bow.is_finite() || bow == 0.0 {
+        return 0.0;
+    }
+    let bulge = (-(bow).to_radians() / 4.0).tan();
+    if bulge.is_finite() {
+        bulge
+    } else {
+        0.0
+    }
+}
+
+/// A `str06` field of exactly `bytes.len()` bytes (NUL-padded to `width`).
+fn write_str06_bytes(out: &mut Vec<u8>, bytes: &[u8], width: usize) {
+    out.push(0x06);
+    out.push(width.min(255) as u8);
+    let mut field = bytes.to_vec();
+    field.resize(width.min(255), 0);
+    out.extend(field);
+}
+
+/// Text as Windows-1252 (the reverse of `cp1252`); unknown code points
+/// become `?`.
+fn encode_cp1252(text: &str) -> Vec<u8> {
+    const HIGH: [char; 32] = [
+        '€', '\u{fffd}', '‚', 'ƒ', '„', '…', '†', '‡', 'ˆ', '‰', 'Š', '‹', 'Œ', '\u{fffd}', 'Ž',
+        '\u{fffd}', '\u{fffd}', '‘', '’', '“', '”', '•', '–', '—', '˜', '™', 'š', '›', 'œ',
+        '\u{fffd}', 'ž', 'Ÿ',
+    ];
+    text.chars()
+        .map(|c| {
+            let v = c as u32;
+            match v {
+                0x00..=0x7f => v as u8,
+                0x80..=0x9f => HIGH
+                    .iter()
+                    .position(|&h| h == c)
+                    .map(|i| (0x80 + i) as u8)
+                    .unwrap_or(b'?'),
+                0xa0..=0xff => v as u8,
+                _ => b'?',
+            }
+        })
+        .collect()
+}
+
+/// One area-table entry record.
+fn write_area_entry(out: &mut Vec<u8>, entry: &AxfAreaEntry) {
+    // The reader requires a non-empty code of at most 24 bytes.
+    let mut code = encode_cp1252(entry.code.trim());
+    if code.is_empty() || code.len() > 24 {
+        code = b"UND".to_vec();
+    }
+    write_str06_bytes(out, &code, code.len());
+    let description = encode_cp1252(&entry.description);
+    write_str06_bytes(out, &description, description.len());
+    out.push(0x01);
+    for v in [entry.factor, entry.area, entry.perimeter] {
+        out.extend(v.to_le_bytes());
+    }
+    out.extend([0u8; 15]);
+    out.extend(NAME_MARKER[..NAME_MARKER.len() - 1].iter());
+    let name = encode_cp1252(entry.name.trim());
+    let name = if name.is_empty() {
+        b"Area".to_vec()
+    } else {
+        name
+    };
+    write_str06_bytes(out, &name, name.len());
+    out.extend([0u8; 11]);
+}
+
+/// A record with the boundary tag that is NOT a vertex: it ends the current
+/// boundary run, so areas stay separate.
+fn write_boundary_marker(out: &mut Vec<u8>) {
+    out.extend([0x01, 0x30, 0x00, 0x0a]);
+    out.extend(b"CONTINUOUS");
+    out.extend([0x01, 0x00]);
+    out.extend(0.3325f64.to_le_bytes());
+    out.extend(0.3325f64.to_le_bytes());
+    out.extend([0u8; 40]);
+}
+
+/// One boundary-vertex record (the bulge of the edge leaving the vertex).
+fn write_vertex(out: &mut Vec<u8>, vertex: &AxfVertex) {
+    out.extend([0x01, 0x30, 0x00, 0x0a]);
+    out.extend(b"CONTINUOUS");
+    for v in [vertex.x, vertex.y, 0.5, 0.3325, 0.3325, vertex.bulge] {
+        out.extend(v.to_le_bytes());
+    }
+    out.extend([0u8; 61]);
+}
+
+/// One free-text label record with its Win16 LOGFONT.
+fn write_label(out: &mut Vec<u8>, label: &AxfLabel) {
+    out.push(0x01);
+    let text = encode_cp1252(&label.text);
+    write_str06_bytes(out, &text, text.len());
+    out.extend([0u8; 4]);
+    out.extend(label.x.to_le_bytes());
+    out.extend(label.y.to_le_bytes());
+    let escapement = (label.rotation.rem_euclid(360.0) * 10.0).round();
+    let escapement = escapement.clamp(-32767.0, 32767.0) as i16;
+    out.extend((-5i16).to_le_bytes());
+    out.extend(0i16.to_le_bytes());
+    out.extend(escapement.to_le_bytes());
+    out.extend(0i16.to_le_bytes());
+    out.extend(400i16.to_le_bytes());
+    out.extend([label.italic as u8, label.underline as u8, 0, 1, 0, 0, 0, 0]);
+    out.extend(b"Arial\0");
+}
+
+/// Encode a document as an inflated `APX4WIN` object stream.
+pub fn encode(doc: &AxfDocument) -> Vec<u8> {
+    let mut out = SIGNATURE.to_vec();
+    out.extend(b"\0\0\0@\x01\0\0\0");
+    for _ in 0..6 {
+        write_str06_bytes(&mut out, &[], 0);
+    }
+    for area in &doc.areas {
+        if let Some(entry) = &area.entry {
+            write_area_entry(&mut out, entry);
+        }
+    }
+    for area in &doc.areas {
+        write_boundary_marker(&mut out);
+        for vertex in &area.vertices {
+            write_vertex(&mut out, vertex);
+        }
+    }
+    for label in &doc.labels {
+        write_label(&mut out, label);
+    }
+    out.extend([0u8; 30]);
+    out
+}
+
+/// Encode and raw-deflate: the bytes of an `.axf` file.
+pub fn write(doc: &AxfDocument) -> Vec<u8> {
+    use std::io::Write as _;
+    let mut encoder =
+        flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
+    encoder
+        .write_all(&encode(doc))
+        .expect("writing to a Vec never fails");
+    encoder.finish().expect("finishing a Vec never fails")
+}
+
+impl AxfDocument {
+    /// Rebuild a document from a save model (`pages[0]`), so a saved page can
+    /// be exported. See `from_page` for the page-level variant the app uses.
+    pub fn from_model(model: &Value) -> Result<AxfDocument, String> {
+        let page = model
+            .get("pages")
+            .and_then(|pages| pages.get(0))
+            .ok_or("the model has no pages")?;
+        Self::from_page(page)
+    }
+
+    /// Rebuild a document from one saved page: every polygon becomes an area
+    /// (code, name, factor; area and perimeter re-measured, arcs included)
+    /// and every text label round-trips with position, rotation, italic and
+    /// underline.
+    pub fn from_page(page: &Value) -> Result<AxfDocument, String> {
+        let polygons: Vec<Polygon> =
+            serde_json::from_value(page.get("polygons").cloned().unwrap_or(Value::Null))
+                .map_err(|e| format!("the page's areas did not parse: {e}"))?;
+        if polygons.is_empty() {
+            return Err("The page has no closed areas to export.".into());
+        }
+        let mut areas = Vec::new();
+        for poly in &polygons {
+            let mut vertices = Vec::with_capacity(poly.points.len());
+            for (point, edge) in poly
+                .points
+                .iter()
+                .zip(poly.edges.iter().chain(std::iter::repeat(&DEFAULT_EDGE)))
+            {
+                vertices.push(AxfVertex {
+                    x: point.x,
+                    y: point.y,
+                    bulge: bow_to_bulge(edge.bow_angle),
+                });
+            }
+            let mut area = AxfArea {
+                entry: None,
+                vertices,
+            };
+            let (measured, perimeter) = area.measure();
+            let code = poly.kind.trim().to_ascii_uppercase();
+            let code = if code.is_empty() {
+                "UND".to_string()
+            } else {
+                code
+            };
+            let name = poly.name.trim().to_string();
+            let name = if name.is_empty() {
+                "Undefined Area".to_string()
+            } else {
+                name
+            };
+            area.entry = Some(AxfAreaEntry {
+                code,
+                description: name.clone(),
+                name,
+                factor: if poly.factor.is_finite() && poly.factor > 0.0 {
+                    poly.factor
+                } else {
+                    1.0
+                },
+                area: measured,
+                perimeter,
+            });
+            areas.push(area);
+        }
+        #[derive(serde::Deserialize)]
+        struct SavedLabel {
+            text: String,
+            x: f64,
+            y: f64,
+            #[serde(default)]
+            rotation: f64,
+            #[serde(default)]
+            italic: bool,
+            #[serde(default)]
+            underline: bool,
+        }
+        let labels: Vec<SavedLabel> = serde_json::from_value(
+            page.get("labels")
+                .cloned()
+                .unwrap_or_else(|| Value::Array(vec![])),
+        )
+        .unwrap_or_default();
+        let labels = labels
+            .into_iter()
+            .filter(|l| !l.text.trim().is_empty())
+            .map(|l| AxfLabel {
+                text: l.text,
+                x: l.x,
+                y: l.y,
+                rotation: l.rotation,
+                italic: l.italic,
+                underline: l.underline,
+            })
+            .collect();
+        Ok(AxfDocument {
+            areas,
+            labels,
+            dimension_texts: 0,
+            blocks_skipped: 0,
+            warnings: vec![],
+        })
+    }
+}
+
+/// The edge a point without one would carry (straight).
+const DEFAULT_EDGE: Edge = Edge {
+    line_id: None,
+    bow_angle: 0.0,
+};
+
+// ---------------------------------------------------------------------------
 // Tests — a synthetic stream in the same layout (no private data).
 // ---------------------------------------------------------------------------
 
@@ -956,5 +1224,191 @@ pub(crate) mod tests {
             );
         }
         assert!(doc.warnings.is_empty(), "{:?}", doc.warnings);
+    }
+
+    // -----------------------------------------------------------------
+    // Export round trips (clean-room encoder against the reader above).
+    // -----------------------------------------------------------------
+
+    fn export_document() -> AxfDocument {
+        let bulge = -(22.5f64).to_radians().tan();
+        let mut areas = vec![
+            AxfArea {
+                entry: None,
+                vertices: vec![
+                    AxfVertex {
+                        x: 0.0,
+                        y: 0.0,
+                        bulge: 0.0,
+                    },
+                    AxfVertex {
+                        x: 0.0,
+                        y: 10.0,
+                        bulge,
+                    },
+                    AxfVertex {
+                        x: 20.0,
+                        y: 10.0,
+                        bulge: 0.0,
+                    },
+                    AxfVertex {
+                        x: 20.0,
+                        y: 0.0,
+                        bulge: 0.0,
+                    },
+                ],
+            },
+            AxfArea {
+                entry: None,
+                vertices: vec![
+                    AxfVertex {
+                        x: 30.0,
+                        y: 0.0,
+                        bulge: 0.0,
+                    },
+                    AxfVertex {
+                        x: 30.0,
+                        y: 10.0,
+                        bulge: 0.0,
+                    },
+                    AxfVertex {
+                        x: 40.0,
+                        y: 10.0,
+                        bulge: 0.0,
+                    },
+                    AxfVertex {
+                        x: 40.0,
+                        y: 0.0,
+                        bulge: 0.0,
+                    },
+                ],
+            },
+        ];
+        for (area, (code, description, name)) in areas
+            .iter_mut()
+            .zip([("GLA1", "Main", "First Floor"), ("UND", "Main", "Shed")])
+        {
+            let (measured, perimeter) = area.measure();
+            area.entry = Some(AxfAreaEntry {
+                code: code.to_string(),
+                description: description.to_string(),
+                name: name.to_string(),
+                factor: 1.0,
+                area: measured,
+                perimeter,
+            });
+        }
+        AxfDocument {
+            areas,
+            labels: vec![
+                AxfLabel {
+                    text: "Living".into(),
+                    x: 10.0,
+                    y: 5.0,
+                    rotation: 0.0,
+                    italic: true,
+                    underline: false,
+                },
+                AxfLabel {
+                    text: "½ Bath".into(),
+                    x: 4.0,
+                    y: 2.0,
+                    rotation: 45.0,
+                    italic: false,
+                    underline: true,
+                },
+            ],
+            dimension_texts: 0,
+            blocks_skipped: 0,
+            warnings: vec![],
+        }
+    }
+
+    #[test]
+    fn export_round_trips_through_the_importer() {
+        let doc = export_document();
+        let bytes = write(&doc);
+        assert!(recognizes(&bytes), "the export is a valid AXF stream");
+        let back = read(&bytes).expect("the importer accepts its own export");
+        assert!(back.warnings.is_empty(), "{:?}", back.warnings);
+        assert_eq!(back.areas.len(), 2, "both areas");
+        for (got, want) in back.areas.iter().zip(doc.areas.iter()) {
+            assert_eq!(got.vertices.len(), want.vertices.len(), "vertex count");
+            for (v, w) in got.vertices.iter().zip(want.vertices.iter()) {
+                assert!((v.x - w.x).abs() < 1e-9, "x {} vs {}", v.x, w.x);
+                assert!((v.y - w.y).abs() < 1e-9, "y {} vs {}", v.y, w.y);
+                assert!(
+                    (v.bulge - w.bulge).abs() < 1e-9,
+                    "bulge {} vs {}",
+                    v.bulge,
+                    w.bulge
+                );
+            }
+            let (g, w) = (got.entry.as_ref(), want.entry.as_ref());
+            assert_eq!(g.is_some(), w.is_some(), "entry presence");
+            if let (Some(g), Some(w)) = (g, w) {
+                assert_eq!(g.code, w.code);
+                assert_eq!(g.description, w.description);
+                assert_eq!(g.name, w.name);
+                assert!((g.factor - w.factor).abs() < 1e-9);
+                assert!(
+                    (g.area - w.area).abs() < 1e-6,
+                    "area {} vs {}",
+                    g.area,
+                    w.area
+                );
+                assert!(
+                    (g.perimeter - w.perimeter).abs() < 1e-6,
+                    "perimeter {} vs {}",
+                    g.perimeter,
+                    w.perimeter
+                );
+            }
+        }
+        assert_eq!(back.labels.len(), 2, "labels");
+        for (got, want) in back.labels.iter().zip(doc.labels.iter()) {
+            assert_eq!(got.text, want.text);
+            assert!((got.x - want.x).abs() < 1e-9);
+            assert!((got.y - want.y).abs() < 1e-9);
+            assert!((got.rotation - want.rotation).abs() < 1e-6);
+            assert_eq!(got.italic, want.italic, "italic");
+            assert_eq!(got.underline, want.underline, "underline");
+        }
+    }
+
+    #[test]
+    fn model_to_axf_to_model_preserves_the_page() {
+        let doc = read(&synthetic_axf()).unwrap();
+        let import = doc.to_model("t");
+        let back = AxfDocument::from_model(&import.model).expect("page has areas");
+        assert_eq!(back.areas.len(), 2);
+        let first = back.areas[0].entry.as_ref().unwrap();
+        assert_eq!(
+            (first.code.as_str(), first.name.as_str()),
+            ("GLA1", "First Floor")
+        );
+        assert_eq!(back.areas[1].entry.as_ref().unwrap().name, "Shed");
+        // Arc geometry survives both conversions.
+        let want_bulge = doc.areas[0].vertices[1].bulge;
+        let got_bulge = back.areas[0].vertices[1].bulge;
+        assert!(
+            (got_bulge - want_bulge).abs() < 1e-9,
+            "bulge {} vs {}",
+            got_bulge,
+            want_bulge
+        );
+        let (got_area, _) = back.areas[0].measure();
+        let (want_area, _) = doc.areas[0].measure();
+        assert!((got_area - want_area).abs() < 1e-6);
+        // Labels survive with their styling.
+        assert_eq!(back.labels.len(), 2);
+        assert_eq!(back.labels[0].text, "Living");
+        assert_eq!(back.labels[1].text, "½ Bath");
+        assert_eq!(back.labels[1].rotation, 45.0);
+        // And the rebuilt document re-encodes into a file the reader accepts.
+        let bytes = write(&back);
+        let reread = read(&bytes).expect("re-imports");
+        assert_eq!(reread.areas.len(), 2);
+        assert!(reread.warnings.is_empty(), "{:?}", reread.warnings);
     }
 }

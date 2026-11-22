@@ -306,6 +306,11 @@ pub enum Message {
     ExportDxf,
     ExportPdf,
     ImportCad,
+    /// Import › Apex AXF sketch: pick a legacy `.axf` and open it as a
+    /// converted copy.
+    ImportAxf,
+    /// Export › Apex AXF: write the current page as a legacy `.axf`.
+    ExportAxf,
     /// The Color dialog (screen 5d-3).
     Color(color_dialog::ColorMsg),
     /// Home › Draw Color: `toggleDrawColorPalette`.
@@ -464,6 +469,11 @@ pub enum DialogRequest {
     ImportSketch,
     /// Import CAD: convert and append the picked drawing.
     ImportCad,
+    /// Import › Apex AXF sketch: open the picked legacy sketch as a
+    /// converted, untitled copy (the same flow File > Open takes).
+    ImportAxf,
+    /// File › Export › Apex AXF: write the current page as an `.axf`.
+    ExportAxf,
     /// The Layers panel: import the picked layer file.
     #[cfg_attr(test, allow(dead_code))]
     ImportLayer,
@@ -1441,6 +1451,11 @@ impl App {
                 self.sync_canvas();
             }
             N::Go(index) => {
+                // Selecting a page also dismisses the navigator — no
+                // separate close click.
+                self.pages_nav_open = false;
+                self.pages_nav_hover = None;
+                self.sync_canvas();
                 if index != self.pages.current {
                     self.go_to_page(index);
                 }
@@ -3611,6 +3626,25 @@ impl App {
                     |path| Message::DialogPicked(DialogRequest::ImportCad, path),
                 )
             }
+            Message::ImportAxf => {
+                // Import › Apex AXF sketch: the picker, then the converted
+                // open (the same continuation File > Open uses for `.axf`).
+                Task::perform(
+                    crate::platform::pick_file_async(
+                        "Apex AXF sketch".to_owned(),
+                        vec!["axf".to_owned()],
+                    ),
+                    |path| Message::DialogPicked(DialogRequest::ImportAxf, path),
+                )
+            }
+            Message::ExportAxf => Task::perform(
+                crate::platform::save_file_async(
+                    "Apex AXF sketch".to_owned(),
+                    vec!["axf".to_owned()],
+                    format!("{}.axf", self.file_name),
+                ),
+                |path| Message::DialogPicked(DialogRequest::ExportAxf, path),
+            ),
             Message::DialogPicked(request, path) => self.dialog_picked(request, path),
             Message::RotateSketch => self.update(Message::RotateSketchBy(90.0)),
             Message::RotateSelected(degrees) => {
@@ -9888,6 +9922,30 @@ impl App {
             }
             DialogRequest::ImportSketch => self.import_sketch_path(&path),
             DialogRequest::ImportCad => self.import_cad_file(&path),
+            DialogRequest::ImportAxf => self.open_axf_path(&path),
+            DialogRequest::ExportAxf => {
+                // Export › Apex AXF: the current page's areas (arc walls
+                // included) and text labels, written with the clean-room
+                // encoder (docs/AXF_IMPORT.md).
+                let model = self.build_save_model_without_backing();
+                let page = model
+                    .get("pages")
+                    .and_then(|pages| pages.get(self.pages.current))
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
+                match sketch_core::axf::AxfDocument::from_page(&page) {
+                    Ok(doc) => {
+                        let bytes = sketch_core::axf::write(&doc);
+                        match std::fs::write(&path, bytes) {
+                            Ok(()) => Task::none(),
+                            Err(e) => self
+                                .toasts
+                                .show(format!("Could not write {}: {e}", path.display())),
+                        }
+                    }
+                    Err(e) => self.toasts.show(format!("Export as AXF: {e}.")),
+                }
+            }
             DialogRequest::ImportLayer => self.import_layer_path(path),
             DialogRequest::ExportPng => match self.png_export_bytes() {
                 Some(bytes) => {
