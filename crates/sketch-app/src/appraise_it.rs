@@ -676,6 +676,41 @@ fn inspect_report() -> Result<ReportStatus> {
     Ok(ReportStatus::Open(report, area_target))
 }
 
+fn inspect_report_details(process_id: Option<i32>) -> Result<Option<ReportDetails>> {
+    let _apartment = Apartment::new()?;
+    let session = Session::new()?;
+    let connected = match process_id {
+        Some(pid) => match session.initialize_for_process(pid) {
+            Ok(true) => true,
+            _ => session.initialize()?,
+        },
+        None => session.initialize()?,
+    };
+    if !connected {
+        return Ok(None);
+    }
+    if !session.running()? {
+        return Err("Appraise-It Pro closed before its report could be read.".into());
+    }
+    let _transaction = Transaction::begin(&session)?;
+    let Some(report) = session.report()? else {
+        return Err("Open a report in Appraise-It Pro, then try Auto-Fill again.".into());
+    };
+    let area_target = report.transfer_availability().and_then(|()| {
+        if report.is_legacy() {
+            return Err("Enter area totals in Appraise-It Pro for legacy reports.".into());
+        }
+        let (_store, subject) = report_data(&session)?;
+        unit_area_fields(&report, &subject).map(|(target, _)| target)
+    });
+    let file_no = report.file_no();
+    Ok(Some(ReportDetails {
+        report,
+        area_target,
+        file_no,
+    }))
+}
+
 fn report_data(session: &Session) -> Result<(ComObject, ComObject)> {
     let store = session
         .call(w!("GetDataStore"), "opening the report data store", &mut [])?
