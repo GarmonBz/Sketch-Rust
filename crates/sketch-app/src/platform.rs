@@ -147,7 +147,7 @@ where
 #[cfg(target_os = "macos")]
 fn point_on_screen_macos(x: i32, y: i32) -> bool {
     use objc2_core_graphics::{
-        CGDisplayBounds, CGError, CGGetActiveDisplayList, CGDirectDisplayID,
+        CGDirectDisplayID, CGDisplayBounds, CGError, CGGetActiveDisplayList,
     };
 
     let mut count = 0u32;
@@ -278,7 +278,10 @@ mod macos_tests {
 
     #[test]
     fn point_on_screen_rejects_far_away_coordinate() {
-        assert!(!crate::platform::point_on_screen(i32::MAX / 2, i32::MAX / 2));
+        assert!(!crate::platform::point_on_screen(
+            i32::MAX / 2,
+            i32::MAX / 2
+        ));
     }
 }
 

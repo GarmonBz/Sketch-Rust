@@ -201,12 +201,7 @@ fn is_space(key: &Key) -> bool {
 }
 
 /// handleKeyDown, in its order of precedence.
-pub fn key_down(
-    key: &Key,
-    physical: Physical,
-    mods: Modifiers,
-    ctx: KeyContext,
-) -> Option<KeyCmd> {
+pub fn key_down(key: &Key, physical: Physical, mods: Modifiers, ctx: KeyContext) -> Option<KeyCmd> {
     if ctx.dialog_open {
         return None;
     }
@@ -423,10 +418,7 @@ mod tests {
             down(&ch("E"), Modifiers::SHIFT, idle),
             Some(KeyCmd::DrawExterior)
         );
-        assert_eq!(
-            down(&ch("i"), none, drawing),
-            Some(KeyCmd::DrawInterior)
-        );
+        assert_eq!(down(&ch("i"), none, drawing), Some(KeyCmd::DrawInterior));
         assert_eq!(
             down(&Key::Named(Named::F5), none, idle),
             Some(KeyCmd::DrawInterior)
@@ -446,10 +438,7 @@ mod tests {
         );
         // While drawing, C centres (the original's drawing block) and
         // Shift+C fits.
-        assert_eq!(
-            down(&ch("c"), none, drawing),
-            Some(KeyCmd::CenterSketch)
-        );
+        assert_eq!(down(&ch("c"), none, drawing), Some(KeyCmd::CenterSketch));
         assert_eq!(
             down(&ch("C"), Modifiers::SHIFT, drawing),
             Some(KeyCmd::CenterFit)
@@ -489,19 +478,10 @@ mod tests {
         );
         assert_eq!(down(&ch("a"), none, drawing), Some(KeyCmd::AutoClose));
         assert_eq!(down(&ch("b"), none, drawing), Some(KeyCmd::BayMirror));
-        assert_eq!(
-            down(&ch("j"), none, drawing),
-            Some(KeyCmd::JumpEndpoint)
-        );
+        assert_eq!(down(&ch("j"), none, drawing), Some(KeyCmd::JumpEndpoint));
         // The mode keys still win while drawing (the original's order).
-        assert_eq!(
-            down(&ch("e"), none, drawing),
-            Some(KeyCmd::DrawExterior)
-        );
-        assert_eq!(
-            down(&ch("i"), none, drawing),
-            Some(KeyCmd::DrawInterior)
-        );
+        assert_eq!(down(&ch("e"), none, drawing), Some(KeyCmd::DrawExterior));
+        assert_eq!(down(&ch("i"), none, drawing), Some(KeyCmd::DrawInterior));
         assert_eq!(down(&ch("s"), none, drawing), None);
         assert_eq!(down(&ch("5"), none, drawing), Some(KeyCmd::Buffer("5")));
         assert_eq!(down(&ch("."), none, drawing), Some(KeyCmd::Buffer(".")));
@@ -568,7 +548,7 @@ mod tests {
     }
 }
 
-    #[cfg(test)]
+#[cfg(test)]
 mod clipboard_key_tests {
     use super::*;
     use iced::keyboard::key::Named;
@@ -645,7 +625,11 @@ mod clipboard_key_tests {
             Some(KeyCmd::CommandPalette)
         );
         assert_eq!(
-            down(&Key::Character("k".into()), Modifiers::COMMAND, KeyContext::default()),
+            down(
+                &Key::Character("k".into()),
+                Modifiers::COMMAND,
+                KeyContext::default()
+            ),
             Some(KeyCmd::CommandPalette)
         );
     }

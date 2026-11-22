@@ -66,6 +66,7 @@ fn detect_web() -> ShortcutHost {
 
 impl ShortcutHost {
     /// iced [`Modifiers::COMMAND`] bit for synthetic input / tests.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn primary_modifiers(self) -> Modifiers {
         match self {
             // Match iced: COMMAND is LOGO on Apple, CTRL elsewhere — but when
@@ -144,10 +145,7 @@ mod tests {
             ShortcutHost::Apple.localize("Open (Ctrl+O)").as_ref(),
             "Open (⌘O)"
         );
-        assert_eq!(
-            ShortcutHost::Apple.localize("Ctrl+Shift+S").as_ref(),
-            "⌘⇧S"
-        );
+        assert_eq!(ShortcutHost::Apple.localize("Ctrl+Shift+S").as_ref(), "⌘⇧S");
         assert_eq!(
             ShortcutHost::Apple.localize("Shift+Enter").as_ref(),
             "⇧Enter"

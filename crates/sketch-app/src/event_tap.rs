@@ -130,8 +130,7 @@ impl<'a, Message, Theme, Renderer> EventTap<'a, Message, Theme, Renderer> {
     /// InputController.handleKeyDown ignores keys aimed at inputs).
     pub fn on_key(
         mut self,
-        f: impl Fn(&keyboard::Key, keyboard::key::Physical, keyboard::Modifiers) -> Option<Message>
-            + 'a,
+        f: impl Fn(&keyboard::Key, keyboard::key::Physical, keyboard::Modifiers) -> Option<Message> + 'a,
     ) -> Self {
         self.on_key = Some(Box::new(f));
         self
@@ -140,8 +139,7 @@ impl<'a, Message, Theme, Renderer> EventTap<'a, Message, Theme, Renderer> {
     /// Key releases no widget captured (InputController.handleKeyUp).
     pub fn on_key_up(
         mut self,
-        f: impl Fn(&keyboard::Key, keyboard::key::Physical, keyboard::Modifiers) -> Option<Message>
-            + 'a,
+        f: impl Fn(&keyboard::Key, keyboard::key::Physical, keyboard::Modifiers) -> Option<Message> + 'a,
     ) -> Self {
         self.on_key_up = Some(Box::new(f));
         self
@@ -160,8 +158,7 @@ impl<'a, Message, Theme, Renderer> EventTap<'a, Message, Theme, Renderer> {
     /// Modal navigation must be intercepted before focused fields consume it.
     pub fn capture_key(
         mut self,
-        f: impl Fn(&keyboard::Key, keyboard::key::Physical, keyboard::Modifiers) -> Option<Message>
-            + 'a,
+        f: impl Fn(&keyboard::Key, keyboard::key::Physical, keyboard::Modifiers) -> Option<Message> + 'a,
     ) -> Self {
         self.capture_key = Some(Box::new(f));
         self
@@ -169,8 +166,7 @@ impl<'a, Message, Theme, Renderer> EventTap<'a, Message, Theme, Renderer> {
 
     pub fn focused_key(
         mut self,
-        f: impl Fn(&keyboard::Key, keyboard::key::Physical, keyboard::Modifiers) -> Option<Message>
-            + 'a,
+        f: impl Fn(&keyboard::Key, keyboard::key::Physical, keyboard::Modifiers) -> Option<Message> + 'a,
     ) -> Self {
         self.focused_key = Some(Box::new(f));
         self

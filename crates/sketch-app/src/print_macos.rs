@@ -15,14 +15,13 @@ fn render_pages_inner(pdf: &[u8], max_edge: u32) -> Result<Vec<Vec<u8>>, String>
     let data = NSData::with_bytes(pdf);
     let doc = unsafe { PDFDocument::initWithData(PDFDocument::alloc(), &data) }
         .ok_or_else(|| "Could not open PDF for preview.".to_string())?;
-    let count = unsafe { doc.pageCount() } as usize;
+    let count = unsafe { doc.pageCount() };
     if count == 0 {
         return Err("PDF has no pages.".into());
     }
     let mut out = Vec::with_capacity(count);
     for i in 0..count {
-        let page = unsafe { doc.pageAtIndex(i) }
-            .ok_or_else(|| format!("Missing PDF page {i}"))?;
+        let page = unsafe { doc.pageAtIndex(i) }.ok_or_else(|| format!("Missing PDF page {i}"))?;
         out.push(render_page_png(&page, max_edge)?);
     }
     Ok(out)
@@ -47,8 +46,8 @@ fn png_bytes_from_nsimage(image: &NSImage) -> Result<Vec<u8>, String> {
         .TIFFRepresentation()
         .ok_or_else(|| "Could not rasterize PDF page.".to_string())?;
     let raw = tiff.to_vec();
-    let decoded = ::image::load_from_memory(&raw)
-        .map_err(|e| format!("Could not decode PDF raster: {e}"))?;
+    let decoded =
+        ::image::load_from_memory(&raw).map_err(|e| format!("Could not decode PDF raster: {e}"))?;
     let mut output = std::io::Cursor::new(Vec::new());
     decoded
         .write_to(&mut output, ::image::ImageFormat::Png)

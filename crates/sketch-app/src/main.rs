@@ -61,9 +61,9 @@ mod placed_text;
 mod platform;
 mod png_overlay;
 mod popup_menu;
+mod print;
 #[cfg(target_os = "macos")]
 mod print_macos;
-mod print;
 mod recent;
 mod reference_image;
 mod render;
@@ -10378,11 +10378,9 @@ impl App {
         };
         let sym_lib_mods = if self.ui.symbol_library.open {
             event::listen_with(|event, _status, _window| match &event {
-                Event::Keyboard(iced::keyboard::Event::ModifiersChanged(mods)) => {
-                    Some(Message::SymbolLibraryMods(crate::shortcut_host::primary(
-                        *mods,
-                    )))
-                }
+                Event::Keyboard(iced::keyboard::Event::ModifiersChanged(mods)) => Some(
+                    Message::SymbolLibraryMods(crate::shortcut_host::primary(*mods)),
+                ),
                 _ => None,
             })
         } else {
