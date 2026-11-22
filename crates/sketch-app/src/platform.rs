@@ -120,62 +120,56 @@ pub fn point_on_screen(x: i32, y: i32) -> bool {
     }
 }
 
+/// Run `f` on AppKit's real main thread. Never fabricates a
+/// [`MainThreadMarker`] on a worker — that still executes AppKit off-thread.
 #[cfg(target_os = "macos")]
-fn with_appkit_main<F, R>(f: F) -> R
+pub(crate) fn with_appkit_main<F, R>(f: F) -> R
 where
     F: FnOnce(objc2::MainThreadMarker) -> R + Send,
     R: Send,
 {
     use dispatch2::run_on_main;
     use objc2::MainThreadMarker;
-    use objc2_app_kit::NSApplication;
 
     if let Some(mtm) = MainThreadMarker::new() {
-        return f(mtm);
-    }
-    let mtm = unsafe { MainThreadMarker::new_unchecked() };
-    let app = NSApplication::sharedApplication(mtm);
-    if app.isRunning() {
-        run_on_main(f)
-    } else {
-        // Headless unit tests: no run loop, so `dispatch2` would block forever.
         f(mtm)
+    } else {
+        // iced owns the process main queue while the app runs. Unit tests that
+        // need AppKit must not call this without a main run loop (`run_on_main`
+        // would block forever); prefer CoreGraphics-only paths in those tests.
+        run_on_main(f)
     }
 }
 
+/// Hit-test with CoreGraphics only (no AppKit / main-thread requirement).
+/// Uses the same global desktop space as iced/winit `WindowEvent::Moved`
+/// (origin at the top-left of the main display, y increasing downward).
 #[cfg(target_os = "macos")]
 fn point_on_screen_macos(x: i32, y: i32) -> bool {
-    use objc2::MainThreadMarker;
-    use objc2_app_kit::NSScreen;
-    use objc2_core_graphics::{CGDisplayBounds, CGMainDisplayID};
+    use objc2_core_graphics::{
+        CGDisplayBounds, CGError, CGGetActiveDisplayList, CGDirectDisplayID,
+    };
 
-    with_appkit_main(|mtm: MainThreadMarker| {
-        if NSScreen::screens(mtm).is_empty() {
-            return false;
-        }
-        let main_height = CGDisplayBounds(CGMainDisplayID()).size.height;
-        let (x, y) = (x as f64, y as f64);
-        NSScreen::screens(mtm).iter().any(|screen| {
-            cg_point_in_appkit_frame(x, y, screen.frame(), main_height)
-        })
+    let mut count = 0u32;
+    // SAFETY: null `active_displays` is allowed when only querying the count.
+    let err = unsafe { CGGetActiveDisplayList(0, std::ptr::null_mut(), &mut count) };
+    if err != CGError::Success || count == 0 {
+        return false;
+    }
+    let mut displays = vec![0 as CGDirectDisplayID; count as usize];
+    // SAFETY: buffer length matches `count` from the prior query.
+    let err = unsafe { CGGetActiveDisplayList(count, displays.as_mut_ptr(), &mut count) };
+    if err != CGError::Success {
+        return false;
+    }
+    let (x, y) = (x as f64, y as f64);
+    displays[..count as usize].iter().any(|&id| {
+        let bounds = CGDisplayBounds(id);
+        x >= bounds.origin.x
+            && x < bounds.origin.x + bounds.size.width
+            && y >= bounds.origin.y
+            && y < bounds.origin.y + bounds.size.height
     })
-}
-
-/// Hit-test in the same global desktop space as iced/winit `WindowEvent::Moved`
-/// (CG-style: origin top-left of the main display, y increasing downward).
-#[cfg(target_os = "macos")]
-fn cg_point_in_appkit_frame(
-    x: f64,
-    y: f64,
-    frame: objc2_foundation::NSRect,
-    main_height: f64,
-) -> bool {
-    let top = main_height - frame.origin.y - frame.size.height;
-    let left = frame.origin.x;
-    x >= left
-        && x < left + frame.size.width
-        && y >= top
-        && y < top + frame.size.height
 }
 
 /// The name of the event an instance holds while `path` is its open file.

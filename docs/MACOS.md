@@ -33,6 +33,9 @@ cargo build --release -p sketch-app --target aarch64-apple-darwin
 Produces `dist/macos/Sketch Rust.app` (arm64 binary, `AppIcon.icns`, symbol library beside the executable). Requires [`cargo-bundle`](https://crates.io/crates/cargo-bundle) 0.12 (the script installs it if missing).
 
 Bundle metadata lives in `crates/sketch-app/Cargo.toml` under `[package.metadata.bundle]`.
+`[package.metadata.bundle.osx].info_plist_exts` appends
+`assets/macos/info_plist_ext.xml` (includes `NSBluetoothAlwaysUsageDescription`
+so DISTO / CoreBluetooth prompts instead of terminating the process).
 
 **Out of scope for this pass:** Developer ID signing, notarization, Sparkle, and universal (Intel + ARM) binaries.
 

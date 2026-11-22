@@ -32,4 +32,7 @@ cp -f assets/symbols.previous.json "$MACOS_DIR/symbols.previous.json" 2>/dev/nul
 
 file "$MACOS_DIR/sketch-app"
 test -f "$MACOS_DIR/symbols.json"
+# CoreBluetooth kills a bundled app that lacks this key when DISTO scans.
+plutil -extract NSBluetoothAlwaysUsageDescription raw \
+  "dist/macos/Sketch Rust.app/Contents/Info.plist" >/dev/null
 echo "Packaged: dist/macos/Sketch Rust.app"

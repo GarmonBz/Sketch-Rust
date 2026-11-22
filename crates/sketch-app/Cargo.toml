@@ -35,7 +35,7 @@ objc2 = "0.6"
 dispatch2 = "0.3"
 objc2-foundation = { version = "0.3", features = ["NSGeometry", "NSThread"] }
 objc2-app-kit = { version = "0.3", features = ["NSScreen", "NSWindow", "NSView", "NSApplication", "NSImage"] }
-objc2-core-graphics = { version = "0.3", features = ["CGDirectDisplay"] }
+objc2-core-graphics = { version = "0.3", features = ["CGDirectDisplay", "CGError"] }
 objc2-pdf-kit = { version = "0.3", features = ["PDFDocument", "PDFPage", "objc2-app-kit"] }
 
 [package.metadata.bundle]
@@ -47,6 +47,10 @@ short_description = "Floor-plan sketching for appraisers"
 long_description = """
 Sketch Rust is a native floor-plan sketching program for appraisers.
 """
+
+# Appended into Info.plist by cargo-bundle (Bluetooth DISTO via btleplug/CoreBluetooth).
+[package.metadata.bundle.osx]
+info_plist_exts = ["../../assets/macos/info_plist_ext.xml"]
 
 [dev-dependencies]
 # Headless end-to-end harness: runs the real program (incl. subscriptions)
