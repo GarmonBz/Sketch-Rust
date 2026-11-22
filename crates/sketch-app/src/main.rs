@@ -11333,6 +11333,7 @@ fn main() -> iced::Result {
     }
     // The Recent Files sidecar mirror (localStorage's stand-in) is only
     // active in the real app.
+    #[cfg(not(target_arch = "wasm32"))]
     std::env::set_var("SKETCH_PERSIST", "1");
     let system = system_scale();
     let dpr = std::env::var("SKETCH_DPR")
