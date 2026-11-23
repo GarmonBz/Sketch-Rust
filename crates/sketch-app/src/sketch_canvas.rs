@@ -64,7 +64,7 @@ enum TouchDragKind {
 struct TouchHold {
     id: iced::touch::Finger,
     origin: Point,
-    started: std::time::Instant,
+    started: web_time::Instant,
     max_travel: f32,
     fired: bool,
     drag_kind: Option<TouchDragKind>,
@@ -80,7 +80,7 @@ pub struct CanvasState {
     /// The last reported modifiers: a wheel event carries none, but
     /// Shift+wheel bows the last wall and Ctrl changes its step.
     mods: iced::keyboard::Modifiers,
-    last_hover: Option<std::time::Instant>,
+    last_hover: Option<web_time::Instant>,
     pending_hover: Option<(f32, f32)>,
     /// Fingers currently on the canvas (a touchscreen), for the pinch.
     fingers: Vec<(iced::touch::Finger, Point)>,
@@ -89,7 +89,7 @@ pub struct CanvasState {
     /// Wheel travel not yet turned into a zoom step, in notches: a
     /// precision touchpad reports many small fractions of one.
     wheel_acc: f32,
-    wheel_at: Option<std::time::Instant>,
+    wheel_at: Option<web_time::Instant>,
 }
 
 /// Centroid and spread of a two-finger touch.
@@ -220,7 +220,7 @@ impl canvas::Program<crate::Message> for SketchCanvas<'_> {
                         return None;
                     }
                     if (self.touch_gestures || self.finger_pan_only) && bounds.contains(position) {
-                        let now = std::time::Instant::now();
+                        let now = web_time::Instant::now();
                         state.touch_hold = Some(TouchHold {
                             id,
                             origin: position,
@@ -494,7 +494,7 @@ impl canvas::Program<crate::Message> for SketchCanvas<'_> {
                         && self.mode.is_drawing()
                         && !self.scene.drawing.keyboard_pointer
                     {
-                        let now = std::time::Instant::now();
+                        let now = web_time::Instant::now();
                         if state.last_hover.is_some_and(|last| {
                             now.duration_since(last) < std::time::Duration::from_millis(16)
                         }) {
@@ -549,7 +549,7 @@ impl canvas::Program<crate::Message> for SketchCanvas<'_> {
                 // A touchpad scroll or pinch arrives as a stream of small
                 // fractions; one zoom step per fraction would fling the
                 // view. Bank them and step once per whole notch.
-                let now = std::time::Instant::now();
+                let now = web_time::Instant::now();
                 let stale = state.wheel_at.is_none_or(|at| {
                     now.duration_since(at) > std::time::Duration::from_millis(400)
                 });
@@ -812,7 +812,7 @@ mod tests {
         let pointer = std::cell::Cell::new(None);
         let mut c = canvas(Mode::DrawExterior);
         c.pointer = Some(&pointer);
-        let now = std::time::Instant::now();
+        let now = web_time::Instant::now();
         let mut state = CanvasState {
             last_hover: Some(now),
             ..Default::default()

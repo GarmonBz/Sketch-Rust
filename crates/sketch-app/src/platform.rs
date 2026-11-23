@@ -302,112 +302,138 @@ mod macos_tests {
 /// app froze. A spawned thread running the sync dialog — awaited, never
 /// pumped for — is the known-good architecture (the D repo ran it this
 /// way).
-fn dialog_on_thread<T: Send + 'static>(
-    show: impl FnOnce() -> Option<T> + Send + 'static,
-) -> impl std::future::Future<Output = Option<T>> {
-    let (sender, receiver) = iced::futures::channel::oneshot::channel();
-    // A failed spawn drops `sender`, which resolves the future to `None`.
-    let _ = std::thread::Builder::new()
-        .name("file-dialog".into())
-        .spawn(move || {
-            let _ = sender.send(show());
-        });
-    async move { receiver.await.unwrap_or_default() }
-}
-
-/// A known-local folder the native file dialogs start in. Left unset, the
-/// Windows file dialog restores its own last-visited location; when that is
-/// a network share the Shell's folder initialization can stall indefinitely
-/// (SMB enumeration) and the dialog window is never created — the
-/// app appears frozen the moment a dialog opens (File > Open in 0.3.8,
-/// Save in 0.3.9). An explicit directory keeps the dialog off remembered
-/// network locations.
-fn dialog_start_dir() -> Option<std::path::PathBuf> {
-    let profile = std::path::PathBuf::from(std::env::var_os("USERPROFILE")?);
-    let documents = profile.join("Documents");
-    Some(if documents.is_dir() {
-        documents
-    } else {
-        profile
-    })
-}
-
-/// A native dialog builder that accepts an explicit start folder. The trait
-/// exists so tests can pin the anchoring behaviour without opening a real
-/// dialog.
-trait NativeDialog {
-    fn set_directory(self, dir: std::path::PathBuf) -> Self;
-}
-
-impl NativeDialog for rfd::FileDialog {
-    fn set_directory(self, dir: std::path::PathBuf) -> Self {
-        rfd::FileDialog::set_directory(self, dir)
+#[cfg(not(target_arch = "wasm32"))]
+mod native_dialogs {
+    fn dialog_on_thread<T: Send + 'static>(
+        show: impl FnOnce() -> Option<T> + Send + 'static,
+    ) -> impl std::future::Future<Output = Option<T>> {
+        let (sender, receiver) = iced::futures::channel::oneshot::channel();
+        // A failed spawn drops `sender`, which resolves the future to `None`.
+        let _ = std::thread::Builder::new()
+            .name("file-dialog".into())
+            .spawn(move || {
+                let _ = sender.send(show());
+            });
+        async move { receiver.await.unwrap_or_default() }
     }
-}
 
-/// Anchor a dialog to an explicit start folder, so Windows never restores
-/// its own remembered location at dialog init. `None` leaves the dialog
-/// exactly as built.
-fn with_start_dir<D: NativeDialog>(dialog: D, dir: Option<std::path::PathBuf>) -> D {
-    match dir {
-        Some(dir) => dialog.set_directory(dir),
-        None => dialog,
+    pub(super) fn dialog_start_dir() -> Option<std::path::PathBuf> {
+        let profile = std::path::PathBuf::from(std::env::var_os("USERPROFILE")?);
+        let documents = profile.join("Documents");
+        Some(if documents.is_dir() {
+            documents
+        } else {
+            profile
+        })
     }
-}
 
-/// The only construction point of an rfd dialog: anchored to an explicit
-/// local start folder (see `dialog_start_dir`).
-fn sync_dialog() -> rfd::FileDialog {
-    with_start_dir(rfd::FileDialog::new(), dialog_start_dir())
-}
+    pub(super) trait NativeDialog {
+        fn set_directory(self, dir: std::path::PathBuf) -> Self;
+    }
 
-/// Ask for one existing file whose extension is in `extensions`.
-pub async fn pick_file_async(
-    filter: String,
-    extensions: Vec<String>,
-) -> Option<std::path::PathBuf> {
-    dialog_on_thread(move || sync_dialog().add_filter(filter, &extensions).pick_file()).await
-}
-
-/// Ask for one or more existing files.
-#[cfg_attr(test, allow(dead_code))]
-pub async fn pick_files_async(
-    filter: String,
-    extensions: Vec<String>,
-) -> Option<Vec<std::path::PathBuf>> {
-    dialog_on_thread(move || sync_dialog().add_filter(filter, &extensions).pick_files()).await
-}
-
-/// Ask where to save, offering `default_name`.
-pub async fn save_file_async(
-    filter: String,
-    extensions: Vec<String>,
-    default_name: String,
-) -> Option<std::path::PathBuf> {
-    dialog_on_thread(move || {
-        sync_dialog()
-            .add_filter(filter, &extensions)
-            .set_file_name(default_name)
-            .save_file()
-    })
-    .await
-}
-
-/// Ask where to save, offering one `(name, extension)` filter per format in
-/// the order given.
-#[cfg_attr(test, allow(dead_code))]
-pub async fn save_file_as_async(
-    default_name: String,
-    filters: Vec<(String, String)>,
-) -> Option<std::path::PathBuf> {
-    dialog_on_thread(move || {
-        let mut dialog = sync_dialog().set_file_name(default_name);
-        for (name, ext) in &filters {
-            dialog = dialog.add_filter(name, &[ext.as_str()]);
+    impl NativeDialog for rfd::FileDialog {
+        fn set_directory(self, dir: std::path::PathBuf) -> Self {
+            rfd::FileDialog::set_directory(self, dir)
         }
-        dialog.save_file()
-    })
-    .await
+    }
+
+    pub(super) fn with_start_dir<D: NativeDialog>(
+        dialog: D,
+        dir: Option<std::path::PathBuf>,
+    ) -> D {
+        match dir {
+            Some(dir) => dialog.set_directory(dir),
+            None => dialog,
+        }
+    }
+
+    fn sync_dialog() -> rfd::FileDialog {
+        with_start_dir(rfd::FileDialog::new(), dialog_start_dir())
+    }
+
+    pub async fn pick_file_async(
+        filter: String,
+        extensions: Vec<String>,
+    ) -> Option<std::path::PathBuf> {
+        dialog_on_thread(move || sync_dialog().add_filter(filter, &extensions).pick_file()).await
+    }
+
+    #[cfg_attr(test, allow(dead_code))]
+    pub async fn pick_files_async(
+        filter: String,
+        extensions: Vec<String>,
+    ) -> Option<Vec<std::path::PathBuf>> {
+        dialog_on_thread(move || sync_dialog().add_filter(filter, &extensions).pick_files()).await
+    }
+
+    pub async fn save_file_async(
+        filter: String,
+        extensions: Vec<String>,
+        default_name: String,
+    ) -> Option<std::path::PathBuf> {
+        dialog_on_thread(move || {
+            sync_dialog()
+                .add_filter(filter, &extensions)
+                .set_file_name(default_name)
+                .save_file()
+        })
+        .await
+    }
+
+    #[cfg_attr(test, allow(dead_code))]
+    pub async fn save_file_as_async(
+        default_name: String,
+        filters: Vec<(String, String)>,
+    ) -> Option<std::path::PathBuf> {
+        dialog_on_thread(move || {
+            let mut dialog = sync_dialog().set_file_name(default_name);
+            for (name, ext) in &filters {
+                dialog = dialog.add_filter(name, &[ext.as_str()]);
+            }
+            dialog.save_file()
+        })
+        .await
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+use native_dialogs::{with_start_dir, NativeDialog};
+#[cfg(not(target_arch = "wasm32"))]
+pub use native_dialogs::{
+    pick_file_async, pick_files_async, save_file_as_async, save_file_async,
+};
+
+#[cfg(target_arch = "wasm32")]
+pub async fn pick_file_async(
+    _filter: String,
+    _extensions: Vec<String>,
+) -> Option<std::path::PathBuf> {
+    None
+}
+
+#[cfg(target_arch = "wasm32")]
+pub async fn pick_files_async(
+    _filter: String,
+    _extensions: Vec<String>,
+) -> Option<Vec<std::path::PathBuf>> {
+    None
+}
+
+#[cfg(target_arch = "wasm32")]
+pub async fn save_file_async(
+    _filter: String,
+    _extensions: Vec<String>,
+    _default_name: String,
+) -> Option<std::path::PathBuf> {
+    None
+}
+
+#[cfg(target_arch = "wasm32")]
+pub async fn save_file_as_async(
+    _default_name: String,
+    _filters: Vec<(String, String)>,
+) -> Option<std::path::PathBuf> {
+    None
 }
 
 #[cfg(test)]

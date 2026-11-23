@@ -1,12 +1,35 @@
-# Opening `.axf` sketches
+# Opening and writing `.axf` sketches
 
 Sketch Rust opens legacy Apex-IV-era `.axf` sketch files (the ones that start
 with the `APX4WIN` object-stream signature once unpacked). The file is
 **converted, never written back**: it opens as a new untitled sketch, and the
 first Save asks for a `.sketchie` name. The original `.axf` is only read.
 
-Open from File > Open (the filter lists `.axf`), by dropping a file on the
-window, or on the command line (`sketch-app.exe plan.axf`).
+Open from File > Open (the filter lists `.axf`), from the Menu's
+**Import › Apex AXF sketch…**, by dropping a file on the window, or on the
+command line (`sketch-app.exe plan.axf`).
+
+## Exporting `.axf`
+
+**Menu › Export › Apex AXF** writes the current page as a legacy `.axf` using
+Sketch Rust's own clean-room encoder — the byte layouts documented below,
+written back out. No Apex or proprietary code is involved anywhere in reading
+or writing.
+
+What is exported:
+
+| In Sketch Rust | In the file |
+| --- | --- |
+| Each closed area on the current page | An area-table entry (code, name, factor, measured area and perimeter) plus its boundary vertices |
+| Arc (bowed) walls | Boundary vertices with the DXF-style bulge of the edge leaving each vertex |
+| Text labels | Free text records with position, rotation, italic and underline |
+
+What is not exported (the same gaps as import, by design): dimension strings
+(Sketch Rust regenerates dimensions from the walls), symbols and block inserts,
+and open (unclosed) polylines. The exporter writes the layout subset the
+importer itself understands; a real Apex installation should read the
+geometry, but that has not been verified against Apex software and is not
+claimed.
 
 ## What is imported
 

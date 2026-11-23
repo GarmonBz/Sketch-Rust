@@ -268,6 +268,8 @@ pub enum SubjectMsg {
     Comments(text_editor::Action),
     Table(usize, text_editor::Action),
     AutoFill,
+    #[cfg(windows)]
+    AutoFillResult(Result<Option<crate::appraise_it::ReportDetails>, String>),
     SaveDefault,
     ApplyDefault,
     Ok,

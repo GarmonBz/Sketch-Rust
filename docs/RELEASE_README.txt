@@ -1,3 +1,15 @@
+Sketch Rust 0.3.13 - Windows x64
+
+0.3.13 adds Apex AXF import and export to the Menu and fixes the Areas list
+across pages. The Menu's Import fly-out gains "Apex AXF sketch…" (a legacy
+`.axf` opens as a converted, untitled copy, like File > Open always did) and
+the Export fly-out gains "Apex AXF", which writes the current page — every
+closed area with its arc walls, plus text labels — as a legacy `.axf` using a
+clean-room encoder (no Apex or proprietary code; the importer's own documented
+byte layouts, written back out). The Areas list now shows only the current
+page's areas: a layer whose area lives on another page appears on that page
+instead of every page (the Site Plan screenshot bug).
+
 Sketch Rust 0.3.12 - Windows x64
 
 0.3.12 fixes arrow-key nudging of a selected wall or area: the selection moved

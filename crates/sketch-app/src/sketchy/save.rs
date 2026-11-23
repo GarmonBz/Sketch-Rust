@@ -182,8 +182,8 @@ fn new_id() -> String {
     }
     use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT: AtomicU64 = AtomicU64::new(0);
-    let time = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
+    let time = web_time::SystemTime::now()
+        .duration_since(web_time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
     format!(

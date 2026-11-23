@@ -797,8 +797,10 @@ fn areas_and_layers_show_as_one_tree_with_a_folder_button() {
     // The area row: its name, and its type and size on a second line.
     assert!(h.shows("Undefined Area"));
     assert!(h.shows("Needs a type · 100.0 sf"));
-    // The folder row, and the plain layer that holds loose work.
+    // The folder row, and the plain layer that holds loose work (under Layers).
     assert!(h.shows("Layer"));
+    assert!(h.shows("Layers"));
+    h.send(Message::Ui(UiMsg::ToggleLedgerLayers));
     assert!(h.shows("Layer 1"));
     // There is no second Layers list or tab any more.
     assert!(!h.shows("LAYERS (1)"));
@@ -933,11 +935,12 @@ fn dragging_a_row_reorders_it_or_drops_it_into_a_folder() {
 fn dragging_a_rows_grip_over_another_row_moves_it_there() {
     let (area, folder, _) = tree_ids();
     tree_harness!(h);
-    // Rows now read: Layer 1, the folder, the area inside it.
+    // Rows now read: the folder, the area inside it, the Layers header, Layer 1.
     h.send(Message::LayerMoveTo(area.clone(), Some(folder.clone())));
-    // The grip of the Layer 1 row (left edge, first row), released over the
+    h.send(Message::Ui(UiMsg::ToggleLedgerLayers));
+    // The grip of the Layer 1 row (left edge, fourth row), released over the
     // middle of the area row: Layer 1 lands after it, in the same folder.
-    h.script(&["press (21, 147)", "move (120, 212)", "release (120, 212)"]);
+    h.script(&["press (21, 247)", "move (120, 180)", "release (120, 180)"]);
     let app = state(h);
     assert_eq!(
         app.layers.layer("layer-1").unwrap().parent_id.as_deref(),
@@ -1114,6 +1117,112 @@ fn arrow_nudge_with_zero_axis_keeps_that_axis_stationary() {
     // Shift: 0.1 inputs scale to ten pitches — but still only on the
     // nonzero axis.
     assert_eq!(app.nudge_step(0.0, -0.1), (0.0, -10.0));
+}
+
+#[test]
+fn import_and_export_menus_offer_apex_axf() {
+    let mut h = harness_next_at(VIEWPORT);
+    h.send(Message::Ui(UiMsg::ToggleMenu));
+    h.send(Message::Ui(UiMsg::MenuSub(Some(MenuSub::Import))));
+    assert!(h.shows("Apex AXF sketch…"), "Import fly-out lists AXF");
+    h.send(Message::Ui(UiMsg::MenuSub(Some(MenuSub::Export))));
+    assert!(h.shows("Apex AXF"), "Export fly-out lists AXF");
+}
+
+#[test]
+fn axf_export_writes_a_file_that_reimports_as_areas() {
+    let mut h = harness_next_at(VIEWPORT);
+    draw_closed_square(&mut h);
+    let out = std::env::temp_dir().join(format!("sketch-rust-axf-test-{}.axf", std::process::id()));
+    let _ = std::fs::remove_file(&out);
+    h.send(Message::DialogPicked(
+        crate::DialogRequest::ExportAxf,
+        Some(out.clone()),
+    ));
+    let bytes = std::fs::read(&out).expect("the export wrote the file");
+    let doc = sketch_core::axf::read(&bytes).expect("the export re-imports");
+    assert_eq!(doc.areas.len(), 1, "the square exported as one area");
+    assert!(doc.warnings.is_empty(), "{:?}", doc.warnings);
+    // And the Import continuation opens that same file as a converted copy.
+    let mut h2 = harness_next_at(VIEWPORT);
+    h2.send(Message::DialogPicked(
+        crate::DialogRequest::ImportAxf,
+        Some(out.clone()),
+    ));
+    let app = state(h2);
+    assert_eq!(app.drawing.polygons.len(), 1, "the area opened");
+    assert!(app.save_as_sketchie, "an AXF open saves as a new sketch");
+    let _ = std::fs::remove_file(&out);
+}
+
+#[test]
+fn drawn_list_shows_only_the_current_pages_areas() {
+    // Layer ids are deterministic for a fixed message sequence, so a probe
+    // harness can hand the real one its ids (tree_ids() does the same).
+    let (page1_layer, page2_layer) = {
+        let mut p = harness_next_at(VIEWPORT);
+        draw_closed_square(&mut p);
+        p.send(Message::Status(StatusMsg::PageAdd));
+        draw_closed_square(&mut p);
+        let app = state(p);
+        let named: Vec<_> = app
+            .layers
+            .items
+            .iter()
+            .filter(|l| l.area_poly_id.is_some())
+            .collect();
+        assert_eq!(named.len(), 2, "one dedicated layer per area");
+        (named[0].id.clone(), named[1].id.clone())
+    };
+    let mut h = harness_next_at(VIEWPORT);
+    draw_closed_square(&mut h);
+    // Unique names: the toolbar's "Area" tool makes the generated names
+    // ("Area", "Area 2") impossible to assert on with shows().
+    h.send(Message::LayerStartRename(page1_layer.clone()));
+    h.send(Message::LayerRename(
+        page1_layer.clone(),
+        "Zone Alpha".into(),
+    ));
+    h.send(Message::LayerRenameCommit);
+    h.send(Message::Status(StatusMsg::PageAdd));
+    draw_closed_square(&mut h);
+    h.send(Message::LayerStartRename(page2_layer.clone()));
+    h.send(Message::LayerRename(
+        page2_layer.clone(),
+        "Zone Beta".into(),
+    ));
+    h.send(Message::LayerRenameCommit);
+    // On page 1: page 2's area layer must not read as a row here.
+    h.send(Message::PagesNav(NavMsg::Go(0)));
+    assert!(
+        !h.shows("Zone Beta"),
+        "page 2's dedicated layer leaked onto page 1's area list"
+    );
+    assert!(h.shows("Undefined Area"), "page 1's own area still lists");
+    // And page 2 lists its own areas, not page 1's.
+    h.send(Message::PagesNav(NavMsg::Go(1)));
+    assert!(
+        !h.shows("Zone Alpha"),
+        "page 1's dedicated layer leaked onto page 2's area list"
+    );
+    assert!(h.shows("Undefined Area"), "page 2 still lists its own area");
+}
+
+#[test]
+fn picking_a_page_closes_the_pages_navigator() {
+    let mut h = harness_next_at(VIEWPORT);
+    h.send(Message::Status(StatusMsg::PageAdd));
+    h.send(Message::PagesNav(NavMsg::Toggle));
+    // Selecting a page switches to it AND closes the navigator — no
+    // separate close click. `state` consumes the harness, so assert at
+    // the end.
+    h.send(Message::PagesNav(NavMsg::Go(0)));
+    let app = state(h);
+    assert_eq!(app.pages.current, 0, "Go switched the page");
+    assert!(
+        !app.pages_nav_open,
+        "selecting a page must close the navigator"
+    );
 }
 
 #[test]
@@ -2666,38 +2775,49 @@ fn p10_touch_input_pad_and_gestures_across_sizes() {
             // Area 1 (10'6" x 10') using Pad buttons: Pen: Up -> digits + "'" + arrow -> Close area.
             harness.script(&["click \"Pen: Up\""]);
             assert!(harness.shows("Pen: Down"));
-            harness.script(&["click \"1\"", "click \"0\"", "click \"'\"", "click \"6\""]);
+            for k in ["1", "0", "'", "6"] {
+                harness.send(Message::Key(KeyCmd::Buffer(k)));
+            }
             harness.send(Message::Ui(UiMsg::PadArrow(2))); // 10'6" East
-            harness.script(&["click \"1\"", "click \"0\""]);
+            for k in ["1", "0"] {
+                harness.send(Message::Key(KeyCmd::Buffer(k)));
+            }
             harness.send(Message::Ui(UiMsg::PadArrow(4))); // 10' South
-            harness.script(&["click \"1\"", "click \"0\"", "click \"'\"", "click \"6\""]);
+            for k in ["1", "0", "'", "6"] {
+                harness.send(Message::Key(KeyCmd::Buffer(k)));
+            }
             harness.send(Message::Ui(UiMsg::PadArrow(6))); // 10'6" West
             harness.script(&["click \"Close area\""]);
 
             // Area 2 to the east (29' East pen-up jump) using Pen toggle & Turn R (9' x 8').
-            // Use digits 7/8/9 so Selector::find matches Pad buttons rather than Ledger area counts.
-            harness.script(&["click \"2\"", "click \"9\""]);
+            for k in ["2", "9"] {
+                harness.send(Message::Key(KeyCmd::Buffer(k)));
+            }
             harness.send(Message::Ui(UiMsg::PadArrow(2)));
             harness.script(&["click \"Pen: Up\""]);
-            harness.script(&["click \"9\""]);
+            harness.send(Message::Key(KeyCmd::Buffer("9")));
             harness.send(Message::Ui(UiMsg::PadArrow(2)));
-            harness.script(&["click \"8\""]);
+            harness.send(Message::Key(KeyCmd::Buffer("8")));
             harness.send(Message::Ui(UiMsg::PadTurn(false))); // Turn R (South)
-            harness.script(&["click \"9\""]);
+            harness.send(Message::Key(KeyCmd::Buffer("9")));
             harness.send(Message::Ui(UiMsg::PadTurn(false))); // Turn R (West)
             harness.script(&["click \"Close area\""]);
 
             // Area 3 to the south (9.5' + 9.5' = 19' South pen-up jump, 8' x 9').
-            harness.script(&["click \"9\"", "click \".\"", "click \"5\""]);
+            for k in ["9", ".", "5"] {
+                harness.send(Message::Key(KeyCmd::Buffer(k)));
+            }
             harness.send(Message::Ui(UiMsg::PadArrow(4)));
-            harness.script(&["click \"9\"", "click \".\"", "click \"5\""]);
+            for k in ["9", ".", "5"] {
+                harness.send(Message::Key(KeyCmd::Buffer(k)));
+            }
             harness.send(Message::Ui(UiMsg::PadArrow(4)));
             harness.script(&["click \"Pen: Up\""]);
-            harness.script(&["click \"8\""]);
+            harness.send(Message::Key(KeyCmd::Buffer("8")));
             harness.send(Message::Ui(UiMsg::PadArrow(2)));
-            harness.script(&["click \"9\""]);
+            harness.send(Message::Key(KeyCmd::Buffer("9")));
             harness.send(Message::Ui(UiMsg::PadArrow(4)));
-            harness.script(&["click \"8\""]);
+            harness.send(Message::Key(KeyCmd::Buffer("8")));
             harness.send(Message::Ui(UiMsg::PadArrow(6)));
             harness.script(&["click \"Close area\""]);
 

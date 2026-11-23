@@ -796,8 +796,8 @@ impl App {
         {
             return Err("Symbol requires valid geometry and bounds.".into());
         }
-        let stamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
+        let stamp = web_time::SystemTime::now()
+            .duration_since(web_time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos();
         s.id = format!("custom/{stamp}");

@@ -226,17 +226,52 @@ pub enum GuideMsg {
 
 impl Guide {
     #[cfg(windows)]
+    pub(crate) fn report_process_id(&self) -> Option<i32> {
+        self.report_target
+            .as_ref()
+            .map(appraise_it::Report::process_id)
+    }
+
+    #[cfg(windows)]
+    pub(crate) fn set_checked_report(
+        &mut self,
+        report: Report,
+        area_target: Result<AreaTarget, String>,
+    ) {
+        self.sketch_preview.clear();
+        self.area_preview = None;
+        self.include_areas = false;
+        let summary = report.summary();
+        self.report_status = Some(match report.transfer_availability() {
+            Ok(()) => {
+                self.report_target = Some(report);
+                self.area_target = Some(area_target);
+                summary
+            }
+            Err(reason) => {
+                self.report_target = None;
+                self.area_target = None;
+                format!("{summary}\n{reason}")
+            }
+        });
+    }
+
+    #[cfg(windows)]
     pub fn preview_sketch(
         &mut self,
         pages: Vec<(usize, String)>,
         totals: Result<UnitAreaTotals, String>,
     ) -> Task<Message> {
-        let Some(report) = self.report_target.as_ref() else {
-            return Task::none();
-        };
+        self.open = true;
+        self.topic = INTEGRATION_TOPIC;
         if self.report_busy {
             return Task::none();
         }
+        let Some(report) = self.report_target.as_ref() else {
+            self.report_status =
+                Some("Check for an open Appraise-It Pro report before previewing.".into());
+            return Task::none();
+        };
         if pages.is_empty() {
             self.report_status = Some(format!(
                 "{}\nDraw or open a sketch to preview it for transfer.",
@@ -278,6 +313,8 @@ impl Guide {
             }
             #[cfg(windows)]
             GuideMsg::CheckReport => {
+                self.open = true;
+                self.topic = INTEGRATION_TOPIC;
                 if !self.report_busy {
                     self.report_busy = true;
                     self.report_target = None;
@@ -285,7 +322,7 @@ impl Guide {
                     self.area_target = None;
                     self.area_preview = None;
                     self.include_areas = false;
-                    self.report_status = None;
+                    self.report_status = Some("Checking Appraise-It Pro session…".into());
                     return Task::perform(appraise_it::check_report(), |result| {
                         Message::Guide(GuideMsg::ReportChecked(result))
                     });
@@ -294,22 +331,20 @@ impl Guide {
             #[cfg(windows)]
             GuideMsg::ReportChecked(result) => {
                 self.report_busy = false;
-                if self.open && self.topic == INTEGRATION_TOPIC {
-                    self.report_status = Some(match result {
-                        Ok(ReportStatus::Open(report, area_target)) => {
-                            let summary = report.summary();
-                            match report.transfer_availability() {
-                                Ok(()) => {
-                                    self.report_target = Some(report);
-                                    self.area_target = Some(area_target);
-                                    summary
-                                }
-                                Err(reason) => format!("{summary}\n{reason}"),
-                            }
-                        }
-                        Ok(status) => status.summary(),
-                        Err(error) => error,
-                    });
+                match result {
+                    Ok(ReportStatus::Open(report, area_target)) => {
+                        self.set_checked_report(report, area_target);
+                    }
+                    Ok(status) => {
+                        self.report_target = None;
+                        self.area_target = None;
+                        self.report_status = Some(status.summary());
+                    }
+                    Err(error) => {
+                        self.report_target = None;
+                        self.area_target = None;
+                        self.report_status = Some(error);
+                    }
                 }
             }
             #[cfg(windows)]
@@ -332,8 +367,18 @@ impl Guide {
             }
             #[cfg(windows)]
             GuideMsg::SendSketch => {
-                if !self.report_busy && !self.sketch_preview.is_empty() {
-                    if let Some(target) = self.report_target.take() {
+                if !self.report_busy {
+                    if self.report_target.is_none() {
+                        self.open = true;
+                        self.topic = INTEGRATION_TOPIC;
+                        self.report_status =
+                            Some("Check for an open Appraise-It Pro report before sending.".into());
+                    } else if self.sketch_preview.is_empty() {
+                        self.open = true;
+                        self.topic = INTEGRATION_TOPIC;
+                        self.report_status =
+                            Some("Preview the sketch before sending it to Appraise-It Pro.".into());
+                    } else if let Some(target) = self.report_target.take() {
                         let images = std::mem::take(&mut self.sketch_preview);
                         let preview = self.area_preview.take();
                         let areas = if self.include_areas {

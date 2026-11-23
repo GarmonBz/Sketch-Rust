@@ -176,6 +176,19 @@ impl Report {
         }
     }
 
+    pub(crate) fn process_id(&self) -> i32 {
+        self.process_id
+    }
+
+    pub(crate) fn file_no(&self) -> Option<String> {
+        let stem = std::path::Path::new(&self.path)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())?;
+        Some(stem.to_owned())
+    }
+
     pub(crate) fn summary(&self) -> String {
         let path = if self.path.is_empty() {
             "Unsaved report"
@@ -199,6 +212,13 @@ impl Report {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ReportDetails {
+    pub report: Report,
+    pub area_target: Result<AreaTarget>,
+    pub file_no: Option<String>,
+}
+
 impl ReportStatus {
     pub(crate) fn summary(&self) -> String {
         match self {
@@ -213,6 +233,10 @@ impl ReportStatus {
 
 pub(crate) async fn check_report() -> Result<ReportStatus> {
     on_worker(inspect_report).await
+}
+
+pub(crate) async fn read_report_details(process_id: Option<i32>) -> Result<Option<ReportDetails>> {
+    on_worker(move || inspect_report_details(process_id)).await
 }
 
 pub(crate) async fn send_sketch(
@@ -418,13 +442,17 @@ impl Value {
 
     fn text(&self, method: &str) -> Result<String> {
         let value = self.data();
-        if value.vt != VT_BSTR {
-            return Err(format!(
-                "Appraise-It Pro returned an unexpected value for {method}."
-            ));
+        match value.vt {
+            VT_BSTR => {
+                // SAFETY: VT_BSTR identifies bstrVal, which remains owned by the variant.
+                Ok(unsafe { value.Anonymous.bstrVal.to_string() })
+            }
+            VT_EMPTY | VT_NULL => Ok(String::new()),
+            other => Err(format!(
+                "Appraise-It Pro returned an unexpected value for {method} (variant type {}).",
+                other.0
+            )),
         }
-        // SAFETY: VT_BSTR identifies bstrVal, which remains owned by the variant.
-        Ok(unsafe { value.Anonymous.bstrVal.to_string() })
     }
 }
 
@@ -497,13 +525,17 @@ impl Session {
         .boolean("InitializeWithPrompt")
     }
 
-    fn initialize_for_process(&self, process_id: i32) -> Result<()> {
-        self.call(
+    fn initialize_for_process(&self, process_id: i32) -> Result<bool> {
+        let result = self.call(
             w!("InitializeForProcess"),
             "connecting to the reviewed session",
             &mut [Value::from_i32(process_id), Value::from_text("Sketch Rust")],
         )?;
-        Ok(())
+        match result.data().vt {
+            VT_BOOL => result.boolean("InitializeForProcess"),
+            VT_EMPTY | VT_NULL => Ok(true),
+            _ => result.boolean("InitializeForProcess"),
+        }
     }
 
     fn running(&self) -> Result<bool> {
@@ -648,6 +680,41 @@ fn inspect_report() -> Result<ReportStatus> {
     Ok(ReportStatus::Open(report, area_target))
 }
 
+fn inspect_report_details(process_id: Option<i32>) -> Result<Option<ReportDetails>> {
+    let _apartment = Apartment::new()?;
+    let session = Session::new()?;
+    let connected = match process_id {
+        Some(pid) => match session.initialize_for_process(pid) {
+            Ok(true) => true,
+            _ => session.initialize()?,
+        },
+        None => session.initialize()?,
+    };
+    if !connected {
+        return Ok(None);
+    }
+    if !session.running()? {
+        return Err("Appraise-It Pro closed before its report could be read.".into());
+    }
+    let _transaction = Transaction::begin(&session)?;
+    let Some(report) = session.report()? else {
+        return Err("Open a report in Appraise-It Pro, then try Auto-Fill again.".into());
+    };
+    let area_target = report.transfer_availability().and_then(|()| {
+        if report.is_legacy() {
+            return Err("Enter area totals in Appraise-It Pro for legacy reports.".into());
+        }
+        let (_store, subject) = report_data(&session)?;
+        unit_area_fields(&report, &subject).map(|(target, _)| target)
+    });
+    let file_no = report.file_no();
+    Ok(Some(ReportDetails {
+        report,
+        area_target,
+        file_no,
+    }))
+}
+
 fn report_data(session: &Session) -> Result<(ComObject, ComObject)> {
     let store = session
         .call(w!("GetDataStore"), "opening the report data store", &mut [])?
@@ -772,7 +839,11 @@ fn transfer_sketch(
         })
         .collect::<Result<Vec<_>>>()?;
     let session = Session::new()?;
-    session.initialize_for_process(target.process_id)?;
+    if !session.initialize_for_process(target.process_id)? {
+        return Err(
+            "The reviewed Appraise-It Pro session is closed. Check the open report again.".into(),
+        );
+    }
     if !session.running()? {
         return Err(
             "The reviewed Appraise-It Pro session is closed. Check the open report again.".into(),
@@ -1037,5 +1108,45 @@ mod tests {
         for invalid in [-1.0, f64::NAN, f64::INFINITY] {
             assert!(unit_area_totals(&BTreeMap::from([("GLA1".into(), invalid)])).is_err());
         }
+    }
+
+    #[test]
+    fn text_treats_empty_and_null_variants_as_blank_strings() {
+        let empty = Value(VARIANT::default());
+        assert_eq!(empty.text("ReportPath").unwrap(), "");
+
+        let mut null = Value(VARIANT::default());
+        // SAFETY: initialize a VT_NULL variant; Drop clears it via VariantClear.
+        unsafe {
+            (*null.0.Anonymous.Anonymous).vt = VT_NULL;
+        }
+        assert_eq!(null.text("ReportPath").unwrap(), "");
+
+        let bstr = Value::from_text("C:\\Reports\\12345.sfrep");
+        assert_eq!(bstr.text("ReportPath").unwrap(), "C:\\Reports\\12345.sfrep");
+
+        let int_val = Value::from_i32(42);
+        assert!(int_val.text("ReportPath").is_err());
+    }
+
+    #[test]
+    fn report_file_no_and_transfer_availability() {
+        let report = Report {
+            process_id: 1,
+            path: String::new(),
+            primary_form: "FNMA-URAR-0924".into(),
+            dynamic: true,
+            read_only: false,
+            repeatable_sketch_form: false,
+        };
+        assert_eq!(report.file_no(), None);
+        assert!(report.transfer_availability().is_err());
+
+        let saved = Report {
+            path: "C:\\Reports\\File-441.rptx".into(),
+            ..report
+        };
+        assert_eq!(saved.file_no().as_deref(), Some("File-441"));
+        assert!(saved.transfer_availability().is_ok());
     }
 }

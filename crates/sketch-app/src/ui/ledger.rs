@@ -429,8 +429,22 @@ fn drawn_view<'a>(app: &'a App, model: &calcs::Calcs, d: Density) -> Element<'a,
                 }
             }
             (false, None) if r.area_poly_id.is_some() => {
-                // A dedicated layer whose area is gone: still deletable here.
-                rows.push(layer_row(app, r, RowKind::Other, d));
+                // A dedicated layer whose area lives on ANOTHER page is that
+                // page's row, not this one (getAreaLayersForCurrentPage): it
+                // appears on the page that owns the area. A layer whose area
+                // is gone nowhere still shows, so it can be deleted here.
+                let on_other_page = r
+                    .area_poly_id
+                    .as_deref()
+                    .and_then(|p| p.parse::<i64>().ok())
+                    .is_some_and(|pid| {
+                        app.pages.pages.iter().enumerate().any(|(i, page)| {
+                            i != app.pages.current && page.polygons.iter().any(|p| p.id == pid)
+                        })
+                    });
+                if !on_other_page {
+                    rows.push(layer_row(app, r, RowKind::Other, d));
+                }
             }
             (false, None) => plain.push(r.clone()),
         }

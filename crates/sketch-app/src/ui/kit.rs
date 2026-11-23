@@ -5,7 +5,8 @@
 //! rest (`crate::icons::tinted`) and in one state colour when active or
 //! disabled, and avoids `theme::at` fixed coordinates.
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 use iced::advanced::layout::{self, Layout};
 use iced::advanced::renderer;

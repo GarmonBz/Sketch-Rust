@@ -10,7 +10,41 @@ use sketch_core::model::{AutoPost, Polygon, SketchLine, WallType};
 use crate::{layers::Layer, pages::Page, placed_text::PlacedText};
 
 mod save;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod store;
+
+#[cfg(target_arch = "wasm32")]
+pub mod store {
+    use std::path::Path;
+
+    pub fn is_sqlite(bytes: &[u8]) -> bool {
+        bytes.starts_with(b"SQLite format 3\0")
+    }
+
+    pub fn read(_path: &Path) -> super::Result<serde_json::Value> {
+        Err("Sketchie SQLite stores are not supported in the web build.".into())
+    }
+
+    pub(super) fn content_hash(document: &serde_json::Value) -> super::Result<String> {
+        let mut content = document
+            .as_object()
+            .ok_or("Sketchy document must be an object")?
+            .clone();
+        content.remove("revision");
+        content.remove("history");
+        let bytes =
+            serde_json_canonicalizer::to_vec(&content).map_err(|error| error.to_string())?;
+        Ok(format!("sha256:{}", sketch_core::skx::sha256_hex(&bytes)))
+    }
+
+    pub fn write(
+        _path: &Path,
+        _bytes: &[u8],
+        _previous_head: Option<(&str, &str)>,
+    ) -> super::Result<()> {
+        Err("Sketchie SQLite stores are not supported in the web build.".into())
+    }
+}
 pub use save::{prepare_save, Backing, PageKey};
 use save::{Binding, Entity};
 
