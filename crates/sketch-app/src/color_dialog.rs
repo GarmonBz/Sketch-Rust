@@ -1,66 +1,23 @@
-//! The Color dialog — UIManager.showColorDialog (refs/ui-manager.js:1875).
-//!
-//! Measured from the live original (1400x860, DPR 1): the card is 340 wide,
-//! centred, `--bg-panel` (#252526), 1px `--border`, radius 5, shadow
-//! `0 12px 36px rgba(0,0,0,.55)` over a `rgba(0,0,0,.45)` backdrop. Header
-//! "Color" (Segoe UI 16/600, padding 10/14, h43) with a × (Arial 18, box
-//! 22.52x22 at x 302.48). Tabs Standard/Custom (Arial 12, each 169x32,
-//! active `--bg-hover` + 600, 1px bottom border). Standard body: a 200x200
-//! hexagon hue/saturation wheel (radius 98, v=1) in a 202 box at (30, 91),
-//! a 66-wide side column with "New" (Segoe UI 10, `--text-muted`) over a
-//! 52x32 preview at (266, 109), and 48 preset swatches (8 columns,
-//! 35.25x18, gap 4) at (15, 303). Custom body: a 200x200 SV square at
-//! (15, 91), a 24x200 hue strip at (227, 91), a 62-wide side column, and
-//! the RGB grid (labels Segoe UI 11 muted at x 15; inputs 60x22 at x
-//! 52.11, pitch 28). Footer: Cancel (transparent, 71.36x26) then OK
-//! (`--bg-active`, white, 51.34x26) at y H-37, right-aligned, gap 8.
-//! Card height is 493 on the Standard tab and 441 on Custom.
-//!
-//! Behaviour, from the same function: pressing the wheel sets h/s (v=1),
-//! the SV square s/v, the hue strip h; the RGB inputs apply on every
-//! keystroke (`parseInt` clamped to 0..255); a preset sets the colour from
-//! its hex; OK returns `rgbToHex(hsvToRgb(hsv))`, while Cancel, × and a
-//! press on the backdrop close without changing anything. `mouse_area`
-//! only hands back a position on move, so a press applies the position the
-//! cursor last reported inside that area (a press is always preceded by a
-//! move into it).
+//! The Color dialog state and colour-wheel helpers.
 
 use std::sync::LazyLock;
 
-use iced::widget::text::LineHeight;
-use iced::widget::{container, image, mouse_area, opaque, stack, text, text_input, Space};
-use iced::{Background, Border, Color, Element, Length, Padding, Pixels, Point, Shadow, Vector};
+use iced::widget::image;
+use iced::Point;
 
-use crate::dialog::SELECTION;
-use crate::theme::*;
-use crate::Message;
-
-/// The card's width (`width: 340px`).
-pub const W: f32 = 340.0;
-/// Card height on the Standard tab (header 43 + tabs 33 + body 368 + footer
-/// 47 + the card's 2 border rows).
+/// The card height on the Standard / Custom tabs (kept for layout sizing).
+#[cfg(test)]
 pub const H_STANDARD: f32 = 493.0;
-/// Card height on the Custom tab (body 316).
+#[cfg(test)]
 pub const H_CUSTOM: f32 = 441.0;
 
-/// The wheel/SV canvases are 200x200 CSS pixels (`width="200"`).
+/// The wheel/SV canvases are 200x200 CSS pixels.
 const CANVAS: u32 = 200;
 /// The hue strip is 24x200.
 const HUE_W: u32 = 24;
-/// `.color-wheel-wrap` centres the 202 box in its 232-wide cell.
-const WHEEL_X: f32 = 30.0;
-/// The 200x200 canvases sit at y 91 inside the card (body padding 14 +
-/// nothing above them).
-const ROW_Y: f32 = 91.0;
-/// Preset swatches start 10px under the 202 row.
-const PRESETS_Y: f32 = 303.0;
-/// One preset cell (`grid-template-columns: repeat(8, 1fr)`, gap 4).
-const PRESET_W: f32 = 35.25;
-const PRESET_H: f32 = 18.0;
-const PRESET_GAP: f32 = 4.0;
 
 /// The 48 presets, in the original's order (6 rows of 8).
-const PRESETS: [&str; 48] = [
+pub(crate) const PRESETS: [&str; 48] = [
     "#000000", "#7f0000", "#007f00", "#7f7f00", "#00007f", "#7f007f", "#007f7f", "#c0c0c0",
     "#ff0000", "#00ff00", "#ffff00", "#0000ff", "#ff00ff", "#00ffff", "#ffffff", "#7f7f7f",
     "#800000", "#008000", "#808000", "#000080", "#800080", "#008080", "#666666", "#999999",
@@ -84,6 +41,9 @@ pub enum ColorTarget {
     AreaLine,
     /// Edit Tools › Text Color of the selected label / area text.
     SelectedText,
+    /// Area Type Editor › Line colour / Fill colour of the active type draft.
+    TypeEditorLine,
+    TypeEditorFill,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -93,6 +53,7 @@ pub enum Tab {
 }
 
 impl Tab {
+    #[cfg(test)]
     fn height(self) -> f32 {
         match self {
             Tab::Standard => H_STANDARD,
@@ -291,9 +252,9 @@ fn sv_pixels(hue: f32) -> Vec<u8> {
     buf
 }
 
-static WHEEL: LazyLock<image::Handle> =
+pub(crate) static WHEEL: LazyLock<image::Handle> =
     LazyLock::new(|| image::Handle::from_rgba(CANVAS, CANVAS, wheel_pixels()));
-static HUE: LazyLock<image::Handle> =
+pub(crate) static HUE: LazyLock<image::Handle> =
     LazyLock::new(|| image::Handle::from_rgba(HUE_W, CANVAS, hue_pixels()));
 
 pub struct ColorDialog {
@@ -304,7 +265,7 @@ pub struct ColorDialog {
     drag: Option<Area>,
     hover: Option<(Area, Point)>,
     /// (hue x1000, pixels) — rebuilt whenever the hue moves.
-    sv: (u32, image::Handle),
+    pub(crate) sv: (u32, image::Handle),
 }
 
 impl Default for ColorDialog {
@@ -351,6 +312,7 @@ impl ColorDialog {
     }
 
     /// The card's current height (the two tabs differ).
+    #[cfg(test)]
     pub fn height(&self) -> f32 {
         self.tab.height()
     }
@@ -472,7 +434,7 @@ impl ColorDialog {
     }
 
     /// The standard wheel's cursor, in the 202 box's coordinates.
-    fn wheel_cursor(&self) -> Point {
+    pub(crate) fn wheel_cursor(&self) -> Point {
         let (cx, cy) = (CANVAS as f32 / 2.0, CANVAS as f32 / 2.0);
         let radius = hex_radius(CANVAS as f32, CANVAS as f32);
         let angle = self.hsv.h * std::f32::consts::PI / 180.0;
@@ -480,417 +442,19 @@ impl ColorDialog {
         Point::new(cx + angle.cos() * dist, cy + angle.sin() * dist)
     }
 
-    fn sv_cursor(&self) -> Point {
+    pub(crate) fn sv_cursor(&self) -> Point {
         Point::new(
             self.hsv.s * (CANVAS - 1) as f32,
             (1.0 - self.hsv.v) * (CANVAS - 1) as f32,
         )
     }
 
-    fn hue_cursor(&self) -> Point {
+    pub(crate) fn hue_cursor(&self) -> Point {
         Point::new(
             HUE_W as f32 / 2.0,
             (1.0 - self.hsv.h / 360.0) * (CANVAS - 1) as f32,
         )
     }
-
-    pub fn view(&self) -> Element<'_, Message> {
-        let h = self.height();
-        let mut card = stack![].width(W).height(h);
-        // The card's own surface.
-        card = card.push(
-            container(Space::new().width(W).height(h)).style(|_| container::Style {
-                background: Some(bg_panel().into()),
-                border: Border {
-                    color: border(),
-                    width: 1.0,
-                    radius: 5.0.into(),
-                },
-                shadow: Shadow {
-                    color: Color::from_rgba(0.0, 0.0, 0.0, 0.55),
-                    offset: Vector::new(0.0, 12.0),
-                    blur_radius: 36.0,
-                },
-                ..container::Style::default()
-            }),
-        );
-        // Header: "Color" + ×.
-        card = card.push(at(
-            14.0,
-            11.0,
-            text("Color")
-                .font(SEGOE_SEMIBOLD)
-                .size(16.0)
-                .line_height(LineHeight::Absolute(Pixels(22.0)))
-                .color(text_main()),
-        ));
-        card = card.push(at(1.0, 43.0, rect(W - 2.0, 1.0, border())));
-        card = card.push(at(
-            302.48,
-            12.0,
-            mouse_area(
-                container(
-                    text("\u{d7}")
-                        .font(ARIAL)
-                        .size(18.0)
-                        .line_height(LineHeight::Absolute(Pixels(18.0)))
-                        .color(text_main()),
-                )
-                .width(22.52)
-                .height(22.0)
-                .center_x(22.52)
-                .center_y(22.0),
-            )
-            .on_press(Message::Color(ColorMsg::Close)),
-        ));
-        // Tabs.
-        for (i, (tab, label)) in [(Tab::Standard, "Standard"), (Tab::Custom, "Custom")]
-            .into_iter()
-            .enumerate()
-        {
-            let active = self.tab == tab;
-            let mut cell = stack![].width(169.0).height(32.0);
-            if active {
-                cell = cell.push(rect(169.0, 32.0, bg_hover()));
-            }
-            cell = cell.push(at(
-                0.0,
-                10.0,
-                container(
-                    text(label)
-                        .font(if active { ARIAL_BOLD } else { ARIAL })
-                        .size(12.0)
-                        .line_height(LineHeight::Absolute(Pixels(14.0)))
-                        .color(text_main()),
-                )
-                .width(169.0)
-                .center_x(169.0),
-            ));
-            card = card.push(at(
-                1.0 + i as f32 * 169.0,
-                44.0,
-                mouse_area(cell).on_press(Message::Color(ColorMsg::Tab(tab))),
-            ));
-        }
-        card = card.push(at(1.0, 76.0, rect(W - 2.0, 1.0, border())));
-        // Body.
-        match self.tab {
-            Tab::Standard => {
-                let wheel = self.wheel_view();
-                card = card.push(at(WHEEL_X, ROW_Y, wheel));
-                card = card.push(at(259.0, ROW_Y, self.side_view(66.0)));
-            }
-            Tab::Custom => {
-                let sv = self.sv_view();
-                card = card.push(at(15.0, ROW_Y, sv));
-                card = card.push(at(227.0, ROW_Y, self.hue_view()));
-                card = card.push(at(263.0, ROW_Y, self.side_view(62.0)));
-                card = card.push(self.rgb_view());
-            }
-        }
-        if self.tab == Tab::Standard {
-            card = card.push(self.presets_view());
-        }
-        // Footer.
-        let footer_y = h - 48.0;
-        card = card.push(at(1.0, footer_y, rect(W - 2.0, 1.0, border())));
-        card = card.push(at(
-            194.3,
-            footer_y + 11.0,
-            mouse_area(dialog_button("Cancel", false, 71.36))
-                .on_press(Message::Color(ColorMsg::Close)),
-        ));
-        card = card.push(at(
-            273.66,
-            footer_y + 11.0,
-            mouse_area(dialog_button("OK", true, 51.34)).on_press(Message::Color(ColorMsg::Ok)),
-        ));
-
-        // The backdrop dismisses; the card swallows presses of its own.
-        let centred = container(opaque(card))
-            .center_x(Length::Fill)
-            .center_y(Length::Fill)
-            .style(|_| container::Style {
-                background: Some(Color::from_rgba(0.0, 0.0, 0.0, 0.45).into()),
-                ..container::Style::default()
-            });
-        opaque(mouse_area(centred).on_press(Message::Color(ColorMsg::Close)))
-    }
-
-    /// The Standard tab's 202 box: the wheel image plus its cursor.
-    fn wheel_view(&self) -> Element<'_, Message> {
-        let mut box_ = stack![].width(202.0).height(202.0);
-        box_ = box_.push(at(
-            1.0,
-            1.0,
-            image(WHEEL.clone())
-                .width(200)
-                .height(200)
-                .content_fit(iced::ContentFit::Fill),
-        ));
-        box_ = box_.push(at(
-            0.0,
-            0.0,
-            container(Space::new().width(202.0).height(202.0)).style(|_| container::Style {
-                border: Border {
-                    color: border(),
-                    width: 1.0,
-                    radius: 3.0.into(),
-                },
-                ..container::Style::default()
-            }),
-        ));
-        let c = self.wheel_cursor();
-        box_ = box_.push(at(c.x - 6.0, c.y - 6.0, cursor_dot()));
-        surface(box_, Area::Wheel)
-    }
-
-    /// The Custom tab's SV square. Its wrap is 200 wide and the canvas is
-    /// `box-sizing: border-box`, so the border box is 200x200 and Chrome
-    /// draws the 200px bitmap into the 198px content box.
-    fn sv_view(&self) -> Element<'_, Message> {
-        let mut box_ = stack![].width(200.0).height(200.0);
-        box_ = box_.push(at(
-            1.0,
-            1.0,
-            image(self.sv.1.clone())
-                .width(198)
-                .height(198)
-                .content_fit(iced::ContentFit::Fill),
-        ));
-        box_ = box_.push(at(
-            0.0,
-            0.0,
-            container(Space::new().width(200.0).height(200.0)).style(|_| container::Style {
-                border: Border {
-                    color: border(),
-                    width: 1.0,
-                    radius: 3.0.into(),
-                },
-                ..container::Style::default()
-            }),
-        ));
-        let c = self.sv_cursor();
-        box_ = box_.push(at(c.x - 6.0, c.y - 6.0, cursor_dot()));
-        surface(box_, Area::Sv)
-    }
-
-    /// The Custom tab's hue strip: CSS width 24 / height 200 with
-    /// `border-box`, so the 24x200 bitmap is drawn at 22x198.
-    fn hue_view(&self) -> Element<'_, Message> {
-        let mut box_ = stack![].width(24.0).height(200.0);
-        box_ = box_.push(at(
-            1.0,
-            1.0,
-            image(HUE.clone())
-                .width(22)
-                .height(198)
-                .content_fit(iced::ContentFit::Fill),
-        ));
-        box_ = box_.push(at(
-            0.0,
-            0.0,
-            container(Space::new().width(24.0).height(200.0)).style(|_| container::Style {
-                border: Border {
-                    color: border(),
-                    width: 1.0,
-                    radius: 3.0.into(),
-                },
-                ..container::Style::default()
-            }),
-        ));
-        let c = self.hue_cursor();
-        box_ = box_.push(at(c.x - 6.0, c.y - 6.0, cursor_dot()));
-        surface(box_, Area::Hue)
-    }
-
-    /// "New" over the preview box, centred in a `w`-wide column.
-    fn side_view(&self, w: f32) -> Element<'_, Message> {
-        let (r, g, b) = self.hsv.rgb();
-        let mut col = stack![].width(w).height(50.0);
-        col = col.push(at(
-            0.0,
-            1.0,
-            container(
-                text("New")
-                    .font(SEGOE)
-                    .size(10.0)
-                    .line_height(LineHeight::Absolute(Pixels(14.0)))
-                    .color(muted()),
-            )
-            .width(w)
-            .center_x(w),
-        ));
-        col = col.push(at(
-            (w - 52.0) / 2.0,
-            18.0,
-            container(Space::new().width(52.0).height(32.0)).style(move |_| container::Style {
-                background: Some(Color::from_rgb8(r, g, b).into()),
-                border: Border {
-                    color: border(),
-                    width: 1.0,
-                    radius: 2.0.into(),
-                },
-                ..container::Style::default()
-            }),
-        ));
-        col.into()
-    }
-
-    /// The 48 preset swatches (8 columns, 35.25x18, gap 4).
-    fn presets_view(&self) -> Element<'_, Message> {
-        let mut grid = stack![].width(W - 30.0).height(128.0);
-        for (i, hex) in PRESETS.iter().enumerate() {
-            let (row, col) = (i / 8, i % 8);
-            let (r, g, b) = hex_to_rgb(hex);
-            let x = col as f32 * (PRESET_W + PRESET_GAP);
-            let y = row as f32 * (PRESET_H + PRESET_GAP);
-            let swatch =
-                container(Space::new().width(PRESET_W).height(PRESET_H)).style(move |_| {
-                    container::Style {
-                        background: Some(Color::from_rgb8(r, g, b).into()),
-                        border: Border {
-                            color: border(),
-                            width: 1.0,
-                            radius: 2.0.into(),
-                        },
-                        ..container::Style::default()
-                    }
-                });
-            grid = grid.push(at(
-                x,
-                y,
-                mouse_area(swatch).on_press(Message::Color(ColorMsg::Preset(hex))),
-            ));
-        }
-        at(15.0, PRESETS_Y, grid)
-    }
-
-    /// The RGB grid: labels at x 15, inputs 60x22 at x 52.11, pitch 28.
-    fn rgb_view(&self) -> Element<'_, Message> {
-        let mut grid = stack![].width(W - 30.0).height(78.0);
-        for (i, (field, label)) in [
-            (RgbField::R, "Red"),
-            (RgbField::G, "Green"),
-            (RgbField::B, "Blue"),
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            let y = i as f32 * 28.0;
-            grid = grid.push(at(
-                0.0,
-                y + 3.5,
-                text(label)
-                    .font(SEGOE)
-                    .size(11.0)
-                    .line_height(LineHeight::Absolute(Pixels(15.0)))
-                    .color(muted()),
-            ));
-            // The card sits on a half pixel, so Chrome's border box lands on
-            // row 511 while iced would straddle 510/511: nudge to the pixel.
-            grid = grid.push(at(
-                37.11,
-                y + 0.5,
-                text_input("", &self.rgb[i])
-                    .on_input(move |s| Message::Color(ColorMsg::Rgb(field, s)))
-                    .font(ARIAL)
-                    .size(12.0)
-                    .line_height(LineHeight::Absolute(Pixels(14.0)))
-                    .padding(Padding {
-                        top: 5.0,
-                        bottom: 3.0,
-                        left: 6.0,
-                        right: 5.0,
-                    })
-                    .width(60.0)
-                    .style(|_, _| text_input::Style {
-                        background: Background::Color(bg_app()),
-                        border: Border {
-                            color: border(),
-                            width: 1.0,
-                            radius: 2.0.into(),
-                        },
-                        icon: muted(),
-                        placeholder: muted(),
-                        value: text_main(),
-                        selection: SELECTION,
-                    }),
-            ));
-        }
-        at(15.0, 300.5, grid)
-    }
-}
-
-/// Wraps a colour surface so a press and the drag moves reach it.
-fn surface<'a>(content: impl Into<Element<'a, Message>>, area: Area) -> Element<'a, Message> {
-    mouse_area(content)
-        .on_press(Message::Color(ColorMsg::Press(area)))
-        .on_move(move |p| Message::Color(ColorMsg::Hover(area, p)))
-        .on_release(Message::Color(ColorMsg::Release))
-        .into()
-}
-
-/// `.color-cursor`: a 10px white ring with a 1px dark halo (the CSS box
-/// shadow), centred on the point (`translate(-50%, -50%)`).
-fn cursor_dot<'a>() -> Element<'a, Message> {
-    let halo = container(Space::new().width(12.0).height(12.0)).style(|_| container::Style {
-        background: Some(Color::from_rgba(0.0, 0.0, 0.0, 0.6).into()),
-        border: Border {
-            color: Color::TRANSPARENT,
-            width: 0.0,
-            radius: 6.0.into(),
-        },
-        ..container::Style::default()
-    });
-    let ring = container(Space::new().width(10.0).height(10.0)).style(|_| container::Style {
-        border: Border {
-            color: Color::WHITE,
-            width: 1.0,
-            radius: 5.0.into(),
-        },
-        ..container::Style::default()
-    });
-    let mut dot = stack![].width(12.0).height(12.0);
-    dot = dot.push(halo);
-    dot = dot.push(at(1.0, 1.0, ring));
-    dot.into()
-}
-
-/// `.color-dialog-footer button`: Arial 12, padding 5/16, radius 3.
-fn dialog_button<'a>(label: &'a str, primary: bool, w: f32) -> Element<'a, Message> {
-    let (bg, fg, border) = if primary {
-        (accent(), Color::WHITE, accent())
-    } else {
-        (Color::TRANSPARENT, text_main(), border())
-    };
-    let mut inner = stack![].width(w).height(26.0);
-    inner = inner.push(at(
-        0.0,
-        6.0,
-        container(
-            text(label)
-                .font(ARIAL)
-                .size(12.0)
-                .line_height(LineHeight::Absolute(Pixels(16.0)))
-                .color(fg),
-        )
-        .width(w)
-        .center_x(w),
-    ));
-    container(inner)
-        .width(w)
-        .height(26.0)
-        .style(move |_| container::Style {
-            background: Some(bg.into()),
-            border: Border {
-                color: border,
-                width: 1.0,
-                radius: 3.0.into(),
-            },
-            ..container::Style::default()
-        })
-        .into()
 }
 
 #[cfg(test)]

@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 
 use iced::widget::canvas::{self, Frame, Geometry, Path, Stroke, Text};
 use iced::{alignment, mouse, Color, Point, Rectangle, Renderer, Theme, Vector};
-use sketch_core::symbols::{EntityType, Symbol, SymbolLibrary};
+use sketch_core::symbols::{Entity, EntityType, Symbol, SymbolLibrary};
 
 use crate::theme::hex;
 
@@ -134,6 +134,7 @@ impl SymIndex {
     }
 
     /// `populateSymbolCategorySelect` options: Favorites, then each category.
+    #[cfg(test)]
     pub fn options(&self) -> Vec<(String, String)> {
         std::iter::once(("favorites".to_string(), "Favorites".to_string()))
             .chain(
@@ -197,6 +198,20 @@ static LIBRARY: Mutex<Option<Arc<Result<SymIndex, String>>>> = Mutex::new(None);
 /// again after [`delete_from_library`] rewrites it.
 /// `Err` carries the message shown in place of the list.
 pub fn library() -> Arc<Result<SymIndex, String>> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let mut cached = LIBRARY.lock().unwrap_or_else(|e| e.into_inner());
+        return cached
+            .get_or_insert_with(|| {
+                let loaded = serde_json::from_str::<SymbolLibrary>(include_str!(
+                    "../../../assets/symbols.json"
+                ))
+                .map(SymIndex::build)
+                .map_err(|e| format!("Embedded symbol library invalid: {e}"));
+                Arc::new(loaded)
+            })
+            .clone();
+    }
     #[cfg(test)]
     if TEST_LIBRARY.with(|p| p.borrow().is_some()) {
         return load_library(&library_path());
@@ -207,16 +222,54 @@ pub fn library() -> Arc<Result<SymIndex, String>> {
         .clone()
 }
 
+/// Where the shipped read-only `symbols.original.json` copy lives, if present.
+pub fn original_library_path() -> Option<std::path::PathBuf> {
+    let lib_dir_candidate = library_path().with_file_name("symbols.original.json");
+    #[cfg(test)]
+    if TEST_LIBRARY.with(|p| p.borrow().is_some()) {
+        return lib_dir_candidate.is_file().then_some(lib_dir_candidate);
+    }
+    let mut candidates = vec![lib_dir_candidate];
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            candidates.push(dir.join("symbols.original.json"));
+            candidates.push(dir.join("assets").join("symbols.original.json"));
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd.join("symbols.original.json"));
+        candidates.push(cwd.join("assets").join("symbols.original.json"));
+    }
+    candidates.into_iter().find(|p| p.is_file())
+}
+
+/// Clears the cached shared library so the next `library()` re-reads disk.
+pub fn invalidate_cache() {
+    *LIBRARY.lock().unwrap_or_else(|e| e.into_inner()) = None;
+}
+
+/// Runs one `sketch_core::symbol_edit` operation on the library file and returns
+/// `(changed)` on success or `(message, is_io_error)` on failure so callers can
+/// distinguish read-only/permission errors from malformed payloads.
+pub fn try_edit_library(
+    edit: impl FnOnce(&std::path::Path) -> Result<usize, sketch_core::symbols::SymbolLibraryError>,
+) -> Result<usize, (String, bool)> {
+    let path = library_path();
+    let changed = edit(&path).map_err(|e| {
+        let is_io = matches!(e, sketch_core::symbols::SymbolLibraryError::Io(_));
+        (format!("{}: {e}", path.display()), is_io)
+    })?;
+    invalidate_cache();
+    Ok(changed)
+}
+
 /// Runs one `sketch_core::symbol_edit` operation on the library file, then
 /// drops the cached library so the next `library()` reads the edited file.
 /// Returns how many symbols (or categories) the edit changed.
 pub fn edit_library(
     edit: impl FnOnce(&std::path::Path) -> Result<usize, sketch_core::symbols::SymbolLibraryError>,
 ) -> Result<usize, String> {
-    let path = library_path();
-    let changed = edit(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-    *LIBRARY.lock().unwrap_or_else(|e| e.into_inner()) = None;
-    Ok(changed)
+    try_edit_library(edit).map_err(|(msg, _)| msg)
 }
 
 /// Permanently removes `ids` from the library file and reloads it; returns how
@@ -225,9 +278,16 @@ pub fn delete_from_library(ids: &std::collections::BTreeSet<String>) -> Result<u
     edit_library(|path| sketch_core::symbol_edit::delete(path, ids))
 }
 
-/// Runs `test` against a private copy of the library file for this thread.
+/// Runs `test` against a private copy of the library file for this thread
+/// (also seeding a read-only `symbols.original.json` sibling).
 #[cfg(test)]
 pub fn with_temp_library(test: impl FnOnce()) {
+    with_temp_library_opts(true, test);
+}
+
+/// Same as [`with_temp_library`], optionally omitting `symbols.original.json`.
+#[cfg(test)]
+pub fn with_temp_library_opts(with_original: bool, test: impl FnOnce()) {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
         "../../target/test-profiles/library-{}-{:?}",
         std::process::id(),
@@ -235,11 +295,11 @@ pub fn with_temp_library(test: impl FnOnce()) {
     ));
     std::fs::create_dir_all(&dir).unwrap();
     let copy = dir.join("symbols.json");
-    std::fs::copy(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/symbols.json"),
-        &copy,
-    )
-    .unwrap();
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/symbols.json");
+    std::fs::copy(&src, &copy).unwrap();
+    if with_original {
+        std::fs::copy(&src, dir.join("symbols.original.json")).unwrap();
+    }
     TEST_LIBRARY.with(|p| *p.borrow_mut() = Some(copy));
     test();
     TEST_LIBRARY.with(|p| *p.borrow_mut() = None);
@@ -287,6 +347,24 @@ impl<Message> canvas::Program<Message> for Preview<'_> {
 }
 
 fn draw_preview(frame: &mut Frame, def: &Symbol, cw: f32, ch: f32) {
+    render_fitted(frame, def, cw, ch, 14.0, PREVIEW_STROKE, PREVIEW_BG);
+}
+
+/// Fit a symbol's geometry inside `(cw, ch)` minus `pad` and stroke it with `stroke`.
+pub fn render_fitted(
+    frame: &mut Frame,
+    def: &Symbol,
+    cw: f32,
+    ch: f32,
+    pad: f64,
+    stroke: Color,
+    background: Color,
+) {
+    let (scale, ox, oy) = fit_transform(def, cw, ch, pad);
+    render_geometry(frame, def, scale, ox, oy, stroke, background);
+}
+
+pub(crate) fn fit_transform(def: &Symbol, cw: f32, ch: f32, pad: f64) -> (f64, f64, f64) {
     let b = &def.bounds;
     let (min_x, min_y, max_x, max_y) = if b.max_x > b.min_x || b.max_y > b.min_y {
         (b.min_x, b.min_y, b.max_x, b.max_y)
@@ -295,13 +373,13 @@ fn draw_preview(frame: &mut Frame, def: &Symbol, cw: f32, ch: f32) {
     };
     let width = (max_x - min_x).max(1.0);
     let height = (max_y - min_y).max(1.0);
-    let scale = ((cw as f64 - 14.0) / width).min((ch as f64 - 14.0) / height);
+    let scale = ((cw as f64 - pad).max(4.0) / width).min((ch as f64 - pad).max(4.0) / height);
     let cx = (min_x + max_x) / 2.0;
     let cy = (min_y + max_y) / 2.0;
     // translate(w/2 - cx*s, h/2 + cy*s) then scale(s, -s).
     let ox = cw as f64 / 2.0 - cx * scale;
     let oy = ch as f64 / 2.0 + cy * scale;
-    render_geometry(frame, def, scale, ox, oy, PREVIEW_STROKE, PREVIEW_BG);
+    (scale, ox, oy)
 }
 
 /// renderSymbolGeometry in screen space: symbol point (x, y) maps to
@@ -315,7 +393,20 @@ pub fn render_geometry(
     stroke: Color,
     background: Color,
 ) {
-    if def.geometry.is_empty() || !s.is_finite() || s <= 0.0 {
+    render_entities(frame, &def.geometry, s, ox, oy, stroke, background);
+}
+
+/// Renders a slice of symbol `Entity` primitives in screen space.
+pub fn render_entities(
+    frame: &mut Frame,
+    geometry: &[Entity],
+    s: f64,
+    ox: f64,
+    oy: f64,
+    stroke: Color,
+    background: Color,
+) {
+    if geometry.is_empty() || !s.is_finite() || s <= 0.0 {
         return;
     }
     let to = |x: f64, y: f64| Point::new((ox + x * s) as f32, (oy - y * s) as f32);
@@ -325,7 +416,7 @@ pub fn render_geometry(
         .with_line_cap(canvas::LineCap::Round)
         .with_line_join(canvas::LineJoin::Round);
 
-    for e in &def.geometry {
+    for e in geometry {
         let should_stroke = e.stroke_alpha.is_none_or(|a| a > 0);
         let fill_of = |c: i64| if c == 0 { stroke } else { background };
         match e.entity_type {
@@ -510,16 +601,45 @@ mod tests {
     fn library_loads_from_the_external_file_with_the_originals_index() {
         let lib = library();
         let ix = lib.as_ref().as_ref().expect("assets/symbols.json loads");
-        assert_eq!(ix.library.symbols.len(), 639);
-        assert_eq!(ix.categories.len(), 28);
+        assert_eq!(ix.library.symbols.len(), 499);
+        assert_eq!(ix.categories.len(), 18);
         assert_eq!(ix.categories[0].key, "caddillo-doors-windows");
-        assert_eq!(ix.categories[0].items.len(), 20);
+        assert_eq!(ix.categories[0].items.len(), 21);
         assert!(ix
             .categories
             .iter()
             .any(|c| c.key == "fire" && c.items.len() == 119));
         assert_eq!(ix.favorites.len(), 18);
         assert_eq!(ix.favorites[0].label, "Door Swing 36");
+        // Plain category names (no brand), merged CADdillo categories, and
+        // retired duplicates replaced through aliases
+        // (tools/symbol-curation.json, 2026-11-17).
+        assert!(ix.categories.iter().all(|c| !c.name.contains("CADdillo")));
+        assert_eq!(ix.categories[0].name, "Doors & windows");
+        let kitchen = ix.categories.iter().find(|c| c.key == "kitchen").unwrap();
+        assert_eq!(kitchen.name, "Kitchen");
+        assert!(kitchen.items.iter().any(|i| i.id == "caddillo/fridge-36"));
+        assert!(kitchen
+            .items
+            .iter()
+            .all(|i| i.id != "kitchen/refrigerator-36in"));
+        // Retired duplicates are gone; their ids alias the replacements.
+        assert!(ix.library.symbol("kitchen/refrigerator-36in").is_none());
+        assert!(ix.by_id("kitchen/refrigerator-36in").is_none());
+        assert_eq!(
+            ix.library.aliases.len(),
+            68,
+            "retired duplicates, plus the old double garage door"
+        );
+        assert_eq!(
+            ix.library.aliases["kitchen/refrigerator-36in"],
+            "caddillo/fridge-36"
+        );
+        assert!(ix
+            .library
+            .aliases
+            .values()
+            .all(|to| ix.library.symbols.contains_key(to)));
         assert_eq!(ix.favorites[0].icon, "door-open");
         assert_eq!(ix.options()[0], ("favorites".into(), "Favorites".into()));
     }

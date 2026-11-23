@@ -70,7 +70,7 @@ pub const DEFAULT_STEP_UNIT: &str = "whole";
 /// `#hud-len` / `#hud-ang` / `#hud-state`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Hud {
-    pub len: String,
+    distance_feet: f64,
     pub ang: String,
     pub down: bool,
 }
@@ -78,7 +78,7 @@ pub struct Hud {
 impl Default for Hud {
     fn default() -> Self {
         Hud {
-            len: "0.0'".into(),
+            distance_feet: 0.0,
             ang: "0.0°".into(),
             down: false,
         }
@@ -86,11 +86,10 @@ impl Default for Hud {
 }
 
 impl Hud {
-    /// `updateHUD(distBuf, angleBuf, isDown)`: `None` leaves a field as is;
-    /// an empty string shows "0.0".
-    pub fn update(&mut self, dist: Option<&str>, angle: Option<&str>, down: bool) {
+    /// `None` leaves the measurement as is. An empty angle resets it to zero.
+    fn update(&mut self, dist: Option<f64>, angle: Option<&str>, down: bool) {
         if let Some(d) = dist {
-            self.len = format!("{}'", if d.is_empty() { "0.0" } else { d });
+            self.distance_feet = d;
         }
         if let Some(a) = angle {
             self.ang = format!("{}°", if a.is_empty() { "0.0" } else { a });
@@ -193,11 +192,72 @@ pub enum BufferCmd {
     },
 }
 
+fn parse_distance(s: &str) -> Option<f64> {
+    let trimmed = s.trim();
+    if let Some(q) = trimmed.find('\'') {
+        let feet_part = trimmed[..q].trim();
+        let feet = if feet_part.is_empty() {
+            0.0
+        } else if feet_part.bytes().all(|b| b.is_ascii_digit() || b == b'.') {
+            parse_float(feet_part)?
+        } else {
+            return None;
+        };
+        let rest = trimmed[q + 1..].trim().trim_end_matches('"');
+        let inches = if rest.is_empty() {
+            0.0
+        } else if rest.bytes().all(|b| b.is_ascii_digit() || b == b'.') {
+            parse_float(rest)?
+        } else {
+            return None;
+        };
+        return Some(feet + inches / 12.0);
+    }
+    parse_float(trimmed)
+}
+
+/// Parse the Inspector's wall length field into decimal feet.
+pub fn parse_wall_length(text: &str) -> Option<f64> {
+    fn strip_inches(part: &str) -> Option<&str> {
+        part.strip_suffix(['"', '″', '”'])
+            .or_else(|| part.strip_suffix("inches"))
+            .or_else(|| part.strip_suffix("in"))
+    }
+
+    let text = text.trim().to_ascii_lowercase();
+    let length = if let Some((feet, inches)) = text.split_once(['\'', '′', '’']) {
+        let feet = feet.trim().parse::<f64>().ok()?;
+        let inches = inches.trim();
+        if inches.is_empty() {
+            feet
+        } else {
+            let inches = strip_inches(inches)
+                .unwrap_or(inches)
+                .trim()
+                .parse::<f64>()
+                .ok()?;
+            if feet < 0.0 || inches < 0.0 {
+                return None;
+            }
+            feet + inches / 12.0
+        }
+    } else if let Some(inches) = strip_inches(&text) {
+        inches.trim().parse::<f64>().ok()? / 12.0
+    } else {
+        text.parse::<f64>().ok()?
+    };
+    (length.is_finite() && length > 0.0).then_some(length)
+}
+
 fn num(s: &str) -> Option<f64> {
-    if s.is_empty() || !s.bytes().all(|b| b.is_ascii_digit() || b == b'.') {
+    if s.is_empty()
+        || !s
+            .bytes()
+            .all(|b| b.is_ascii_digit() || b == b'.' || b == b'\'')
+    {
         return None;
     }
-    parse_float(s)
+    parse_distance(s)
 }
 
 pub fn parse_buffer(buf: &str) -> Option<BufferCmd> {
@@ -239,8 +299,8 @@ pub fn parse_buffer(buf: &str) -> Option<BufferCmd> {
             }
         }
     }
-    // Plain distance.
-    parse_float(buf).map(BufferCmd::Distance)
+    // Plain distance (including feet-inches like 10'6).
+    parse_distance(buf).map(BufferCmd::Distance)
 }
 
 /// `getDefaultLineStyle(type)` with the default options.
@@ -366,6 +426,8 @@ impl Drawing {
             layers: None,
             active_layer_id: None,
             north_angle: None,
+            area_codes: None,
+            pages: None,
         }
     }
 
@@ -397,24 +459,16 @@ impl Drawing {
     pub fn set_selected_line_length(
         &mut self,
         selection: &crate::selection::Selection,
-        text: &str,
+        next_length: f64,
     ) -> bool {
-        let Some(line) = self
-            .lines
-            .iter()
-            .find(|line| selection.is_line_selected(line.id))
-            .cloned()
-        else {
-            return false;
-        };
-        let Ok(next_length) = text.trim().parse::<f64>() else {
+        let Some(line) = self.first_selected_line(selection) else {
             return false;
         };
         if !next_length.is_finite() || next_length <= 0.0 {
             return false;
         }
         let current = distance(line.start, line.end);
-        if current < 1e-8 {
+        if !current.is_finite() || current < 1e-8 || next_length == current {
             return false;
         }
         let at_start = selection
@@ -431,23 +485,7 @@ impl Drawing {
             fixed.x + (moving.x - fixed.x) / current * next_length,
             fixed.y + (moving.y - fixed.y) / current * next_length,
         );
-        if let Some(slot) = self.lines.iter_mut().find(|l| l.id == line.id) {
-            if at_start {
-                slot.start = next;
-            } else {
-                slot.end = next;
-            }
-        }
-        // Area vertices sitting on the moved endpoint follow, as they do for
-        // a dragged endpoint.
-        for poly in self.polygons.iter_mut() {
-            for vertex in poly.points.iter_mut() {
-                if sketch_core::joins::points_equal(*vertex, moving, 1e-5) {
-                    *vertex = next;
-                }
-            }
-        }
-        true
+        crate::transform::move_joined_vertex(self, moving, next)
     }
 
     /// `setSelectedLineAppearance({ lineStyle })` / `{ color }`.
@@ -515,6 +553,17 @@ impl Drawing {
             // `options.autoSubtractOverlapped === false` -> 'never'.
             auto_subtract: self.options.auto_subtract_overlapped,
         };
+        // A wall that another wall ends on (a T-junction) is only partly the
+        // side of the area it helps enclose; cut it there so the area can
+        // close along whole walls.
+        self.split_walls_at_enclosing_junctions();
+        // An area opened by deleting a wall comes back as soon as walls are
+        // drawn again between the same points, whatever touches its sides.
+        let reclosed = crate::area_repair::restore_by_walls(
+            &mut self.lines,
+            &mut self.polygons,
+            &mut self.reopened_areas,
+        );
         // The core port follows JS: its counter is the last allocated ID.
         // Drawing stores the next unused ID; translate at this boundary so
         // the next wall cannot reuse an area ID allocated during closure.
@@ -533,6 +582,7 @@ impl Drawing {
             &mut self.reopened_areas,
         );
         created
+            + reclosed.len()
             + restored
                 .iter()
                 .filter(|id| already_created.contains(id))
@@ -659,6 +709,15 @@ impl Drawing {
             return Err("Straighten the curved wall before inserting a vertex.");
         }
 
+        self.split_line_at(index, projection);
+        Ok(())
+    }
+
+    /// Splits the wall at `index` in two at `projection` and adds the vertex
+    /// to every area whose boundary runs along it. Returns the new wall's id
+    /// (the half from the vertex to the original end).
+    fn split_line_at(&mut self, index: usize, projection: Pt) -> i64 {
+        let line = &self.lines[index];
         let (line_start, original_end, line_id) = (line.start, line.end, line.id);
         let second_id = self.gen_id();
         let first = &mut self.lines[index];
@@ -703,14 +762,143 @@ impl Drawing {
                 break;
             }
         }
-        Ok(())
+        second_id
+    }
+
+    /// Cuts an exterior wall wherever an enclosed face runs along only part
+    /// of it. Faces beside a T-junction (another wall ending on the wall's
+    /// body) or an overlapping wall would otherwise never become areas,
+    /// because an area's side must be a whole wall. Only faces that can then
+    /// close are used, so walls that bound nothing keep their length.
+    fn split_walls_at_enclosing_junctions(&mut self) {
+        use sketch_core::joins::{is_drawable, is_polygon_boundary_intact, point_key};
+        use std::collections::HashMap;
+
+        let exterior: Vec<&SketchLine> = self
+            .lines
+            .iter()
+            .filter(|l| l.kind == WallType::Exterior && is_drawable(l))
+            .collect();
+        if exterior.len() < 3 {
+            return;
+        }
+        let geo_lines: Vec<_> = exterior.iter().map(|l| l.geometry()).collect();
+        let faces = self.geo.find_enclosed_faces(&geo_lines, 1e-9, 1e-5);
+        let by_id: HashMap<i64, &SketchLine> = self.lines.iter().map(|l| (l.id, l)).collect();
+        let intact: Vec<&Polygon> = self
+            .polygons
+            .iter()
+            .filter(|poly| is_polygon_boundary_intact(poly, &by_id))
+            .collect();
+        let endpoints: Vec<Pt> = exterior.iter().flat_map(|l| [l.start, l.end]).collect();
+        let snap = |p: Pt| {
+            endpoints
+                .iter()
+                .copied()
+                .find(|e| sketch_core::model::same(*e, p))
+                .unwrap_or(p)
+        };
+
+        // wall id -> the cut points it needs.
+        let mut cuts: HashMap<i64, Vec<Pt>> = HashMap::new();
+        for face in &faces {
+            let n = face.points.len();
+            if n < 3 || face.edges.len() != n || face.area < sketch_core::joins::MIN_CLOSED_AREA {
+                continue;
+            }
+            let mut face_cuts: Vec<(i64, Pt, Pt)> = Vec::new();
+            let mut usable = true;
+            for (i, edge) in face.edges.iter().enumerate() {
+                let Some(line) = edge.line_id.and_then(|id| by_id.get(&id).copied()) else {
+                    usable = false;
+                    break;
+                };
+                let (a, b) = (face.points[i], face.points[(i + 1) % n]);
+                let whole = (sketch_core::model::same(line.start, a)
+                    && sketch_core::model::same(line.end, b))
+                    || (sketch_core::model::same(line.end, a)
+                        && sketch_core::model::same(line.start, b));
+                if whole {
+                    continue;
+                }
+                if line.bow_angle.abs() > 0.5 {
+                    usable = false;
+                    break;
+                }
+                face_cuts.push((line.id, snap(a), snap(b)));
+            }
+            if !usable || face_cuts.is_empty() {
+                continue;
+            }
+            // A face an existing area already covers (or sits inside) is not
+            // a new area, so it earns no cuts.
+            let ids: HashSet<i64> = face.edges.iter().filter_map(|e| e.line_id).collect();
+            let covered = intact.iter().any(|poly| {
+                poly.edges
+                    .iter()
+                    .filter_map(|e| e.line_id)
+                    .any(|id| ids.contains(&id))
+                    && ((poly.area - face.area).abs() < 1e-6
+                        || (poly.gross - face.area).abs() < 1e-6
+                        || self.geo.polygon_contains(
+                            &face.points,
+                            &face.edges,
+                            &poly.points,
+                            &poly.edges,
+                            1e-4,
+                            0.01,
+                        )
+                        || self.geo.polygon_contains(
+                            &poly.points,
+                            &poly.edges,
+                            &face.points,
+                            &face.edges,
+                            1e-4,
+                            0.01,
+                        ))
+            });
+            if covered {
+                continue;
+            }
+            for (id, a, b) in face_cuts {
+                let list = cuts.entry(id).or_default();
+                for p in [a, b] {
+                    if !list.iter().any(|q| point_key(*q) == point_key(p)) {
+                        list.push(p);
+                    }
+                }
+            }
+        }
+
+        for (wall_id, points) in cuts {
+            // The wall's pieces so far: the original and the halves made below.
+            let mut pieces = vec![wall_id];
+            for point in points {
+                let found = pieces.iter().find_map(|id| {
+                    let index = self.lines.iter().position(|l| l.id == *id)?;
+                    let line = &self.lines[index];
+                    let inside = distance(point, line.start) > 1e-4
+                        && distance(point, line.end) > 1e-4
+                        && distance(
+                            point,
+                            self.geo
+                                .project_point_to_segment(point, line.start, line.end),
+                        ) <= 1e-4;
+                    inside.then_some(index)
+                });
+                if let Some(index) = found {
+                    let created = self.split_line_at(index, point);
+                    pieces.push(created);
+                }
+            }
+        }
     }
 
     /// `wallThicknessOf(line)`: per-line `thickness` (inches) wins over the
     /// option thickness for the wall's type; the result is in FEET.
     pub fn wall_thickness_of(&self, line: &SketchLine) -> f64 {
         if let Some(t) = line.thickness {
-            if t > 0.0 {
+            if t >= 0.0 {
                 return t / 12.0;
             }
         }
@@ -817,7 +1005,8 @@ impl Drawing {
     }
 
     /// `getDrawingTarget`: snap; while a chain is live, polar steps from the
-    /// anchor (5 degrees, whole grid lengths) unless an endpoint is near; an
+    /// anchor (the angle step setting, whole grid lengths; none when it is
+    /// Off) unless an endpoint is near; an
     /// endpoint within 16px always joins; the chain's start captures when it
     /// has 3+ points.
     pub fn drawing_target(&self, pt: Pt, ctx: DrawCtx) -> Pt {
@@ -827,8 +1016,10 @@ impl Drawing {
             && ctx.kind.is_some()
             && self.structural_snap(pt, ctx).is_none()
         {
-            if let Some(last) = self.points.last() {
-                if let Some(polar) = self.geo.polar_snap(*last, pt, ctx.grid, 5.0) {
+            // The angle step is the user's setting; Off (0) leaves the angle free.
+            let angle_step = self.options.ortho_angle;
+            if let (Some(last), true) = (self.points.last(), angle_step > 0.0) {
+                if let Some(polar) = self.geo.polar_snap(*last, pt, ctx.grid, angle_step) {
                     target = polar;
                 }
             }
@@ -856,7 +1047,17 @@ impl Drawing {
         self.cursor = start;
         self.points = vec![start];
         self.line_ids.clear();
-        self.hud.update(Some(""), None, true);
+        self.hud.update(Some(0.0), None, true);
+    }
+
+    pub fn length_readout(&self) -> String {
+        if self.buffer.is_empty() {
+            self.options.units.length(self.hud.distance_feet)
+        } else if self.buffer.contains('\'') {
+            self.buffer.clone()
+        } else {
+            format!("{}'", self.buffer)
+        }
     }
 
     /// `penUp()`.
@@ -867,7 +1068,7 @@ impl Drawing {
         self.pen_down = false;
         self.points.clear();
         self.line_ids.clear();
-        self.hud.update(Some(""), Some(""), false);
+        self.hud.update(Some(0.0), Some(""), false);
     }
 
     /// `handleCanvasClick(worldPt)` in a draw mode. Returns true when the
@@ -923,7 +1124,7 @@ impl Drawing {
         self.line_ids.push(id);
         self.points.push(target);
         self.cursor = target;
-        self.hud.update(Some(&js_to_fixed(dist, 1)), Some(""), true);
+        self.hud.update(Some(dist), Some(""), true);
         false
     }
 
@@ -1047,7 +1248,7 @@ impl Drawing {
         self.pen_down = false;
         self.points.clear();
         self.line_ids.clear();
-        self.hud.update(Some(""), Some(""), false);
+        self.hud.update(Some(0.0), Some(""), false);
     }
 
     /// `InputController.handleKeyDown`'s buffer characters: digits and '.'
@@ -1055,17 +1256,29 @@ impl Drawing {
     /// digits/dots; '<' (or ',') only after a digit; Tab is a decimal point.
     /// Returns true when the key was consumed.
     pub fn buffer_key(&mut self, key: &str, ctx: DrawCtx) -> bool {
-        let all_numeric =
-            !self.buffer.is_empty() && self.buffer.bytes().all(|b| b.is_ascii_digit() || b == b'.');
+        let all_numeric = !self.buffer.is_empty()
+            && self
+                .buffer
+                .bytes()
+                .all(|b| b.is_ascii_digit() || b == b'.' || b == b'\'');
         let ends_digit = self.buffer.ends_with(|c: char| c.is_ascii_digit());
+        let tail_has_prime = self
+            .buffer
+            .rsplit(['x', 'X', 'l', 'L', 'r', 'R', '<'])
+            .next()
+            .is_some_and(|seg| seg.contains('\'') || seg.contains('.'));
         let append = |d: &mut Drawing, s: &str, angle: Option<&str>| {
             d.buffer.push_str(s);
-            d.hud.update(Some(&d.buffer.clone()), angle, d.pen_down);
+            d.hud.update(Some(0.0), angle, d.pen_down);
         };
         let _ = ctx;
         match key {
             k if k.len() == 1 && (k.as_bytes()[0].is_ascii_digit() || k == ".") => {
                 append(self, k, None);
+                true
+            }
+            "'" if ends_digit && !tail_has_prime => {
+                append(self, "'", None);
                 true
             }
             "x" | "X" if ends_digit => {
@@ -1095,8 +1308,7 @@ impl Drawing {
             return false;
         }
         self.buffer.pop();
-        let text = self.buffer.clone();
-        self.hud.update(Some(&text), None, self.pen_down);
+        self.hud.update(Some(0.0), None, self.pen_down);
         true
     }
 
@@ -1161,7 +1373,7 @@ impl Drawing {
             self.commit_to(cursor, dist, angle, ctx.kind.unwrap_or(WallType::Exterior));
         }
         self.buffer.clear();
-        self.hud.update(Some(""), None, self.pen_down);
+        self.hud.update(Some(0.0), None, self.pen_down);
         true
     }
 
@@ -1201,7 +1413,7 @@ impl Drawing {
         self.points.push(target);
         self.cursor = target;
         self.hud.update(
-            Some(&js_to_fixed(length, 1)),
+            Some(length),
             Some(&format!("{}", js_round(angle.to_degrees()))),
             true,
         );
@@ -1242,7 +1454,7 @@ impl Drawing {
         // unlike the mouse path, which clears the angle. Enter then re-sets
         // the length only, so the committed wall's angle stays on screen.
         self.hud.update(
-            Some(&js_to_fixed(dist, 1)),
+            Some(dist),
             Some(&format!("{}", angle as i64)),
             self.pen_down,
         );
@@ -1347,8 +1559,7 @@ impl Drawing {
             let (dx, dy) = (self.cursor.x - last.x, self.cursor.y - last.y);
             let dist = dx.hypot(dy);
             let angle = format!("{}", js_round(dy.atan2(dx).to_degrees()) as i64);
-            self.hud
-                .update(Some(&js_to_fixed(dist, 1)), Some(&angle), self.pen_down);
+            self.hud.update(Some(dist), Some(&angle), self.pen_down);
         }
     }
 
@@ -1495,8 +1706,7 @@ impl Drawing {
             let math_angle = dy.atan2(dx).to_degrees();
             let apex = (90.0 - math_angle + 360.0) % 360.0;
             let apex = format!("{}", js_round(apex) as i64);
-            self.hud
-                .update(Some(&js_to_fixed(dist, 1)), Some(&apex), true);
+            self.hud.update(Some(dist), Some(&apex), true);
         }
     }
 
@@ -1524,28 +1734,6 @@ impl Drawing {
     /// Is this wall part of the live chain (drawn in `wallActive`)?
     pub fn is_active(&self, id: i64) -> bool {
         self.pen_down && self.line_ids.contains(&id)
-    }
-}
-
-/// A bare 10 ft wall (0,0)-(10,0) for tests elsewhere.
-#[cfg(test)]
-pub fn tests_wall() -> SketchLine {
-    SketchLine {
-        id: 1,
-        start: Pt::new(0.0, 0.0),
-        end: Pt::new(10.0, 0.0),
-        kind: WallType::Exterior,
-        color: None,
-        line_thickness: None,
-        thickness: None,
-        dimension_hidden: false,
-        layer_id: None,
-        bow_angle: 0.0,
-        arc_height: 0.0,
-        line_style: None,
-        dimension_position: None,
-        dimension_anchor: None,
-        extra: Default::default(),
     }
 }
 
@@ -1644,13 +1832,14 @@ mod tests {
         assert_eq!(
             d.hud,
             Hud {
-                len: "0.0'".into(),
+                distance_feet: 0.0,
                 ang: "0.0°".into(),
                 down: true
             }
         );
         d.hover(w(500.0, 303.0), c);
-        assert_eq!((d.hud.len.as_str(), d.hud.ang.as_str()), ("10.0'", "95°"));
+        assert_eq!(d.length_readout(), "10.0'");
+        assert_eq!(d.hud.ang, "95°");
     }
 
     #[test]
@@ -1675,13 +1864,56 @@ mod tests {
             .lines
             .iter()
             .all(|l| l.color.as_deref() == Some("#2B6CB0") && l.line_thickness == Some(4.0)));
-        assert_eq!(d.hud.len, "10.0'");
+        assert_eq!(d.length_readout(), "10.0'");
         d.hover(w(350.0, 450.0), c);
-        assert_eq!((d.hud.len.as_str(), d.hud.ang.as_str()), ("8.0'", "285°"));
+        assert_eq!(d.length_readout(), "8.0'");
+        assert_eq!(d.hud.ang, "285°");
         assert!(d.is_active(1) && d.is_active(2));
         d.pen_up();
         assert!(!d.is_active(1));
         assert_eq!(d.hud, Hud::default());
+    }
+
+    #[test]
+    fn the_angle_step_setting_decides_the_polar_snap() {
+        // A wall east from (-11,3), then the pointer swings to about 20 degrees
+        // up from the anchor at (-1,3). The snapped bearing follows the setting.
+        let bearing = |step: f64| {
+            let mut d = Drawing::default();
+            d.options.ortho_angle = step;
+            let c = ctx(WallType::Exterior);
+            for (x, y) in [(300.0, 300.0), (500.0, 300.0)] {
+                d.click(w(x, y), c);
+            }
+            d.hover(w(560.0, 255.0), c);
+            let last = *d.points.last().unwrap();
+            let target = d.drawing_target(w(560.0, 255.0), c);
+            let (dx, dy) = (target.x - last.x, target.y - last.y);
+            (dy.atan2(dx).to_degrees() * 100.0).round() / 100.0
+        };
+        let at_5 = bearing(5.0);
+        assert!(
+            (at_5 / 5.0 - (at_5 / 5.0).round()).abs() < 1e-6,
+            "5 degree steps: {at_5}"
+        );
+        let at_45 = bearing(45.0);
+        assert!(
+            (at_45 / 45.0 - (at_45 / 45.0).round()).abs() < 1e-6,
+            "45 degree steps: {at_45}"
+        );
+        let at_90 = bearing(90.0);
+        assert!(
+            (at_90 / 90.0 - (at_90 / 90.0).round()).abs() < 1e-6,
+            "90 degree steps: {at_90}"
+        );
+        assert_ne!(at_5, at_45, "the setting changes the result");
+        // Off: the angle is whatever the pointer says, on the grid only.
+        let free = bearing(0.0);
+        assert!(
+            (free / 5.0 - (free / 5.0).round()).abs() > 1e-3
+                && (free / 45.0 - (free / 45.0).round()).abs() > 1e-3,
+            "Off must not snap the angle: {free}"
+        );
     }
 
     #[test]
@@ -1716,6 +1948,103 @@ mod tests {
         e.click(w(300.0, 300.0), c);
         e.click(w(500.0, 300.0), c);
         assert!(e.lines[0].dimension_hidden && !e.suppress_dimension_next);
+    }
+
+    fn exterior_wall(id: i64, a: (f64, f64), b: (f64, f64)) -> SketchLine {
+        serde_json::from_value(serde_json::json!({
+            "id": id,
+            "start": {"x": a.0, "y": a.1},
+            "end": {"x": b.0, "y": b.1},
+            "type": "exterior"
+        }))
+        .expect("a wall")
+    }
+
+    fn walls_of(rings: &[&[(f64, f64)]]) -> Vec<SketchLine> {
+        let mut id = 1;
+        let mut out = vec![];
+        for ring in rings {
+            for i in 0..ring.len() {
+                out.push(exterior_wall(id, ring[i], ring[(i + 1) % ring.len()]));
+                id += 1;
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn an_area_closes_along_walls_that_other_walls_end_on() {
+        // A first floor, then a deck whose 12 ft wall overlaps the first
+        // floor's wall by one foot, so each ends on the other's body.
+        let floor: &[(f64, f64)] = &[
+            (32., 14.),
+            (32., -11.),
+            (13., -11.),
+            (13., -10.),
+            (7., -10.),
+            (7., -11.),
+            (-20., -11.),
+            (-20., 17.),
+            (4., 17.),
+            (4., 20.),
+            (18., 20.),
+            (18., 14.),
+        ];
+        let deck: &[(f64, f64)] = &[
+            (5., 20.),
+            (5., 23.),
+            (25., 23.),
+            (25., 17.),
+            (45., 17.),
+            (45., 21.),
+            (41., 21.),
+            (41., 37.),
+            (19., 37.),
+            (19., 27.),
+            (-7., 27.),
+            (-7., 20.),
+        ];
+        let mut d = Drawing {
+            lines: walls_of(&[floor]),
+            ..Drawing::default()
+        };
+        d.next_id = 100;
+        assert_eq!(d.close_loops(1.0), 1, "the first floor closes");
+        let first_floor = d.polygons[0].id;
+        let walls_before = d.lines.len();
+        // The deck is drawn with its top wall last.
+        let mut next = walls_before as i64 + 1;
+        let deck_walls = walls_of(&[deck]);
+        for mut wall in deck_walls {
+            wall.id = next;
+            next += 1;
+            d.lines.push(wall);
+        }
+        d.next_id = 200;
+        assert_eq!(d.close_loops(1.0), 1, "the deck closes too");
+        assert_eq!(d.polygons.len(), 2);
+        assert_eq!(d.polygons[0].id, first_floor, "the first floor is kept");
+        assert!((d.polygons[0].area - 1450.0).abs() < 1e-6);
+        let by_id = d.lines.iter().map(|l| (l.id, l)).collect();
+        assert!(d
+            .polygons
+            .iter()
+            .all(|p| sketch_core::joins::is_polygon_boundary_intact(p, &by_id)));
+    }
+
+    #[test]
+    fn a_wall_ending_on_another_is_not_cut_when_it_bounds_nothing() {
+        let square: &[(f64, f64)] = &[(0., 0.), (10., 0.), (10., 10.), (0., 10.)];
+        let mut d = Drawing {
+            lines: walls_of(&[square]),
+            ..Drawing::default()
+        };
+        d.next_id = 100;
+        d.close_loops(1.0);
+        d.lines.push(exterior_wall(50, (5., 0.), (5., -6.)));
+        d.close_loops(1.0);
+        assert_eq!(d.lines.len(), 5, "no wall was split");
+        assert_eq!(d.polygons.len(), 1);
     }
 
     #[test]
@@ -1782,7 +2111,7 @@ mod tests {
             assert!(d.buffer_key(k, c));
         }
         assert_eq!(d.buffer, "20");
-        assert_eq!(d.hud.len, "20'", "the buffer echoes into the HUD");
+        assert_eq!(d.length_readout(), "20'", "the buffer echoes into the HUD");
         assert!(d.enter_key(c));
         assert_eq!(d.buffer, "");
         assert_eq!(d.lines.len(), 1);
@@ -1790,7 +2119,7 @@ mod tests {
         assert_eq!(d.lines[0].end, Pt::new(-11.0, 23.0), "20 ft straight up");
         // The live original after Enter: "0.0' | 90° | DOWN" — the length
         // resets and the committed wall's angle stays.
-        assert_eq!(d.hud.len, "0.0'");
+        assert_eq!(d.length_readout(), "0.0'");
         assert_eq!(d.hud.ang, "90°");
 
         // 10<45 from the new cursor.
@@ -1848,7 +2177,8 @@ mod tests {
         assert_eq!(d.cursor, Pt::new(-11.0, 4.0));
         assert!(d.lines.is_empty(), "arrows never commit");
         assert!(d.keyboard_pointer, "the keyboard pointer takes over");
-        assert_eq!((d.hud.len.as_str(), d.hud.ang.as_str()), ("1.0'", "90°"));
+        assert_eq!(d.length_readout(), "1.0'");
+        assert_eq!(d.hud.ang, "90°");
         assert!(d.arrow_move("ArrowRight", false, true, c));
         assert_eq!(d.cursor, Pt::new(-10.9, 4.0));
         // A typed distance drives the next step.
@@ -2232,7 +2562,7 @@ mod edit_tools_tests {
     fn the_start_handle_moves_when_it_is_the_active_one() {
         // Original: start -> (-21, 3), end stays at (-1, 3).
         let mut d = wall();
-        assert!(d.set_selected_line_length(&selected(true), "20"));
+        assert!(d.set_selected_line_length(&selected(true), 20.0));
         assert_eq!(d.lines[0].start, Pt::new(-21.0, 3.0));
         assert_eq!(d.lines[0].end, Pt::new(-1.0, 3.0));
     }
@@ -2240,7 +2570,7 @@ mod edit_tools_tests {
     #[test]
     fn the_end_handle_moves_when_it_is_the_active_one() {
         let mut d = wall();
-        assert!(d.set_selected_line_length(&selected(false), "20"));
+        assert!(d.set_selected_line_length(&selected(false), 20.0));
         assert_eq!(d.lines[0].start, Pt::new(-11.0, 3.0));
         assert_eq!(d.lines[0].end, Pt::new(9.0, 3.0));
     }
@@ -2248,10 +2578,36 @@ mod edit_tools_tests {
     #[test]
     fn a_bad_length_is_rejected() {
         let mut d = wall();
-        assert!(!d.set_selected_line_length(&selected(true), "0"));
-        assert!(!d.set_selected_line_length(&selected(true), "-5"));
-        assert!(!d.set_selected_line_length(&selected(true), "abc"));
+        for input in [
+            "0",
+            "-5",
+            "abc",
+            "12.3.4",
+            "12 in extra",
+            "3' -2",
+            "NaN",
+            "inf",
+        ] {
+            assert_eq!(parse_wall_length(input), None, "{input}");
+        }
+        assert!(!d.set_selected_line_length(&selected(true), 0.0));
         assert_eq!(d.lines[0].start, Pt::new(-11.0, 3.0));
+    }
+
+    #[test]
+    fn wall_length_accepts_decimal_feet_and_inches() {
+        for input in [
+            "10.5",
+            "126\"",
+            "126 in",
+            "126 INCHES",
+            "10' 6\"",
+            "10′ 6″",
+            "10'6",
+        ] {
+            assert_eq!(parse_wall_length(input), Some(10.5), "{input}");
+        }
+        assert_eq!(parse_wall_length("6.5\""), Some(6.5 / 12.0));
     }
 
     #[test]
@@ -2412,5 +2768,38 @@ mod curve_tests {
         assert!((arc_height_of(&d.lines[0]) - (rise + 1.0)).abs() < 1e-9);
         d.adjust_curves(&[1], -1.0, true);
         assert!((d.lines[0].bow_angle - 15.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn feet_inches_parse_in_distance_and_turns() {
+        assert_eq!(parse_buffer("10'6"), Some(BufferCmd::Distance(10.5)));
+        assert_eq!(parse_buffer("12'"), Some(BufferCmd::Distance(12.0)));
+        assert_eq!(
+            parse_buffer("10'6l"),
+            Some(BufferCmd::Turn {
+                distance: 10.5,
+                left: true,
+                angle: 90.0
+            })
+        );
+        assert_eq!(
+            parse_buffer("10'6x5'3"),
+            Some(BufferCmd::RiseRun {
+                rise: 10.5,
+                run: 5.25
+            })
+        );
+        let mut d = Drawing::default();
+        let ctx = DrawCtx {
+            snap: true,
+            grid: 1.0,
+            zoom: 1.0,
+            kind: Some(WallType::Exterior),
+            step_unit: StepUnit::Whole,
+        };
+        for k in ["1", "0", "'", "6", "r"] {
+            assert!(d.buffer_key(k, ctx));
+        }
+        assert_eq!(d.buffer, "10'6r");
     }
 }

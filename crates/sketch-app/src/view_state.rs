@@ -22,6 +22,8 @@ pub enum Mode {
     Pan,
     DrawExterior,
     DrawInterior,
+    Freeform,
+    Erase,
     InsertVertex,
     Curve,
     Measure,
@@ -42,7 +44,9 @@ impl Mode {
     pub fn crosshair(self) -> bool {
         matches!(
             self,
-            Mode::DefineArea
+            Mode::Freeform
+                | Mode::Erase
+                | Mode::DefineArea
                 | Mode::Fence
                 | Mode::Lasso
                 | Mode::InsertVertex
@@ -111,6 +115,13 @@ pub struct World {
 /// A pointer drag in progress (`state.dragState`).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Drag {
+    /// Unsnapped drawing / eraser stroke, grouped into one undo step.
+    Freeform {
+        last: World,
+    },
+    Erase {
+        last: World,
+    },
     /// `type: 'chain-offset'` — reposition a chain's offset line (S9-035).
     ChainOffset {
         chain_id: i64,
@@ -130,12 +141,11 @@ pub enum Drag {
         last_snap: (f64, f64),
         moved: bool,
     },
-    /// `type: 'line-endpoint'`.
-    Endpoint {
-        line_id: i64,
-        start: bool,
-        start_point: World,
-        moved: bool,
+    /// Move a selected wall endpoint or an area corner.
+    Vertex {
+        handle: crate::handles::VertexHandle,
+        origin: World,
+        grab: World,
     },
     /// `type: 'curve'` — bow a wall by dragging its midpoint handle (or any
     /// point of it in the Curve Wall tool).
@@ -477,21 +487,21 @@ impl View {
     }
 
     /// `dragState = { type: 'line-endpoint' }`.
-    pub fn drag_start_endpoint(&mut self, line_id: i64, start: bool, world: World) {
-        self.drag = Some(Drag::Endpoint {
-            line_id,
-            start,
-            start_point: world,
-            moved: false,
-        });
-    }
-
-    /// The move delta to apply for this pointer position: whole grid steps
-    /// from the grab point when snapping is on (so an on-grid sketch stays on
-    /// the grid and lengths stay exact), otherwise the raw delta. Returns
+    /// The move delta to apply for this pointer position: when snapping is on,
+    /// the selection's bounds origin is snapped to the grid (so moved geometry
+    /// lands on grid points and lengths stay exact), otherwise the raw delta. Returns
     /// `None` until the drag passes the 2px activation threshold.
-    pub fn drag_move(&mut self, world: World, grid: f64, snap: bool) -> Option<(f64, f64)> {
-        let absolute = self.area_snap;
+    ///
+    /// `align` gets the grid-snapped total move and the total already applied
+    /// and returns the total to use; it pulls the moved geometry onto nearby
+    /// endpoints of the geometry that stays.
+    pub fn drag_move(
+        &mut self,
+        world: World,
+        grid: f64,
+        snap: bool,
+        align: &dyn Fn((f64, f64), (f64, f64)) -> (f64, f64),
+    ) -> Option<(f64, f64)> {
         let threshold = 2.0 / (sketch_core::geometry::PIXELS_PER_FOOT * self.zoom);
         let drag = self.drag.as_mut()?;
         match drag {
@@ -511,17 +521,16 @@ impl View {
                 let mut dy = world.y - last.y;
                 if snap {
                     let step = if grid > 0.0 { grid } else { 1.0 };
-                    let reference = if absolute {
-                        *start_ref
-                    } else {
-                        World { x: 0.0, y: 0.0 }
-                    };
+                    // Absolute snap: the selection's bounds origin lands on
+                    // the grid, so moved lines and areas never drift off it.
+                    let reference = *start_ref;
                     let total_x =
                         crate::drawing::js_round((reference.x + world.x - start.x) / step) * step
                             - reference.x;
                     let total_y =
                         crate::drawing::js_round((reference.y + world.y - start.y) / step) * step
                             - reference.y;
+                    let (total_x, total_y) = align((total_x, total_y), *last_snap);
                     dx = total_x - last_snap.0;
                     dy = total_y - last_snap.1;
                     *last_snap = (total_x, total_y);
@@ -530,7 +539,8 @@ impl View {
                 *last = world;
                 Some((dx, dy))
             }
-            Drag::Endpoint { .. } => None,
+            Drag::Vertex { .. } => None,
+            Drag::Freeform { .. } | Drag::Erase { .. } => None,
             Drag::Curve { .. } => None,
             Drag::RotateArea { .. } => None,
             Drag::RotateText { .. } => None,
@@ -607,6 +617,15 @@ impl View {
         }
     }
 
+    /// The active grid pitch for geometry edits.
+    pub fn edit_grid(&self) -> Option<f64> {
+        if self.area_snap {
+            Some(self.area_snap_size)
+        } else {
+            self.snap.then_some(self.grid_size)
+        }
+    }
+
     /// The pitch option on display.
     pub fn pitch_label(&self) -> &'static str {
         PITCHES
@@ -626,6 +645,52 @@ pub fn js_number(n: f64) -> String {
     }
 }
 
+/// Interactive tool buttons (used by the tool tray and commands).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RailTool {
+    Select,
+    Fence,
+    Lasso,
+    Pan,
+    DrawExterior,
+    DrawInterior,
+    Freeform,
+    Erase,
+    InsertVertex,
+    Curve,
+    Measure,
+    ChainDim,
+    Shapes,
+    DefineArea,
+    Text,
+    Symbols,
+    Touch,
+    Geo,
+    Pages,
+}
+
+impl RailTool {
+    /// The drawing/navigation mode represented by this tool, if any.
+    pub fn mode(self) -> Option<Mode> {
+        Some(match self {
+            RailTool::Select => Mode::Select,
+            RailTool::DefineArea => Mode::DefineArea,
+            RailTool::Fence => Mode::Fence,
+            RailTool::Lasso => Mode::Lasso,
+            RailTool::Pan => Mode::Pan,
+            RailTool::DrawExterior => Mode::DrawExterior,
+            RailTool::DrawInterior => Mode::DrawInterior,
+            RailTool::Freeform => Mode::Freeform,
+            RailTool::Erase => Mode::Erase,
+            RailTool::InsertVertex => Mode::InsertVertex,
+            RailTool::Curve => Mode::Curve,
+            RailTool::Measure => Mode::Measure,
+            RailTool::ChainDim => Mode::ChainDim,
+            _ => return None,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -635,26 +700,89 @@ mod tests {
         let mut view = View::new(100.0, 100.0);
         view.area_snap = true;
         view.drag_start_move(World { x: 0.0, y: 0.0 }, World { x: 0.2, y: -0.2 });
-        assert_eq!(view.drag_move(World { x: 0.01, y: 0.0 }, 0.5, true), None);
-        let delta = view.drag_move(World { x: 0.4, y: 0.3 }, 0.5, true).unwrap();
+        assert_eq!(
+            view.drag_move(World { x: 0.01, y: 0.0 }, 0.5, true, &|t, _| t),
+            None
+        );
+        let delta = view
+            .drag_move(World { x: 0.4, y: 0.3 }, 0.5, true, &|t, _| t)
+            .unwrap();
         assert!((0.2 + delta.0 - 0.5).abs() < 1e-9);
         assert!((-0.2 + delta.1).abs() < 1e-9);
-        let next = view.drag_move(World { x: 0.9, y: 0.3 }, 0.5, true).unwrap();
+        let next = view
+            .drag_move(World { x: 0.9, y: 0.3 }, 0.5, true, &|t, _| t)
+            .unwrap();
         assert!((next.0 - 0.5).abs() < 1e-9);
         assert!(next.1.abs() < 1e-9);
     }
 
     #[test]
-    fn release_audit_ordinary_snap_preserves_off_grid_origin_and_free_labels() {
+    fn a_move_is_pulled_onto_an_endpoint_and_lets_go_when_the_pointer_leaves() {
+        // The selection's corner is at (0.2, 0.2); an endpoint that stays sits
+        // at (3.3, 0.1), off the grid.
+        let endpoint = (3.3_f64, 0.1_f64);
+        let corner = (0.2_f64, 0.2_f64);
+        // The corner has moved `last` so far; `total` would put it at corner + total.
+        let pull = move |total: (f64, f64), _last: (f64, f64)| {
+            let at = (corner.0 + total.0, corner.1 + total.1);
+            if (endpoint.0 - at.0).hypot(endpoint.1 - at.1) <= 0.6 {
+                (endpoint.0 - corner.0, endpoint.1 - corner.1)
+            } else {
+                total
+            }
+        };
+        let mut view = View::new(100.0, 100.0);
+        view.drag_start_move(
+            World { x: 0.0, y: 0.0 },
+            World {
+                x: corner.0,
+                y: corner.1,
+            },
+        );
+        // Pointer at x = 3.0: the grid says 3.0 but the endpoint is 0.3 away.
+        let (dx, dy) = view
+            .drag_move(World { x: 3.0, y: 0.0 }, 1.0, true, &pull)
+            .unwrap();
+        assert!(
+            (corner.0 + dx - endpoint.0).abs() < 1e-9,
+            "x {}",
+            corner.0 + dx
+        );
+        assert!(
+            (corner.1 + dy - endpoint.1).abs() < 1e-9,
+            "y {}",
+            corner.1 + dy
+        );
+        // Pointer far away: back on the grid, nothing sticky. The corner's
+        // origin (0.2 + 6.0) snaps to x = 6.0.
+        let (ex, ey) = view
+            .drag_move(World { x: 6.0, y: 0.0 }, 1.0, true, &pull)
+            .unwrap();
+        assert!(
+            (corner.0 + dx + ex - 6.0).abs() < 1e-9,
+            "x {}",
+            corner.0 + dx + ex
+        );
+        assert!(
+            (corner.1 + dy + ey).abs() < 1e-9,
+            "y {}",
+            corner.1 + dy + ey
+        );
+    }
+
+    #[test]
+    fn ordinary_snap_lands_the_selection_origin_on_the_grid_and_free_labels_stay_free() {
         let mut view = View::new(100.0, 100.0);
         view.drag_start_move(World { x: 0.0, y: 0.0 }, World { x: 0.2, y: 0.2 });
-        assert_eq!(
-            view.drag_move(World { x: 0.8, y: 0.2 }, 1.0, true),
-            Some((1.0, 0.0))
-        );
+        // Origin (0.2, 0.2) + (0.8, 0.2) = (1.0, 0.4) -> snaps to (1.0, 0.0).
+        let (dx, dy) = view
+            .drag_move(World { x: 0.8, y: 0.2 }, 1.0, true, &|t, _| t)
+            .unwrap();
+        assert!((0.2 + dx - 1.0).abs() < 1e-9);
+        assert!((0.2 + dy).abs() < 1e-9);
         view.drag_start_move(World { x: 0.0, y: 0.0 }, World { x: 0.2, y: 0.2 });
         assert_eq!(
-            view.drag_move(World { x: 0.8, y: 0.2 }, 1.0, false),
+            view.drag_move(World { x: 0.8, y: 0.2 }, 1.0, false, &|t, _| t),
             Some((0.8, 0.2))
         );
     }

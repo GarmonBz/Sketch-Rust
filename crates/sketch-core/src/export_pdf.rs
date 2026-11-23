@@ -1028,7 +1028,13 @@ fn report_page_content(
     let comment_height = comment_tables_height(subject, layout);
     if comment_height > 0.0 {
         let top = SKETCH_BODY_TOP + sketch_height;
-        for index in 0..3 {
+        for (index, label) in layout
+            .captions
+            .comment_table_labels
+            .iter()
+            .take(3)
+            .enumerate()
+        {
             let cx = x0 + index as f64 * 180.0;
             content.ops.push(Op::SetGrayStroke(GRAY_BORDER));
             content.ops.push(Op::StrokeRect {
@@ -1037,13 +1043,7 @@ fn report_page_content(
                 w: 180.0,
                 h: comment_height,
             });
-            band(
-                &mut content,
-                cx,
-                top,
-                180.0,
-                &layout.captions.comment_table_labels[index],
-            );
+            band(&mut content, cx, top, 180.0, label);
             if let Some(table) = subject.comment_tables.get(index) {
                 for (row, value) in table.iter().take(10).enumerate() {
                     content.ops.push(Op::Text {

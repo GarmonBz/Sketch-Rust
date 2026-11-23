@@ -220,8 +220,8 @@ pub struct Entity {
 #[serde(default, rename_all = "camelCase")]
 pub struct Symbol {
     /// Independent native CAD records retained while placement is edited.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub native_apex: Option<serde_json::Value>,
+    #[serde(default, alias = "nativeApex", skip_serializing_if = "Option::is_none")]
+    pub native_cad: Option<serde_json::Value>,
     pub id: String,
     pub category: String,
     pub category_name: String,
@@ -328,12 +328,37 @@ mod tests {
             return;
         };
         let library = SymbolLibrary::load(&path).expect("library loads");
-        assert_eq!(library.symbols.len(), 639);
-        assert_eq!(library.symbol_count, 639);
-        assert_eq!(library.categories.len(), 29);
+        assert_eq!(library.symbols.len(), 499);
+        assert_eq!(library.symbol_count, 499);
+        assert_eq!(library.categories.len(), 19);
         assert_eq!(library.default_favorites.len(), 18);
         assert_eq!(library.version, 1);
-        assert_eq!(library.symbol_count(), 639);
+        assert_eq!(library.symbol_count(), 499);
+    }
+
+    #[test]
+    fn double_garage_door_is_twice_the_single_door() {
+        let Some(path) = real_library_path() else {
+            return;
+        };
+        let library = SymbolLibrary::load(&path).expect("library loads");
+        let single = &library.symbols["caddillo/door-garage-108"];
+        let double = &library.symbols["custom/door-garage-216"];
+        assert_eq!(double.wall_gap_width, 2.0 * single.wall_gap_width);
+        assert_eq!(double.bounds.max_y, single.bounds.max_y);
+        assert_eq!(double.bounds.min_y, single.bounds.min_y);
+        assert_eq!(
+            double.bounds.max_x - single.bounds.max_x,
+            single.wall_gap_width
+        );
+        let in_doors = library.categories.iter().any(|c| {
+            c.key == "caddillo-doors-windows"
+                && c.symbol_ids.iter().any(|i| i == "custom/door-garage-216")
+        });
+        assert!(
+            in_doors,
+            "the double garage door is listed under Doors & windows"
+        );
     }
 
     #[test]
@@ -365,7 +390,7 @@ mod tests {
         if let Some(path) = real_library_path() {
             assert_eq!(resolve(Some(&path)), path);
             let library = SymbolLibrary::load_resolved(Some(&path)).expect("load_resolved");
-            assert_eq!(library.symbols.len(), 639);
+            assert_eq!(library.symbols.len(), 499);
         }
         // With no file anywhere, resolution still returns a usable candidate path.
         let fallback = resolve(None);
@@ -417,5 +442,17 @@ mod tests {
     fn load_reports_io_error_for_missing_file() {
         let err = SymbolLibrary::load(Path::new("definitely/not/here/symbols.json")).unwrap_err();
         assert!(matches!(err, SymbolLibraryError::Io(_)));
+    }
+
+    #[test]
+    fn native_cad_reads_legacy_native_apex_alias_and_writes_native_cad() {
+        let legacy = r#"{"id":"x/y","nativeApex":{"kind":"block","code":42}}"#;
+        let sym: Symbol = serde_json::from_str(legacy).expect("reads legacy alias");
+        assert!(sym.native_cad.is_some());
+        let written = serde_json::to_string(&sym).expect("serializes");
+        assert!(written.contains("\"nativeCad\""));
+        assert!(!written.contains("\"nativeApex\""));
+        let round: Symbol = serde_json::from_str(&written).expect("reads new key");
+        assert_eq!(round.native_cad, sym.native_cad);
     }
 }

@@ -123,6 +123,33 @@ pub enum WallSnap {
     Center,
 }
 
+impl From<crate::symbols::WallSnap> for WallSnap {
+    fn from(snap: crate::symbols::WallSnap) -> Self {
+        match snap {
+            crate::symbols::WallSnap::Side => Self::Side,
+            _ => Self::Center,
+        }
+    }
+}
+
+impl WallSnap {
+    /// The two cut edges measured from the pivot in the wall's direction.
+    /// The width and offset must be in the same units.
+    pub fn gap_offsets(self, width: f64, offset: f64, reversed: bool) -> (f64, f64) {
+        let offset = if offset.is_finite() { offset } else { 0.0 };
+        let start = match self {
+            Self::Side => offset,
+            Self::Center => offset - width / 2.0,
+        };
+        let end = start + width;
+        if reversed {
+            (-end, -start)
+        } else {
+            (start, end)
+        }
+    }
+}
+
 /// A symbol hosted on a wall that cuts a gap in its solid. Only the fields
 /// the solid geometry needs (`wallId`, `wallGapWidth`, snap/flip).
 #[derive(Debug, Clone, PartialEq)]
@@ -133,6 +160,8 @@ pub struct Opening {
     /// `wallGapWidth` in feet; 0 or absent cuts nothing.
     pub gap_width: f64,
     pub snap: WallSnap,
+    /// Shift in feet along the symbol's local X axis.
+    pub gap_offset: f64,
     /// `flipH` — Flip Swing.
     pub flip_h: bool,
     /// `wallSideFlip`.
@@ -302,22 +331,12 @@ fn classify_junction(
 
 /// `gapSpan` — the axial span an opening cuts, clipped to the wall.
 fn gap_span(opening: &Opening, along: f64, length: f64) -> (f64, f64) {
-    let width = opening.gap_width;
-    match opening.snap {
-        WallSnap::Side => {
-            let dir = if opening.side_flip { -1.0 } else { 1.0 }
-                * if opening.flip_h { -1.0 } else { 1.0 };
-            if dir > 0.0 {
-                (along.max(0.0), (along + width).min(length))
-            } else {
-                ((along - width).max(0.0), along.min(length))
-            }
-        }
-        WallSnap::Center => {
-            let half = width / 2.0;
-            ((along - half).max(0.0), (along + half).min(length))
-        }
-    }
+    let (start, end) = opening.snap.gap_offsets(
+        opening.gap_width,
+        opening.gap_offset,
+        opening.side_flip ^ opening.flip_h,
+    );
+    ((along + start).max(0.0), (along + end).min(length))
 }
 
 fn wall_gaps(line: &SketchLine, m: &Metrics, openings: &[Opening]) -> Vec<(f64, f64)> {
@@ -627,6 +646,7 @@ mod tests {
             y: 0.0,
             gap_width: 3.0,
             snap: WallSnap::Center,
+            gap_offset: 0.0,
             flip_h: false,
             side_flip: false,
         };
@@ -661,6 +681,7 @@ mod tests {
             y: 0.0,
             gap_width: 3.0,
             snap: WallSnap::Center,
+            gap_offset: 0.0,
             flip_h: false,
             side_flip: false,
         }];
@@ -681,6 +702,7 @@ mod tests {
             y: 0.0,
             gap_width: 3.0,
             snap: WallSnap::Side,
+            gap_offset: 0.0,
             flip_h: false,
             side_flip: false,
         };

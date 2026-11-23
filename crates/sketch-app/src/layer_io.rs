@@ -3,6 +3,7 @@ use crate::{layers, pages, App, Message};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 impl App {
+    #[allow(dead_code)]
     pub(crate) fn export_layer_data(&mut self, id: &str) -> Value {
         self.save_current_page();
         let branch = self.layers.descendant_layer_ids(id);
@@ -56,22 +57,33 @@ impl App {
         page
     }
 
+    /// The Layers panel import: pick a file (on the `file-dialog` thread),
+    /// then `Message::DialogPicked` runs the read-and-import continuation.
     pub(crate) fn import_layer_file(&mut self) -> iced::Task<Message> {
         #[cfg(not(test))]
-        if let Some(path) = rfd::FileDialog::new()
-            .add_filter("Sketch layer", &["json"])
-            .pick_file()
         {
-            let result = std::fs::read_to_string(path)
-                .map_err(|e| e.to_string())
-                .and_then(|body| serde_json::from_str(&body).map_err(|e| e.to_string()))
-                .and_then(|data| self.import_layer_data(&data));
-            return self.toasts.show(match result {
-                Ok(()) => "Layer imported.".into(),
-                Err(e) => format!("Layer import failed: {e}"),
-            });
+            iced::Task::perform(
+                crate::platform::pick_file_async(
+                    "Sketch layer".to_owned(),
+                    vec!["json".to_owned()],
+                ),
+                |path| Message::DialogPicked(crate::DialogRequest::ImportLayer, path),
+            )
         }
+        #[cfg(test)]
         iced::Task::none()
+    }
+
+    /// The import continuation: read the picked layer file and merge it.
+    pub(crate) fn import_layer_path(&mut self, path: std::path::PathBuf) -> iced::Task<Message> {
+        let result = std::fs::read_to_string(path)
+            .map_err(|e| e.to_string())
+            .and_then(|body| serde_json::from_str(&body).map_err(|e| e.to_string()))
+            .and_then(|data| self.import_layer_data(&data));
+        self.toasts.show(match result {
+            Ok(()) => "Layer imported.".into(),
+            Err(e) => format!("Layer import failed: {e}"),
+        })
     }
     pub(crate) fn import_layer_data(&mut self, data: &Value) -> Result<(), String> {
         if data["version"] != "Sketch-Layer" {
@@ -224,13 +236,13 @@ impl App {
                 return Err(format!("Conflicting symbol definition: {id}"));
             }
         }
-        self.resolve_symbol_aliases(&mut page.symbols);
-        page.symbols
-            .retain(|s| !self.symbol_changes.deleted.contains(&s.symbol_type));
         // JSON cannot carry non-finite numbers; typed parsing validates required geometry fields.
         self.push_undo("Import Layer");
         self.symbol_changes.custom.extend(custom);
         self.rebuild_symbols();
+        self.resolve_placed_symbol_definitions(&mut page.symbols);
+        page.symbols
+            .retain(|s| !self.symbol_changes.deleted.contains(&s.symbol_type));
         self.layers = layers;
         self.layers.active = imported
             .iter()

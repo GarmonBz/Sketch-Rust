@@ -3,13 +3,14 @@ resolver = "2"
 members = ["crates/sketch-core", "crates/sketch-app"]
 
 [workspace.package]
-version = "0.1.29"
+version = "0.3.15"
 edition = "2021"
-license = "MIT"
+license-file = "LICENSE"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
+web-time = "1"
 
 [profile.release]
 lto = "thin"

@@ -1,0 +1,76 @@
+name: Adjustable layers checks and build
+
+on:
+  push:
+    branches: ['codex/adjustable-layers']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: adjustable-layers-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  checks:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Rust
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          cargo fetch --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check adjustable layers
+        run: |
+          cargo test -p sketch-app --no-default-features --locked layers_split -- --test-threads=1 --nocapture
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check workspace
+        run: |
+          cargo test --workspace --no-default-features --locked -- --test-threads=1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Preserve screenshots
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: adjustable-layers-screenshots
+          path: target/e2e-next/layers-split-*.png
+          if-no-files-found: warn
+          retention-days: 7
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      DOTNET_ROLL_FORWARD: Major
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Rust
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          cargo fetch --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build optimized application
+        run: |
+          cargo build --release --locked -p sketch-app
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Package and verify
+        run: |
+          ./tools/package.ps1 -NativePreview -SkipBuild
+          ./tools/package-smoke.ps1
+          ./tools/installer.ps1 -FetchWix -SkipPackage -Test
+      - uses: actions/upload-artifact@v6
+        with:
+          name: adjustable-layers-windows-build
+          path: |
+            dist/SketchRust-*.msi
+            dist/SketchRust-*.zip
+            dist/SketchRust-*.sha256
+          if-no-files-found: error
+          retention-days: 14

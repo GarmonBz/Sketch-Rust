@@ -1,0 +1,2 @@
+<key>NSBluetoothAlwaysUsageDescription</key>
+<string>Sketch Rust uses Bluetooth to connect to laser measuring devices (DISTO).</string>

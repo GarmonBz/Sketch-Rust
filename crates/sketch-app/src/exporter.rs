@@ -417,7 +417,7 @@ mod tests {
     fn hosted_openings_reach_vector_exports_with_live_styles() {
         let mut d = crate::drawing::Drawing::default();
         d.lines.push(serde_json::from_value(serde_json::json!({"id":1,"type":"exterior","start":{"x":0,"y":0},"end":{"x":10,"y":0}})).unwrap());
-        d.symbols.push(serde_json::from_value(serde_json::json!({"id":2,"symbolType":"windows/36in","x":5,"y":0,"wallId":1,"wallGapWidth":3})).unwrap());
+        d.symbols.push(serde_json::from_value(serde_json::json!({"id":2,"symbolType":"caddillo/window-single-36","x":5,"y":0,"wallId":1,"wallGapWidth":3})).unwrap());
         d.options.exterior_color = "#ff0000".into();
         d.options.exterior_width = 7.0;
         d.auto_post.name = false;

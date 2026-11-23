@@ -103,6 +103,16 @@ pub fn size_position(d: &Drawing, poly: &Polygon) -> Pt {
         return p;
     }
     let label = label_position(d, poly);
+    size_position_with_label(poly, label)
+}
+
+fn size_position_with_label(poly: &Polygon, label: Pt) -> Pt {
+    if let Some(p) = poly
+        .area_size_position
+        .filter(|p| p.x.is_finite() && p.y.is_finite())
+    {
+        return p;
+    }
     let post = &poly.auto_post;
     if !post.code && !post.name {
         return label;
@@ -150,6 +160,9 @@ pub fn area_blocks(
     if post.factor {
         size.push(format!("Factor: {factor:.2}"));
     }
+    if label.is_empty() && size.is_empty() {
+        return Vec::new();
+    }
     let label_rotation = poly.label_rotation.unwrap_or(0.0);
     // Rendering uses the raw scale (`Number(scale) || 1`), unclamped.
     let raw = |s: Option<f64>| s.filter(|s| *s != 0.0).unwrap_or(1.0);
@@ -167,21 +180,35 @@ pub fn area_blocks(
         underline: poly.label_underline.unwrap_or(false),
         color: poly.label_color.clone().filter(|c| !c.is_empty()),
     };
+    let shared_label_pos = if !label.is_empty()
+        || poly
+            .area_size_position
+            .filter(|p| p.x.is_finite() && p.y.is_finite())
+            .is_none()
+    {
+        Some(label_position(d, poly))
+    } else {
+        None
+    };
     let mut out = Vec::new();
     if !label.is_empty() {
         out.push(block(
             TextKind::AreaLabel,
             label,
-            label_position(d, poly),
+            shared_label_pos.unwrap_or_else(|| label_position(d, poly)),
             label_rotation,
             label_scale,
         ));
     }
     if !size.is_empty() {
+        let size_pos = match shared_label_pos {
+            Some(lbl) => size_position_with_label(poly, lbl),
+            None => size_position(d, poly),
+        };
         out.push(block(
             TextKind::AreaSize,
             size,
-            size_position(d, poly),
+            size_pos,
             poly.area_size_rotation.unwrap_or(label_rotation),
             raw(poly.area_size_scale.or(poly.label_scale)),
         ));
@@ -213,7 +240,9 @@ pub fn block_line_font(
         11.0
     };
     let size = (base * block.scale as f32 * text_zoom(zoom) as f32).max(9.0);
-    (size, block.bold.unwrap_or(opts.auto_post_bold) || first)
+    // The first line is bold until the user chooses otherwise: an explicit
+    // Bold on or off (the inspector button) wins over that default.
+    (size, block.bold.unwrap_or(opts.auto_post_bold || first))
 }
 
 /// The block's italic flag (`poly.labelItalic ?? options.autoPostItalic`).
@@ -385,6 +414,66 @@ pub fn selected_area_box(
     })
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VertexHandle {
+    WallEnd { id: i64, start: bool },
+    AreaCorner { id: i64, vertex: usize },
+}
+
+/// Selected endpoints and corners shared by drawing and hit testing.
+pub fn selected_vertices<'a>(
+    d: &'a Drawing,
+    selection: &'a Selection,
+    filters: [bool; 6],
+    gates: &'a crate::layers::LayerGates,
+) -> impl Iterator<Item = (VertexHandle, Pt)> + 'a {
+    let ends = d.lines.iter().filter(move |line| {
+        let filter = if line.kind == sketch_core::model::WallType::Exterior {
+            1
+        } else {
+            2
+        };
+        filters[filter] && selection.is_line_selected(line.id) && gates.selectable(line.id)
+    });
+    let corners = d
+        .polygons
+        .iter()
+        .filter(move |poly| selection.is_poly_selected(poly.id) && gates.selectable(poly.id));
+    ends.flat_map(|line| {
+        [
+            (
+                VertexHandle::WallEnd {
+                    id: line.id,
+                    start: true,
+                },
+                line.start,
+            ),
+            (
+                VertexHandle::WallEnd {
+                    id: line.id,
+                    start: false,
+                },
+                line.end,
+            ),
+        ]
+    })
+    .chain(corners.flat_map(|poly| {
+        poly.points
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(vertex, point)| {
+                (
+                    VertexHandle::AreaCorner {
+                        id: poly.id,
+                        vertex,
+                    },
+                    point,
+                )
+            })
+    }))
+}
+
 /// What a press on a rotation handle grabbed.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum HandleHit {
@@ -400,16 +489,18 @@ pub enum HandleHit {
 }
 
 /// `getRotationHandleHit` for the text and area handles (the symbol handle
-/// has its own hit test): within 11px of a handle's centre.
-pub fn hit_handle(
+/// has its own hit test), with a configurable screen-px hit radius (e.g.
+/// 11 px desktop, 24 px radius / 48 px target in Touch density).
+pub fn hit_handle_with_radius(
     d: &Drawing,
     sel: &Selection,
     computed: &BTreeMap<i64, Computed>,
     pan: (f64, f64),
     zoom: f64,
     screen: (f64, f64),
+    hit_radius: f64,
 ) -> Option<HandleHit> {
-    let near = |h: (f64, f64)| (screen.0 - h.0).hypot(screen.1 - h.1) <= 11.0;
+    let near = |h: (f64, f64)| (screen.0 - h.0).hypot(screen.1 - h.1) <= hit_radius;
     // Later entries win, as the original's reverse scan does.
     for b in selected_text_boxes(d, sel, computed, pan, zoom)
         .iter()
@@ -521,11 +612,15 @@ pub struct SymbolBox {
     pub handle: (f64, f64),
 }
 
-/// `bounds` is the definition's `(min_x, min_y, max_x, max_y)`.
+/// `bounds` is the definition's `(min_x, min_y, max_x, max_y)`. The box is
+/// drawn around the bounds, not around the symbol's origin: CADdillo symbols
+/// keep their origin at a corner or edge, so the two differ. `center` stays
+/// the origin, the point the symbol turns and scales about.
 pub fn symbol_box(
     at: Pt,
     rotation: f64,
     scale: f64,
+    flip_h: bool,
     bounds: (f64, f64, f64, f64),
     pan: (f64, f64),
     zoom: f64,
@@ -537,15 +632,19 @@ pub fn symbol_box(
     let radians = rotation.to_radians();
     let (cos, sin) = (radians.cos(), radians.sin());
     let turn = |x: f64, y: f64| (center.0 + x * cos - y * sin, center.1 + x * sin + y * cos);
+    // The bounds' centre in the symbol's own frame: CAD y runs up, the screen's
+    // down, and a horizontal flip mirrors x before the turn.
+    let off_x = (bounds.0 + bounds.2) / 2.0 * pixel_scale * if flip_h { -1.0 } else { 1.0 };
+    let off_y = -(bounds.1 + bounds.3) / 2.0 * pixel_scale;
     SymbolBox {
         center,
         corners: [
-            turn(-bw / 2.0, -bh / 2.0),
-            turn(bw / 2.0, -bh / 2.0),
-            turn(bw / 2.0, bh / 2.0),
-            turn(-bw / 2.0, bh / 2.0),
+            turn(off_x - bw / 2.0, off_y - bh / 2.0),
+            turn(off_x + bw / 2.0, off_y - bh / 2.0),
+            turn(off_x + bw / 2.0, off_y + bh / 2.0),
+            turn(off_x - bw / 2.0, off_y + bh / 2.0),
         ],
-        handle: turn(0.0, -bh / 2.0 - 30.0),
+        handle: turn(off_x, off_y - bh / 2.0 - 30.0),
     }
 }
 
@@ -556,15 +655,20 @@ pub enum SymbolHandle {
     Resize,
 }
 
-/// `getRotationHandleHit` (symbol) / `getSymbolResizeHandleHit`: the rotation
-/// handle within 11px, a corner within 7px on each axis.
-pub fn hit_symbol_handle(b: &SymbolBox, screen: (f64, f64)) -> Option<SymbolHandle> {
-    if (screen.0 - b.handle.0).hypot(screen.1 - b.handle.1) <= 11.0 {
+/// `getRotationHandleHit` / `getSymbolResizeHandleHit` with explicit screen-px
+/// tolerances (11/7 desktop, 24 px for Touch 48 px target).
+pub fn hit_symbol_handle_with_radius(
+    b: &SymbolBox,
+    screen: (f64, f64),
+    rotate_r: f64,
+    resize_r: f64,
+) -> Option<SymbolHandle> {
+    if (screen.0 - b.handle.0).hypot(screen.1 - b.handle.1) <= rotate_r {
         return Some(SymbolHandle::Rotate);
     }
     b.corners
         .iter()
-        .any(|c| (screen.0 - c.0).abs() <= 7.0 && (screen.1 - c.1).abs() <= 7.0)
+        .any(|c| (screen.0 - c.0).abs() <= resize_r && (screen.1 - c.1).abs() <= resize_r)
         .then_some(SymbolHandle::Resize)
 }
 
@@ -792,24 +896,91 @@ mod tests {
     }
 
     #[test]
+    fn a_symbols_box_wraps_its_bounds_not_its_origin() {
+        // Door Garage 108 keeps its origin at the opening's left end on the wall
+        // line: bounds -5..113 in x, -8..0 in y (CAD y runs up). At 100% zoom
+        // (20 px/ft) its ink spans x -5..113 in and y 0..8 in below the origin.
+        let bounds = (-5.0, -8.0, 113.0, 0.0);
+        let ps = 20.0 / 12.0;
+        let span = |b: &SymbolBox| {
+            let xs = b.corners.map(|c| c.0 - 100.0);
+            let ys = b.corners.map(|c| c.1 - 100.0);
+            (
+                xs.iter().cloned().fold(f64::MAX, f64::min),
+                xs.iter().cloned().fold(f64::MIN, f64::max),
+                ys.iter().cloned().fold(f64::MAX, f64::min),
+                ys.iter().cloned().fold(f64::MIN, f64::max),
+            )
+        };
+        let close = |a: (f64, f64, f64, f64), e: (f64, f64, f64, f64)| {
+            assert!(
+                (a.0 - e.0).abs() < 1e-6
+                    && (a.1 - e.1).abs() < 1e-6
+                    && (a.2 - e.2).abs() < 1e-6
+                    && (a.3 - e.3).abs() < 1e-6,
+                "{a:?} vs {e:?}"
+            );
+        };
+        let at = Pt::new(0.0, 0.0);
+        let pan = (100.0, 100.0);
+        let b = symbol_box(at, 0.0, 1.0, false, bounds, pan, 1.0);
+        assert_eq!(b.center, (100.0, 100.0), "the pivot stays on the origin");
+        close(span(&b), (-5.0 * ps, 113.0 * ps, 0.0, 8.0 * ps));
+        // The rotation handle sits above the box's top edge, over its middle.
+        assert!(
+            (b.handle.0 - 100.0 - 54.0 * ps).abs() < 1e-6
+                && (b.handle.1 - 100.0 + 30.0).abs() < 1e-6
+        );
+        // Flipped left-right, the box mirrors about the origin.
+        let f = symbol_box(at, 0.0, 1.0, true, bounds, pan, 1.0);
+        close(span(&f), (-113.0 * ps, 5.0 * ps, 0.0, 8.0 * ps));
+        // A quarter turn clockwise turns the whole box about the origin.
+        let r = symbol_box(at, 90.0, 1.0, false, bounds, pan, 1.0);
+        close(span(&r), (-8.0 * ps, 0.0, -5.0 * ps, 113.0 * ps));
+    }
+
+    #[test]
     fn a_symbols_handles_turn_with_it_and_snap_in_steps() {
         // 36 x 12 in definition, 100% zoom (20 px/ft): 60 x 20 px box.
         let bounds = (-18.0, -6.0, 18.0, 6.0);
-        let b = symbol_box(Pt::new(0.0, 0.0), 0.0, 1.0, bounds, (100.0, 100.0), 1.0);
+        let b = symbol_box(
+            Pt::new(0.0, 0.0),
+            0.0,
+            1.0,
+            false,
+            bounds,
+            (100.0, 100.0),
+            1.0,
+        );
         assert_eq!(b.center, (100.0, 100.0));
         // The handle is above the top edge (smaller screen y), 30px clear.
         assert!((b.handle.0 - 100.0).abs() < 1e-9 && (b.handle.1 - 60.0).abs() < 1e-9);
         assert_eq!(
-            hit_symbol_handle(&b, (100.0, 66.0)),
+            hit_symbol_handle_with_radius(&b, (100.0, 66.0), 11.0, 7.0),
             Some(SymbolHandle::Rotate)
         );
         assert_eq!(
-            hit_symbol_handle(&b, (130.0, 110.0)),
+            hit_symbol_handle_with_radius(&b, (130.0, 110.0), 11.0, 7.0),
             Some(SymbolHandle::Resize)
         );
-        assert_eq!(hit_symbol_handle(&b, (100.0, 100.0)), None);
+        assert_eq!(
+            hit_symbol_handle_with_radius(&b, (100.0, 100.0), 11.0, 7.0),
+            None
+        );
+        assert_eq!(
+            hit_symbol_handle_with_radius(&b, (100.0, 82.0), 24.0, 24.0),
+            Some(SymbolHandle::Rotate)
+        );
         // A quarter turn clockwise swings the handle to the right.
-        let b = symbol_box(Pt::new(0.0, 0.0), 90.0, 1.0, bounds, (100.0, 100.0), 1.0);
+        let b = symbol_box(
+            Pt::new(0.0, 0.0),
+            90.0,
+            1.0,
+            false,
+            bounds,
+            (100.0, 100.0),
+            1.0,
+        );
         assert!((b.handle.0 - 140.0).abs() < 1e-9 && (b.handle.1 - 100.0).abs() < 1e-9);
         // Steps.
         let quarter = std::f64::consts::FRAC_PI_2;

@@ -3,7 +3,8 @@
 //!
 //! Separate from the interface theme: it recolours only the canvas
 //! background, the two grid weights, the dimension labels and the witness
-//! lines. `light` (shown as "White") is the default.
+//! lines. `light` is the default. The selectors list Light, Blue, Dark, as the
+//! interface theme's do.
 //!
 //! Held in a thread-local like `theme::interface_theme`: the view and the
 //! canvas draw run on the thread that runs `update`, and the test harness
@@ -42,7 +43,7 @@ impl CanvasTheme {
     /// The menu label (`showCanvasBackgroundMenu`).
     pub fn label(self) -> &'static str {
         match self {
-            CanvasTheme::Light => "White",
+            CanvasTheme::Light => "Light",
             CanvasTheme::Dark => "Dark",
             CanvasTheme::Blue => "Blue",
         }
@@ -51,7 +52,7 @@ impl CanvasTheme {
     pub fn bg(self) -> Color {
         match self {
             CanvasTheme::Light => rgb(0xFFFFFF),
-            CanvasTheme::Dark => rgb(0x111111),
+            CanvasTheme::Dark => rgb(0x0F141A),
             CanvasTheme::Blue => rgb(0x0b1728),
         }
     }
@@ -59,7 +60,8 @@ impl CanvasTheme {
     pub fn grid10(self) -> Color {
         match self {
             CanvasTheme::Light => rgba(30, 41, 59, 0.09),
-            CanvasTheme::Dark => rgba(255, 255, 255, 0.05),
+            // Grid rules #282F3B (dark palette), the minor lines at half strength.
+            CanvasTheme::Dark => rgba(40, 47, 59, 0.5),
             CanvasTheme::Blue => rgba(147, 197, 253, 0.08),
         }
     }
@@ -67,7 +69,7 @@ impl CanvasTheme {
     pub fn grid50(self) -> Color {
         match self {
             CanvasTheme::Light => rgba(30, 41, 59, 0.20),
-            CanvasTheme::Dark => rgba(255, 255, 255, 0.12),
+            CanvasTheme::Dark => rgba(40, 47, 59, 1.0),
             CanvasTheme::Blue => rgba(147, 197, 253, 0.18),
         }
     }
@@ -75,7 +77,8 @@ impl CanvasTheme {
     pub fn dim_label(self) -> Color {
         match self {
             CanvasTheme::Light => rgb(0x475569),
-            CanvasTheme::Dark => rgb(0xA0AEC0),
+            // Dimension measurements in the dark palette's primary text.
+            CanvasTheme::Dark => rgb(0xF0F4F8),
             CanvasTheme::Blue => rgb(0x93C5FD),
         }
     }
@@ -143,7 +146,7 @@ mod tests {
             )
         };
         assert_eq!(hex(CanvasTheme::Light.bg()), "ffffff");
-        assert_eq!(hex(CanvasTheme::Dark.bg()), "111111");
+        assert_eq!(hex(CanvasTheme::Dark.bg()), "0f141a");
         assert_eq!(hex(CanvasTheme::Blue.bg()), "0b1728");
         assert_eq!(hex(CanvasTheme::Blue.dim_label()), "93c5fd");
     }

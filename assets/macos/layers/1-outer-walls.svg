@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!--
+    S-shaped outer walls. Opaque white strokes for Icon Composer (effects come from the .icon).
+    Geometry mirrors assets/app-icon.png: three bays linked into an S.
+  -->
+  <g fill="none" stroke="#FFFFFF" stroke-width="40" stroke-linejoin="miter" stroke-miterlimit="8" stroke-linecap="square">
+    <!-- Continuous outer path with window gaps as breaks -->
+    <!-- Top-west corner down to first window -->
+    <path d="M216 188 H404"/>
+    <!-- gap: north window -->
+    <path d="M508 188 H808 V404"/>
+    <!-- gap: east upper window area uses continuous wall; west wall with window gap -->
+    <path d="M216 188 V292"/>
+    <!-- gap: west window -->
+    <path d="M216 340 V508"/>
+    <!-- Top bay floor / south wall with door gap handled in interior+doors -->
+    <path d="M216 508 H404"/>
+    <path d="M508 508 H616"/>
+    <!-- East spine into middle bay -->
+    <path d="M808 404 V616"/>
+    <!-- Middle bay south into lower spine -->
+    <path d="M616 616 H808"/>
+    <path d="M616 616 V808"/>
+    <!-- Lower bay -->
+    <path d="M216 808 H404"/>
+    <path d="M508 808 H808 V900"/>
+    <path d="M216 808 V900 H700"/>
+    <!-- gap then SE return -->
+    <path d="M760 900 H808"/>
+  </g>
+</svg>

@@ -384,8 +384,8 @@ const DXF: &str =
 #[test]
 fn caddillo_dxf_manager_import_keeps_size_metadata_and_survives_reopen() {
     persist::with_temp_store(|| {
-        let root =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../refs/caddillo/fixtures");
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../sketch-core/tests/fixtures/dxf");
         let mut a = app();
         for name in [
             "DOOR-SWING-36",
@@ -663,11 +663,11 @@ fn autosave_obeys_elapsed_interval_and_keeps_atomic_replacements_valid() {
         a.drawing.options.auto_save_interval = 1.;
         let _ = a.autosave_tick(false);
         assert!(a.autosave.path.is_none());
-        a.autosave.last = std::time::Instant::now() - std::time::Duration::from_secs(61);
+        a.autosave.last = web_time::Instant::now() - std::time::Duration::from_secs(61);
         let _ = a.autosave_tick(false);
         let path = a.autosave.path.clone().unwrap();
         a.file_name = "Updated snapshot".into();
-        a.autosave.last = std::time::Instant::now() - std::time::Duration::from_secs(61);
+        a.autosave.last = web_time::Instant::now() - std::time::Duration::from_secs(61);
         let _ = a.autosave_tick(false);
         assert_eq!(
             sketch_core::skx::read(&std::fs::read(path).unwrap())
@@ -742,7 +742,8 @@ fn category_deletion_starts_in_the_dock_category() {
     a.dock.active = dock::DockTab::Symbols;
     a.dock.symbol_category = "fire".into();
     let _ = a.manager_msg(S::Open);
-    assert_eq!(a.symbol_manager.category, "fire");
+    assert!(a.ui.symbol_library.open);
+    assert_eq!(a.ui.symbol_library.category, "fire");
 }
 #[test]
 fn category_deletion_handles_empty_categories() {
@@ -900,7 +901,10 @@ fn unsaved_changes_are_tracked_against_the_last_save() {
     let dir = std::env::temp_dir().join(format!("sketch-dirty-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let file = dir.join("Dirty.skx");
-    let _ = file_dialogs::with_save_path(Some(file.clone()), || a.update(Message::SaveFile));
+    let _ = file_dialogs::with_save_path(Some(file.clone()), || {
+        let task = a.update(Message::SaveFile);
+        file_dialogs::drive(&mut a, task);
+    });
     assert!(file.exists());
     assert!(!a.dirty);
     assert_eq!(a.save_state(), "Saved");
@@ -929,9 +933,8 @@ fn close_asks_only_when_there_is_unsaved_work() {
     assert_eq!(a.extended_data, "unsaved");
     // Save with the picker cancelled: nothing was written, so stay open.
     let _ = a.update(Message::Close);
-    let (task, _) = file_dialogs::with_save_path(None, || {
-        a.update(Message::Dialog(dialog::DialogMsg::Ok))
-    });
+    let (task, _) =
+        file_dialogs::with_save_path(None, || a.update(Message::Dialog(dialog::DialogMsg::Ok)));
     assert!(!exits(task), "a cancelled save must not close the app");
     // Don't save closes.
     let _ = a.update(Message::Close);
@@ -944,7 +947,10 @@ fn a_dropped_sketch_opens_and_other_files_are_refused() {
     let file = dir.join("Dropped.skx");
     let mut source = app();
     source.extended_data = "from the dropped file".into();
-    let _ = file_dialogs::with_save_path(Some(file.clone()), || source.update(Message::SaveFile));
+    let _ = file_dialogs::with_save_path(Some(file.clone()), || {
+        let task = source.update(Message::SaveFile);
+        file_dialogs::drive(&mut source, task);
+    });
 
     let mut a = app();
     let _ = a.update(Message::FileDropped(dir.join("photo.png")));
@@ -1009,4 +1015,141 @@ fn a_pinch_zooms_about_its_centre_and_pans_with_it() {
     // Zooming about a point 10px right / 5px up of the moved origin.
     assert!((a.view.pan.0 - (pan.0 + 20.0)).abs() < 1e-6);
     assert!((a.view.pan.1 - (pan.1 - 10.0)).abs() < 1e-6);
+}
+
+#[test]
+fn library_opening_alignment_applies_to_doors_and_windows() {
+    use sketch_core::{geometry::Pt, symbols::WallSnap};
+
+    for (snap, base_gap, flipped_gap) in [
+        (WallSnap::Side, (0.525, 0.675), (0.325, 0.475)),
+        (WallSnap::Center, (0.45, 0.6), (0.4, 0.55)),
+    ] {
+        let mut a = app();
+        a.drawing.lines.push(
+            serde_json::from_value(json!({
+                "id": 20, "start": {"x": 0., "y": 0.},
+                "end": {"x": 20., "y": 0.}, "type": "exterior"
+            }))
+            .unwrap(),
+        );
+        let id = "custom/test-opening";
+        let mut definition = a
+            .symbols_lib()
+            .symbol("caddillo/window-single-36")
+            .unwrap()
+            .clone();
+        definition.id = id.into();
+        definition.wall_snap = snap;
+        definition.wall_gap_alignment = 6.0;
+        a.symbol_changes.custom.insert(id.into(), definition);
+        a.rebuild_symbols();
+        a.place_symbol_at(Pt::new(10., 0.), id.into());
+
+        fn assert_gap(app: &App, expected: (f64, f64)) {
+            let export = exporter::build_export_page(&app.drawing, 0.0, &[]);
+            let runs = &export.lines[0].openings;
+            assert_eq!(runs.len(), 2);
+            assert_eq!(runs[0].0, 0.0);
+            assert!((runs[0].1 - expected.0).abs() < 1e-9, "{runs:?}");
+            assert!((runs[1].0 - expected.1).abs() < 1e-9, "{runs:?}");
+            assert_eq!(runs[1].1, 1.0);
+        }
+
+        assert_gap(&a, base_gap);
+        a.drawing.symbols[0].flip_h = true;
+        assert_gap(&a, flipped_gap);
+        a.drawing.symbols[0].flip_h = false;
+        a.drawing.symbols[0].set_scale(2.0);
+        let scaled_gap = (2.0 * base_gap.0 - 0.5, 2.0 * base_gap.1 - 0.5);
+        assert_gap(&a, scaled_gap);
+
+        let saved = a.build_save_model();
+        let mut reopened = app();
+        let _ = reopened.apply_model(&saved, "Aligned opening");
+        assert_gap(&reopened, scaled_gap);
+
+        let mut older_save = saved;
+        older_save["pages"][0]["symbols"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("wallGapOffset");
+        let _ = reopened.apply_model(&older_save, "Opening from an older sketch");
+        assert_gap(&reopened, scaled_gap);
+    }
+}
+
+#[test]
+fn dragging_library_openings_rehosts_and_removes_the_old_cutout() {
+    use sketch_core::geometry::Pt;
+
+    for kind in ["caddillo/door-swing-36", "caddillo/window-single-36"] {
+        let mut a = app();
+        for (id, y) in [(20, 0.), (21, 6.)] {
+            a.drawing.lines.push(
+                serde_json::from_value(json!({
+                    "id": id, "start": {"x": 0., "y": y},
+                    "end": {"x": 20., "y": y}, "type": "exterior"
+                }))
+                .unwrap(),
+            );
+        }
+        a.place_symbol_at(Pt::new(10., 0.), kind.into());
+        assert_eq!(a.drawing.symbols[0].wall_id, Some(20));
+
+        fn drag_to(app: &mut App, y: f64) {
+            let symbol = &app.drawing.symbols[0];
+            let from = view_state::World {
+                x: symbol.x,
+                y: symbol.y,
+            };
+            let (sx, sy) = handles::to_screen(Pt::new(from.x, y), app.view.pan, app.view.zoom);
+            app.view.drag_start_move(from, from);
+            let _ = app.update(Message::CanvasDrag(sx as f32, sy as f32, false));
+            let _ = app.update(Message::CanvasDragEnd);
+        }
+
+        drag_to(&mut a, 6.);
+        assert_eq!(a.drawing.symbols[0].wall_id, Some(21));
+        let page = exporter::build_export_page(&a.drawing, 0.0, &[]);
+        assert!(page.lines[0].openings.is_empty());
+        assert_eq!(page.lines[1].openings.len(), 2);
+
+        drag_to(&mut a, 14.);
+        assert_eq!(a.drawing.symbols[0].wall_id, None);
+        assert_eq!(a.drawing.symbols[0].wall_fraction, None);
+        let page = exporter::build_export_page(&a.drawing, 0.0, &[]);
+        assert!(page.lines.iter().all(|line| line.openings.is_empty()));
+
+        let _ = a.update(Message::Undo);
+        assert_eq!(a.drawing.symbols[0].wall_id, Some(21));
+        a.selection.clear();
+        a.selection.lines.insert(21);
+        a.move_selection(0., 2.);
+        assert!((a.drawing.symbols[0].y - 8.0).abs() < 1e-9);
+    }
+}
+
+#[test]
+fn interactive_gestures_and_chrome_hovers_skip_expensive_dirty_rehash() {
+    let mut a = app();
+    let _ = a.update(Message::Noop);
+    assert!(a.pointer_scene_ready);
+
+    // Chrome hover / fence move / pan move messages must not mark the
+    // document dirty or stall on full save-model serialization mid-gesture.
+    a.extended_data = "pending".into();
+    let _ = a.update(Message::LayerHoverRow("Default".into()));
+    assert!(!a.dirty, "chrome hover takes the fast path");
+    let _ = a.update(Message::PanStart(10.0, 10.0));
+    let _ = a.update(Message::PanMove(25.0, 35.0));
+    assert!(!a.dirty, "active pan skips dirty rehash");
+    let _ = a.update(Message::PanEnd);
+
+    // Explicit refresh_dirty sees the change and clears again when reverted.
+    a.refresh_dirty();
+    assert!(a.dirty);
+    a.extended_data.clear();
+    a.refresh_dirty();
+    assert!(!a.dirty);
 }

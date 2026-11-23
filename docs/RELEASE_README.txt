@@ -1,13 +1,192 @@
-Sketch Rust 0.1.29 - Windows x64 native compatibility development build, 2026-11-11
+Sketch Rust 0.3.13 - Windows x64
 
-Native Apex compatibility is in development. This package is NOT a completed
-universal Apex replacement. Read APEX-COMPATIBILITY.md for supported interfaces,
-verification and remaining gaps before changing a host's sketch provider.
+0.3.13 adds Apex AXF import and export to the Menu and fixes the Areas list
+across pages. The Menu's Import fly-out gains "Apex AXF sketch…" (a legacy
+`.axf` opens as a converted, untitled copy, like File > Open always did) and
+the Export fly-out gains "Apex AXF", which writes the current page — every
+closed area with its arc walls, plus text labels — as a legacy `.axf` using a
+clean-room encoder (no Apex or proprietary code; the importer's own documented
+byte layouts, written back out). The Areas list now shows only the current
+page's areas: a layer whose area lives on another page appears on that page
+instead of every page (the Site Plan screenshot bug).
 
-0.1.29 adds built-in help. Help > User Guide covers drawing walls, areas and
-calculations, symbols and text, pages and printing, and saving. Help >
-Integration Guide explains how to set up and use Appraise-It integration, how
-to go back to Apex, and what to check when something goes wrong.
+Sketch Rust 0.3.12 - Windows x64
+
+0.3.12 fixes arrow-key nudging of a selected wall or area: the selection moved
+diagonally, about ten feet sideways per key press, because the port used Rust's
+f64::signum (which returns 1.0 for zero) where the original used JavaScript's
+Math.sign (which returns 0). Nudge steps now use the JS sign semantics, so an
+arrow key moves the selection exactly one snap pitch along the arrow — Shift
+still moves ten pitches — and shared walls stretch cleanly without shearing the
+areas they border.
+
+0.3.11 stops File > Open and Save freezing for good. The window no longer runs
+a nested Win32 message pump while a native file dialog initializes — that pump
+deadlocked the interface thread whenever the Shell's dialog start stalled (a
+remembered network share was enough). Dialogs now open on their own thread and
+are awaited by the event loop, every dialog flow is a message-driven
+continuation, and each dialog starts in an explicit local folder (Documents
+fallback) instead of the last-visited one (0.3.9/0.3.10 hardened the same
+anchor).
+
+Sketch Rust 0.3.8 - Windows x64
+
+0.3.8 fixes UI hangs and freezes during drawing, dragging, and panning:
+exterior wall-join healing no longer stalls on multi-room floorplans with open
+wall chains, T-junction welds split the host wall cleanly, area label placement
+skips expensive cell refinement when a room's centroid is already well clear of
+its walls, unsaved-change checks no longer re-serialize .sketchie backing data
+or run mid-drag, chrome and menu hovers keep the cached floorplan render intact,
+and dotted/hatched area patterns clip to the visible canvas viewport.
+
+0.3.7 stops the window freezing ("Not Responding") while an Open or Save
+dialog is open and speeds up redrawing sketches with many layers. Dragging a
+wall end or area corner, or moving lines and areas, now snaps onto nearby
+endpoints as well as the grid. The installer opens .sketchie and .skx files on
+a double click and adds Sketch Rust to Open with for .json (.sketchie.json).
+The Fallingwater demo is listed under Recent sketches on the first start, and
+the start screen has a "Show this screen when Sketch Rust starts" checkbox.
+
+0.3.6 brings an area back when you redraw a wall you deleted from it, even next
+to neighbouring areas (it failed on areas whose walls other areas touch). The
+Areas list now shows every layer and can delete areas and layers from a row
+menu; single-layer export is removed from that menu.
+
+0.3.5 adds one-click eye, lock and menu on every layer row (the eye greys out
+when a layer is hidden), an Apply to all labels button, dark label text that
+turns light on Dark and Blue canvases, Ctrl+click toggling of labels and
+symbols, an angle snap that follows its setting, arrow keys that nudge by the
+snap pitch, and layers that paint in list order so walls no longer cover the
+areas of layers above them.
+
+0.3.4 opens the Open and Save dialogs on a thread of their own, so they no
+longer hang on "Working on it..." in the Downloads folder.
+
+0.3.3 adds a grab handle to every row of the Areas and layers list for dragging,
+makes Bold work on area labels (the name starts bold and the button turns it off
+or on), and stops Save As Sketchie from refusing older files: Sketchie 0.2 is
+the only version supported. fallingwater.sketchie, a full example sketch, is
+now in the install folder.
+
+0.3.2 combines Areas and Layers into one list. Each area shows its name with
+its type and size underneath, folders group areas and layers, and every row has
+an eye to hide it and a lock. Drag any row up or down, or into a folder; the
+row menu moves an area to another layer. The new-folder button sits beside the
+menu. The separate Layers list and its divider are gone.
+
+0.3.2 also opens legacy .axf sketches as a converted new sketch (areas, arc
+walls and room labels; doors and fixtures are not imported yet). Save As keeps
+the copy as .sketchie; the .axf file is never changed.
+
+0.3.1 adds Door Garage 216, an 18 ft double garage door, to Doors & windows in
+place of the old Door - Garage-Dbl. A selected symbol's box and handles now sit
+on the symbol instead of being offset from it, and symbols draw in light ink on
+the Dark and Blue canvases.
+
+0.3.0 gives Layers more room (drag the divider to resize), replaces the page
+tabs with a page switcher that fits the top bar, closes the right-click menu
+on a canvas click or Escape, and renames default area names when the type
+changes. GBA5-GBA10 are removed and Carport is CPT. Light, Blue, Dark is the
+order for both theme selectors. The Arrows, Doors, Windows and Miscellaneous
+symbol categories are removed from the default library.
+
+The tool tray and drawing controls now share a layout that prevents overlap.
+Zoom and Grid/Snap/Show/Dimensions move to separate top rows when there is
+not enough canvas width beside the twelve-tool tray. Menus follow their
+controls, including after sidebar resizing and horizontal tool scrolling.
+
+Freeform and Erase are back in the tool tray and command search. Drag with
+Freeform to draw without snapping, dimensions, or wall solids. Click or drag
+with Erase to remove lines, room labels, and symbols. Each gesture is one
+Undo step (Ctrl+Z). Both tools support mouse and touch input, respect hidden
+and locked layers, and use the existing save, print, and export formats.
+
+0.2.7 snaps moves to the grid, deselects on empty canvas clicks, and adds
+Open and Save buttons. 0.2.6 adds sketch-wide length formats and edit snapping.
+
+0.2.5: Area outlines and fills use their assigned area colors. A magnifier beside
+Fit zooms to a dragged rectangle. Selected walls and areas show draggable
+endpoints and corners. The inspector combines properties and editing
+controls, and wall length accepts decimal feet or inches.
+
+0.2.4 fixes door and window wall gaps so they use the symbol library
+alignment. An opening follows its symbol to a new wall or closes when
+detached.
+
+0.2.3 tidies the symbol library. Categories have plain names (Doors &
+windows, Kitchen, Bath & plumbing, Utilities and so on), and the CADdillo
+symbols are merged into the matching categories. 67 older symbols that
+a newer one replaces are removed, such as the old 36-inch refrigerator
+(now Fridge 36), leaving 572 symbols. When you open a sketch that uses a
+removed symbol, the newer one takes its place at the same position,
+rotation and size. It can differ a little in shape. The right-click menu
+is redesigned with icons, groups and shortcuts, and Options and Keyboard
+Shortcuts fit a 250% scaled screen without scrolling.
+
+0.2.2 gives the Dark theme a new palette made for CAD work: deep
+blue-black surfaces, a brighter blue for the active tool and selection,
+crisper text, and a darker drawing background with subtle grid lines.
+The top bar sits on the darkest surface. Choose Options > Display >
+Drawing background > Dark to draw on the new dark background. A selected
+area is tinted violet in every theme. Area type colours are unchanged.
+
+0.2.1 refines the new interface. Icons are back in colour: blue for
+selecting and viewing, orange for drawing and editing, red for removing
+and the Area tool, green for files and printing. The Menu is now one
+short column with a search field on top; Ctrl K opens it, and typing
+finds any command. Interface theme, drawing background and control size
+moved to Options > Display. Options, Property Details, Page Layout,
+Print Preview and Keyboard Shortcuts fit a 1920 x 1080 screen without
+scrolling. The first area you close is centred in view, area numbers
+use one decimal everywhere, and a selected area keeps its type's colour.
+
+0.2.0 replaces the ribbon, tool rail, dock and status bar with a top bar,
+a floating tool tray, the Areas ledger, an inspector for the selection,
+an Insert drawer, drawing controls and a start screen. The layout adapts
+to tablets and phones, with a number Pad for touch drawing.
+
+0.1.35 adds native open and save for Sketchie 0.2 JSON workfiles and
+SQLite revision stores. Existing Sketchy files save in their original
+format and version. Use Save As to create a Sketchie copy of a Sketchy
+0.2 file. See SKETCHY.md for details.
+
+0.1.34 sends sketch pages to legacy Appraise-It Pro reports that support
+repeatable Sketch addenda. In Help > Appraise-It Reports, check the open
+report, preview the pages, and select Send sketch images. Review the
+new addenda and save the report in Appraise-It Pro. Enter legacy area
+totals in Appraise-It Pro.
+
+
+0.1.33 adds optional area totals to Appraise-It Pro sketch transfer. In
+Help > Appraise-It Reports, preview the sketch and select Include area totals
+to review the proposed standard finished above-grade, finished below-grade,
+and unfinished below-grade values. The option is available for UAD 3.6 URARs
+with one dwelling, one living unit, and no ADUs.
+
+0.1.32 transfers sketch page images to a saved, editable UAD 3.6 report
+using the installed SFREP COM server. Open Help > Appraise-It Reports to
+select the report, preview the pages, and add them to Additional Sketch(es).
+Review the images and save the report in Appraise-It Pro.
+
+0.1.31 opens Sketchy 0.2 JSON files and SQLite stores as Saved. Editing
+marks the file Unsaved, and saving returns it to Saved.
+
+File > Open accepts Sketchie 0.2 .sketchie.json workfiles and .sketchie
+revision stores, as well as the earlier Sketchy file types. Save writes edits
+to the open workfile. Save As offers Sketchie JSON and Sketchie Store. Copy
+try-sketchie.sketchie.json to Documents, open the copy, move a wall, save,
+and reopen it. fallingwater.sketchie is a full multi-page example sketch;
+open it from the install folder or copy it first. See SKETCHY.md for format
+details.
+
+See LICENSE.txt for the Sketch Rust Free Use License. Paid appraisal work is
+permitted. Selling or monetizing the program or modified versions is prohibited.
+See PHOSPHOR-LICENSE.txt and SYMBOL-LIBRARY.md for third-party materials.
+
+0.1.30 removes AXF and the former Apex-based Appraise-It Pro integration.
+See APPRAISE_IT_PRO_INTEGRATION.md for SFREP transfer requirements and older-preview guidance.
+
+Help > User Guide covers drawing, area calculations, symbols, printing and saving.
 A Windows installer (SketchRust-<version>-x64.msi) is available next to this
 zip: it installs for the current user without administrator rights, offers a
 choice of folder and an optional desktop shortcut, upgrades older installer
@@ -64,36 +243,6 @@ the manager returns to All instead of retaining a deleted filter. Empty
 categories can also be removed. In 0.1.25, Delete category permanently updates
 symbols.json and keeps symbols.json.bak.
 
-0.1.22 adds a report-aware close prompt in integrated mode:
-- Save to report transfers the current sketch, measurements and report images,
-  then closes only after the host acknowledges success.
-- Discard changes closes without sending further edits to the report.
-- Cancel (or Escape) returns to editing.
-The title-bar close button, File > Exit and Alt+F4 use the same prompt. Closing
-is blocked during a pending transfer, and transfer failures keep Sketch open.
-Standalone closing retains its existing confirmation.
-
-0.1.21 keeps the desktop host compatibility runtime inside Sketch without an
-apex-compat.dll console window. Both the main EXE and embedded managed entry
-assembly use the Windows GUI subsystem. PDF/email opening uses the native
-Windows shell, without launching cmd.exe.
-Live report-image refreshes render on a background thread and reuse unchanged
-snapshots. Host idle polls preserve the cached drawing. Late renders cannot
-replace a newer explicit Save/Return. Rapid mouse events redraw the live pointer
-and drawing guides locally, coalescing full HUD updates to a frame interval.
-To update an existing Pro integration, open this 0.1.21 EXE, choose Help >
-Appraise-It Integration > Enable integration, then restart Appraise-It Pro.
-
-0.1.20 adds Help > Appraise-It Integration. Keep the complete extracted build
-in a permanent folder, open that panel and click Enable integration. Approve
-Windows administrator permission if requested, wait for success, then restart
-Appraise-It Pro and use its existing Apex button. No terminal command or EXE
-rename is needed. Restore previous provider reverses the registration.
-The panel shows the current host target, success/errors and the Sketch EXE it
-will register. Setup runs in the background inside this EXE. It changes the
-shared Apex launch configuration, not Appraise-It Pro's program files. Protected
-upgrades retain the prior registration record so an elevated retry succeeds.
-
 0.1.19 adds side-by-side AREA CALCULATIONS SUMMARY and AREA CALCULATIONS
 BREAKDOWN boxes at the bottom of Print Preview, Print and PDF export. Both
 boxes are centered within the printable page, with area codes, factors, net
@@ -127,62 +276,13 @@ Cancellation or a write error preserves the existing document name and drawing.
 
 0.1.15 wires all 13 controls identified by the follow-up control audit: File
 Open/Save/Save As; Home clipboard, selection, Delete, Rotate Sketch and Area
-Attributes; View Calcs; and Tools Area Codes. Ribbon command lookup now handles
+Attributes; View Calcs; and Tools Area Codes. Command lookup now handles
 two-line captions. Regression checks reject enabled controls with no action.
 
 0.1.14 fixes the Center and Center & Fit view buttons and C / Shift+C shortcuts.
 Center preserves zoom; Center & Fit uses the current canvas size and sketch
 bounds, including curved walls. Empty pages are unchanged; other pages are
 excluded. Imported polygons without wall records can also be centered.
-
-0.1.13 fixes stretched report images by matching the native host's fixed canvas
-aspect ratio. The 10 x 10 test area stays square in the actual legacy report
-rendering and UAD stored image. Summary/Breakdown boxes remain centered and compact.
-
-The EXE transfers a complete report image: the floorplan above side-by-side
-AREA CALCULATIONS SUMMARY and AREA CALCULATIONS BREAKDOWN sections. These include
-area codes/names, factors, sizes, perimeters, net totals, calculation pieces and
-Net LIVABLE totals. Tables grow to retain all rows. This applies to default and
-integration images for host returns and saves, independently of print settings.
-No copyright notice or branding logo is appended to the transferred image.
-The boxes have equal side margins and compact heights based on their contents.
-The native EMF export fixes asymmetric padding at scaled Windows display DPIs.
-Both actual legacy and UAD 3.6 stored report images were read back and verified.
-For UAD 3.6, finish Pro's Transfer sketches dialog to apply the images; the SDK
-return receipt alone does not mean that Pro has committed them to the report.
-
-0.1.10 verifies actual Appraise-It Pro legacy and UAD 3.6 disposable-report
-measurement/image transfers, including a repeated native reopen/return.
-It fixes missing finished-basement measurements and reentrant host shutdown.
-See BUILD_VALIDATION.md for exact checked fields and remaining qualification.
-
-Compatibility code and the host transport are embedded in sketch-app.exe and
-run inside that process. No bridge EXE or service is used. Windows .NET Framework
-4.8 is required for native host/file compatibility; a genuine Apex drawing engine
-is not used at runtime. The symbol library below remains editable external data.
-
-SDK hosts: shared launch redirection uses --enable-apex-compat; exact restoration
-uses --restore-apex-launch. Setup is built into the EXE and may require Windows
-administrator rights. Choose a permanent extracted folder before setup. Shared
-SDK configuration is only one host registration route; this does not configure
-every legacy application automatically. This package does not activate setup.
-If Windows protects the shared configuration, setup requests administrator
-permission using this same EXE. Windows permission prompts must be approved by
-the user. Setup and restoration show a visible success/error dialog; no console
-or bridge program is required. --apex-registration-quiet suppresses that result
-dialog for scripted use; it does not suppress a required Windows permission prompt.
-
-When a host launches a linked sketch, Save/Ctrl+S saves back without closing.
-Return to host saves and closes. Close can discard further changes after its
-confirmation. Native file launch accepts an AX2 through AX7 filename. Multiple native filenames open separate sketch windows with independent saves.
-/areacodetableurl accepts native Apex XML over HTTP/HTTPS or a local/file URL.
-Host codes, signed factors, categories, colors and wall defaults are loaded for
-the session. Metric files keep their native unit on save/return; the editor UI
-uses feet. Unfinished native drafts and editable face measurements now preserve
-their repair/centerline history inside AXF. Nested/nonuniform/reflected native
-blocks and point entities are supported. Older
-TOTAL/WinTOTAL command-line entry modes are implemented but unverified against
-the actual host software on this PC.
 
 Area labels: automatic measurement placement has an extra 6px gap at normal scale.
 The gap scales with the label; manually positioned measurements keep their position.
@@ -248,12 +348,10 @@ Save Image With Sketch option includes them in clean image export.
 DISTO software is implemented, but testing with the physical instrument is
 deferred. Read DISTO.md before trying the Bluetooth measurement feature.
 
-FEATURE-AUDIT.md and feature-audit.json describe the exact scope and remaining
-native/reference differences. Parent-suite integration and physical DISTO
-testing remain deferred.
+Parent-suite integration and physical DISTO testing remain deferred.
 
 manifest.json records the source revision, working-tree fingerprint and file
-SHA-256 hashes. This release includes the current uncommitted workspace changes.
+SHA-256 hashes.
 
 For a non-interactive installation check, run the executable from a terminal
 with --check-installation. It verifies the external library, constructs the

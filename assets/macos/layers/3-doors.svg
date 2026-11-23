@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <g fill="none" stroke="#FFFFFF" stroke-width="24" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Top bay south door — swing into bay -->
+    <path d="M404 508 V432"/>
+    <path d="M404 508 A76 76 0 0 1 480 432"/>
+    <!-- Middle-to-lower door — swing into lower bay -->
+    <path d="M508 808 H432"/>
+    <path d="M508 808 A76 76 0 0 0 432 884"/>
+    <!-- Lower bay east door -->
+    <path d="M808 848 H732"/>
+    <path d="M808 848 A76 76 0 0 1 732 924"/>
+  </g>
+</svg>

@@ -15,13 +15,7 @@
 //! memory too, no save model changes.
 
 use iced::widget::image::Handle;
-use iced::{
-    alignment,
-    widget::{button, column, row, text},
-    Background, Element, Length,
-};
 
-use crate::Message;
 use sketch_core::geometry::Pt;
 /// `state.bgImage`.
 #[derive(Debug, Clone, Default)]
@@ -193,50 +187,6 @@ pub fn image_size(bytes: &[u8]) -> Option<(u32, u32)> {
     // PNG/JPEG only for now: other formats fall back to the auto-fit's
     // 1x1 assumption via None (documented gap).
     None
-}
-
-/// The Geo popup's dropdown layer (the `showCommandPopup` family): anchored
-/// under the ribbon's Geo button at (901, 99), or None when closed.
-pub fn geo_layer(_open: bool) -> Option<Element<'static, Message>> {
-    use crate::theme::{at, bg_panel, border, boxed, hex, muted, text_main, SEGOE};
-    let item = |icon_name: &'static str,
-                label_s: &'static str,
-                msg: Message|
-     -> Element<'static, Message> {
-        let row = row![
-            crate::icons::ph(icon_name, 14.0, muted()),
-            text(label_s).font(SEGOE).size(12.0).color(text_main()),
-        ]
-        .spacing(8)
-        .padding(iced::Padding::new(4.0))
-        .align_y(alignment::Vertical::Center);
-        button(row)
-            .width(Length::Fill)
-            .on_press(msg)
-            .style(move |_, status| button::Style {
-                background: match status {
-                    button::Status::Hovered | button::Status::Pressed => {
-                        Some(Background::Color(hex(0x3e3e42)))
-                    }
-                    _ => None,
-                },
-                ..button::Style::default()
-            })
-            .into()
-    };
-    let card = column![
-        item("image", "Load Map Image…", Message::GeoLoadMap),
-        item(
-            "crosshair",
-            "Auto Locate by Coordinate…",
-            Message::GeoCoordinate
-        ),
-        item("map-pin", "Auto Locate by Address…", Message::GeoAddress),
-    ]
-    .padding(4)
-    .width(230);
-    let card = boxed(card, 230, 0.0, Some(bg_panel()), border(), 6.0);
-    Some(at(901.0, 99.0, card))
 }
 
 /// `parseGpsPair` (ui-manager.js): decimal degrees ("47.7737, -122.6539")

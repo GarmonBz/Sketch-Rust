@@ -3,8 +3,9 @@ use crate::{persist, App, Message};
 use iced::{Subscription, Task};
 use std::{
     path::{Path, PathBuf},
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::Duration,
 };
+use web_time::{Instant, SystemTime, UNIX_EPOCH};
 #[derive(Debug)]
 pub struct State {
     pub last: Instant,
@@ -52,16 +53,23 @@ fn signature(model: &serde_json::Value) -> String {
     sketch_core::skx::sha256_hex(v.to_string().as_bytes())
 }
 /// `signature` for the unsaved-changes check: the save model also carries
-/// interface state (which dock tab is open, the canvas theme) that rides
-/// along in the file but is not the user's work, so flipping it must not
-/// read as an edit.
-fn content_signature(model: &serde_json::Value) -> String {
-    let mut v = model.clone();
+/// interface state (which dock tab is open, the canvas theme) and immutable
+/// `.sketchie` backing snapshots that ride along in the file but are not
+/// edited directly, so flipping UI state or avoiding backing serialization
+/// must not read as an edit.
+fn content_signature_owned(mut v: serde_json::Value) -> String {
+    if let Some(m) = v.as_object_mut() {
+        m.remove("savedAt");
+        m.remove("sketchyBacking");
+    }
     if let Some(settings) = v.get_mut("settings").and_then(|s| s.as_object_mut()) {
         settings.remove("sidebar");
         settings.remove("canvasTheme");
     }
-    signature(&v)
+    sketch_core::skx::sha256_hex(v.to_string().as_bytes())
+}
+fn content_signature(model: &serde_json::Value) -> String {
+    content_signature_owned(model.clone())
 }
 pub fn latest() -> Option<(PathBuf, serde_json::Value)> {
     if !persist::enabled() {
@@ -77,7 +85,7 @@ pub fn latest() -> Option<(PathBuf, serde_json::Value)> {
         std::cmp::Reverse(
             e.metadata()
                 .and_then(|m| m.modified())
-                .unwrap_or(UNIX_EPOCH),
+                .unwrap_or(std::time::UNIX_EPOCH),
         )
     });
     for e in paths {
@@ -101,6 +109,7 @@ pub fn subscription(enabled: bool) -> Subscription<Message> {
     }
     Subscription::run(ticks).map(|_| Message::AutoSaveTick)
 }
+#[cfg(not(target_arch = "wasm32"))]
 fn ticks() -> impl iced::futures::Stream<Item = ()> {
     let (tx, rx) = iced::futures::channel::mpsc::unbounded();
     std::thread::spawn(move || {
@@ -112,6 +121,11 @@ fn ticks() -> impl iced::futures::Stream<Item = ()> {
         }
     });
     rx
+}
+
+#[cfg(target_arch = "wasm32")]
+fn ticks() -> impl iced::futures::Stream<Item = ()> {
+    iced::futures::stream::pending()
 }
 impl App {
     pub(crate) fn autosave_baseline(&mut self) {
@@ -129,8 +143,8 @@ impl App {
     /// reads as clean again.
     pub(crate) fn refresh_dirty(&mut self) {
         let started = Instant::now();
-        let model = self.build_save_model();
-        self.dirty = content_signature(&model) != self.saved_hash;
+        let model = self.build_save_model_without_backing();
+        self.dirty = content_signature_owned(model) != self.saved_hash;
         self.dirty_revision = self.undo.revision();
         self.dirty_checked = Instant::now();
         self.dirty_cost = started.elapsed();
@@ -139,6 +153,9 @@ impl App {
     /// or the last look is stale. The stale interval grows with the cost of
     /// hashing, so a large sketch is not hashed on every message.
     pub(crate) fn refresh_dirty_if_due(&mut self) {
+        if self.is_interactive_gesture_active() {
+            return;
+        }
         let stale = (self.dirty_cost * 20).max(Duration::from_millis(750));
         if self.undo.revision() != self.dirty_revision || self.dirty_checked.elapsed() >= stale {
             self.refresh_dirty();
@@ -269,46 +286,5 @@ impl App {
             }
         }
         Task::none()
-    }
-    pub(crate) fn recovery_layer(&self) -> iced::Element<'_, Message> {
-        use iced::widget::{button, column, container, opaque, row, text};
-        use iced::Length;
-        if !self.autosave_prompt {
-            return iced::widget::Space::new().into();
-        }
-        let title = self
-            .autosave
-            .recovery
-            .as_ref()
-            .and_then(|(_, m)| m.get("fileName"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("sketch");
-        let card = container(
-            column![
-                text(format!("Recover autosaved sketch: {title}?")),
-                text("Recovery stays available until you recover and manually save it.").size(12),
-                row![
-                    button("Recover").on_press(Message::RecoverAutosave(true)),
-                    button("Later").on_press(Message::RecoverAutosave(false))
-                ]
-                .spacing(12)
-            ]
-            .spacing(16)
-            .padding(24),
-        )
-        .style(|_| container::Style {
-            background: Some(crate::theme::bg_panel().into()),
-            text_color: Some(crate::theme::text_main()),
-            ..Default::default()
-        });
-        opaque(
-            container(opaque(card))
-                .center_x(Length::Fill)
-                .center_y(Length::Fill)
-                .style(|_| container::Style {
-                    background: Some(iced::Color::from_rgba(0., 0., 0., 0.5).into()),
-                    ..Default::default()
-                }),
-        )
     }
 }

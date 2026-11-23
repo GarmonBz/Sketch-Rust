@@ -5,14 +5,68 @@
 //! Nothing here deletes or rewrites a revision: restoring commits the old
 //! snapshot as a new draft on top of the head, and a copy is a new store.
 
-use iced::widget::{column, container, row, text, Space};
-use iced::{alignment, Border, Element, Length, Task};
+use iced::widget::{button, column, container, row, scrollable, text, Space};
+use iced::{alignment, Border, Color, Element, Length, Task};
 use sketch_core::sketchy::convert::upgrade;
 use sketch_core::sketchy::store::{CommitInfo, CommitOutcome, RevisionStatus, RevisionSummary, Store};
 
-use crate::dock::{msg_action_btn, scroll};
 use crate::theme::*;
 use crate::{dialog, localtime, App, Message, SketchFileFormat};
+
+fn label<'a>(
+    content: impl iced::widget::text::IntoFragment<'a>,
+    size: f32,
+    font: iced::Font,
+    color: Color,
+    line_height: f32,
+) -> Element<'a, Message> {
+    text(content)
+        .size(size)
+        .font(font)
+        .color(color)
+        .line_height(iced::widget::text::LineHeight::Absolute(line_height.into()))
+        .into()
+}
+
+fn msg_action_btn<'a>(
+    caption: &'a str,
+    width: impl Into<Length>,
+    msg: Message,
+) -> Element<'a, Message> {
+    button(
+        container(label(caption, 12.0, ARIAL, text_main(), 14.0))
+            .center_x(Length::Fill)
+            .center_y(Length::Fill),
+    )
+    .width(width)
+    .height(26)
+    .padding([0, 8])
+    .on_press(msg)
+    .style(|_, status| button::Style {
+        background: Some(
+            match status {
+                button::Status::Hovered | button::Status::Pressed => border(),
+                _ => bg_app(),
+            }
+            .into(),
+        ),
+        border: Border {
+            color: border(),
+            width: 1.0,
+            radius: 3.0.into(),
+        },
+        text_color: text_main(),
+        ..button::Style::default()
+    })
+    .into()
+}
+
+fn scroll<'a>(content: impl Into<Element<'a, Message>>, _bg: Color) -> Element<'a, Message> {
+    scrollable(content)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
+}
 
 /// What the Versions panel, the banner and the File menu ask for.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,6 +79,8 @@ pub enum VersionsMsg {
     View(String),
     /// Save a copy of a revision as a new `.sketchy` file (by revision id).
     SaveCopy(String),
+    /// Continuation after the Save As dialog picks a copy destination.
+    SaveCopyPicked(String, Option<std::path::PathBuf>),
     /// The banner's Restore this version.
     RestoreViewed,
     /// The banner's Save a copy...
@@ -191,9 +247,6 @@ pub fn edits_document(message: &Message) -> bool {
         | M::AreaDialog(_)
         | M::AreaAttributes(_)
         | M::AreaWorkflow(_)
-        | M::DefEditor(_)
-        | M::NewCode(_)
-        | M::CodesEditor(_)
         | M::Shapes(_)
         | M::SubjectInfo(_)
         | M::TouchAction(_) => true,
@@ -279,6 +332,7 @@ impl App {
     }
 
     /// Whether the pill reads "Final" (drawn green).
+    #[allow(dead_code)]
     pub(crate) fn save_is_final(&self) -> bool {
         self.viewing_revision.is_none()
             && !self.dirty
@@ -287,6 +341,7 @@ impl App {
     }
 
     /// Whether File > Version History... is available.
+    #[allow(dead_code)]
     pub(crate) fn history_available(&self) -> bool {
         self.store_file().is_some()
     }
@@ -333,6 +388,10 @@ impl App {
             VersionsMsg::MarkFinal => self.ask_final_note(),
             VersionsMsg::View(id) => self.view_revision(&id),
             VersionsMsg::SaveCopy(id) => self.save_copy(&id),
+            VersionsMsg::SaveCopyPicked(id, path) => match path {
+                Some(chosen) => self.finish_save_copy(&id, chosen),
+                None => Task::none(),
+            },
             VersionsMsg::SaveCopyViewed => match self.viewing_revision.clone() {
                 Some(viewing) => self.save_copy(&viewing.id),
                 None => Task::none(),
@@ -343,7 +402,7 @@ impl App {
     }
 
     fn show_versions(&mut self) -> Task<Message> {
-        self.close_file_menu();
+        self.ui.menu_open = false;
         self.refresh_versions();
         if self.dock.versions.is_none() {
             return self.toasts.show(
@@ -513,24 +572,45 @@ impl App {
     /// Save a copy of revision `id` as a new `.sketchy` store: a new document
     /// whose first revision is that snapshot, derived from this one.
     fn save_copy(&mut self, id: &str) -> Task<Message> {
+        if self.store_file().is_none() {
+            return Task::none();
+        }
+        let base = self.file_name.strip_suffix(".sketchy").unwrap_or(&self.file_name).to_owned();
+        #[cfg(test)]
+        {
+            let Some(chosen) = crate::file_dialogs::take_test_save_path(format!("{base}.sketchy")) else {
+                return Task::none();
+            };
+            self.finish_save_copy(id, chosen)
+        }
+        #[cfg(not(test))]
+        {
+            let id_owned = id.to_owned();
+            Task::perform(
+                crate::file_dialogs::save_sketch(format!("{base}.sketchy"), "sketchy".to_owned()),
+                move |path| Message::Versions(VersionsMsg::SaveCopyPicked(id_owned.clone(), path)),
+            )
+        }
+    }
+
+    fn finish_save_copy(&mut self, id: &str, chosen: std::path::PathBuf) -> Task<Message> {
         let Some(file) = self.store_file() else {
             return Task::none();
         };
-        let base = self.file_name.strip_suffix(".sketchy").unwrap_or(&self.file_name).to_owned();
-        let Some(chosen) = crate::file_dialogs::save_sketch(&format!("{base}.sketchy")) else {
-            return Task::none();
+        let chosen = match std::path::absolute(chosen) {
+            Ok(p) => p,
+            Err(e) => return self.toasts.show(crate::toast_error(&format!("Could not save the copy: {e}"))),
         };
-        let target = match self.save_target(chosen) {
-            Ok(target) if target.format == SketchFileFormat::Sketchy => target,
-            Ok(_) => return self.toasts.show("A copy of a version is saved as a .sketchy file.".into()),
-            Err(toast) => return self.toasts.show(toast),
-        };
-        if crate::same_file(&target.path, &file.path) {
+        let (target_path, target_format) = crate::sketch_destination(chosen, "sketchy");
+        if target_format != SketchFileFormat::Sketchy {
+            return self.toasts.show("A copy of a version is saved as a .sketchy file.".into());
+        }
+        if crate::same_file(&target_path, &file.path) {
             return self.toasts.show("Choose a different file for the copy.".into());
         }
-        match write_copy(&file.path, id, &target.path) {
+        match write_copy(&file.path, id, &target_path) {
             Ok(()) => {
-                let name = target.path.file_name().and_then(|n| n.to_str()).unwrap_or("copy").to_owned();
+                let name = target_path.file_name().and_then(|n| n.to_str()).unwrap_or("copy").to_owned();
                 self.toasts.show(format!("Saved a copy: {name}"))
             }
             Err(e) => self.toasts.show(crate::toast_error(&format!("Could not save the copy: {e}"))),
@@ -575,7 +655,7 @@ fn write_copy(source: &std::path::Path, id: &str, target: &std::path::Path) -> R
 /// `.badge` for a final revision.
 fn final_badge<'a>() -> Element<'a, Message> {
     let green = hex(0x5dae84);
-    container(label("FINAL", 10.0, ARIAL_BOLD, green, 12.0))
+    container(label("FINAL", 10.0, SEGOE_BOLD, green, 12.0))
         .padding([1, 6])
         .style(move |_| container::Style {
             border: Border { color: green, width: 1.0, radius: 3.0.into() },
@@ -585,7 +665,7 @@ fn final_badge<'a>() -> Element<'a, Message> {
 }
 
 fn version_row<'a>(r: &'a VersionRow, on_screen: bool) -> Element<'a, Message> {
-    let mut title = row![label(&format!("v{}", r.sequence), 13.0, ARIAL_BOLD, text_main(), 15.0)]
+    let mut title = row![label(format!("v{}", r.sequence), 13.0, SEGOE_BOLD, text_main(), 15.0)]
         .spacing(6)
         .align_y(alignment::Vertical::Center);
     if r.is_final {
@@ -598,7 +678,7 @@ fn version_row<'a>(r: &'a VersionRow, on_screen: bool) -> Element<'a, Message> {
         Some(author) => format!("{} \u{b7} {author}", r.when),
         None => r.when.clone(),
     };
-    let mut body = column![title, label(&who, 11.0, ARIAL, muted(), 13.0)].spacing(3);
+    let mut body = column![title, label(who, 11.0, ARIAL, muted(), 13.0)].spacing(3);
     if let Some(message) = &r.message {
         body = body.push(text(message.as_str()).size(12).font(ARIAL).color(text_main()));
     }
@@ -639,9 +719,9 @@ pub fn panel<'a>(rows: &'a [VersionRow], viewing: Option<&str>) -> Element<'a, M
 /// The banner across the top of the canvas while an old version is open.
 pub fn banner<'a>(v: &ViewingRevision, read_only: bool) -> Element<'a, Message> {
     let status = if v.is_final { "Final" } else { "Draft" };
-    let amber = ICON_ORANGE;
+    let amber = hex(0xeba054);
     let words = format!("Viewing v{} ({status}, {}) \u{2014} read-only", v.sequence, v.when);
-    let mut bar = row![label(&words, 12.0, SEGOE, text_main(), 16.0), Space::new().width(Length::Fill)]
+    let mut bar = row![label(words, 12.0, SEGOE, text_main(), 16.0), Space::new().width(Length::Fill)]
         .spacing(8)
         .align_y(alignment::Vertical::Center);
     // A read-only file cannot take the restored revision.

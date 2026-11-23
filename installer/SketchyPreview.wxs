@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <!-- Give the preview its own upgrade family so it can be tried alongside the regular app. -->
+  <Package Name="Sketch Rust Sketchy Preview" Manufacturer="Sketch Rust"
+           Version="$(Version)" Language="1033" Scope="perUser"
+           UpgradeCode="5C56FD96-24F5-4EE1-AC75-450D8BEB7C28" InstallerVersion="500">
+    <MajorUpgrade AllowSameVersionUpgrades="yes"
+                  DowngradeErrorMessage="A newer Sketch Rust Sketchy Preview is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+    <Icon Id="SketchRust.ico" SourceFile="$(IconFile)" />
+    <Property Id="ARPPRODUCTICON" Value="SketchRust.ico" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="SketchRust Sketchy Preview" />
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+    <Component Id="StartMenuShortcutComponent" Directory="ProgramMenuFolder">
+      <Shortcut Id="StartMenuShortcut" Name="Sketch Rust Sketchy Preview"
+                Target="[#F_sketch_app_exe]" WorkingDirectory="INSTALLFOLDER" Icon="SketchRust.ico" />
+      <Shortcut Id="SampleShortcut" Name="Sketch Rust Sketchy Sample Folder"
+                Target="[INSTALLFOLDER]" WorkingDirectory="INSTALLFOLDER" Icon="SketchRust.ico" />
+      <RegistryValue Root="HKCU" Key="Software\SketchRust\SketchyPreview"
+                     Name="InstallLocation" Type="string" Value="[INSTALLFOLDER]" KeyPath="yes" />
+    </Component>
+
+    <Feature Id="Main" Title="Sketch Rust Sketchy Preview" Level="1">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentRef Id="StartMenuShortcutComponent" />
+    </Feature>
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(NoticeRtf)" />
+  </Package>
+</Wix>

@@ -62,14 +62,28 @@ pub fn record(recent: &mut Vec<RecentFile>, entry: RecentFile) {
     recent.truncate(MAX_FILES);
 }
 
+/// The bundled demo sketch: added once, after the user's own work, so it
+/// never pushes a real sketch off the list. `false` when it is already
+/// listed (by name or path) or the list is full.
+pub fn add_demo(recent: &mut Vec<RecentFile>, entry: RecentFile) -> bool {
+    let listed = recent.iter().any(|e| {
+        e.name.eq_ignore_ascii_case(&entry.name) || (e.path.is_some() && e.path == entry.path)
+    });
+    if listed || recent.len() >= MAX_FILES {
+        return false;
+    }
+    recent.push(entry);
+    true
+}
+
 /// `new Date().toISOString()` — `YYYY-MM-DDTHH:MM:SS.mmmZ` (UTC).
 pub fn iso_now() -> String {
     iso_from_unix(unix_millis())
 }
 
 fn unix_millis() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
+    web_time::SystemTime::now()
+        .duration_since(web_time::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0)
 }
@@ -131,6 +145,29 @@ pub fn display_time(iso: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn demo_goes_last_once_and_never_displaces_real_work() {
+        let demo = || {
+            let mut e = RecentFile::new("fallingwater.sketchie", "{}").unwrap();
+            e.path = Some("C:/Programs/SketchRust/fallingwater.sketchie".into());
+            e
+        };
+        let mut recent = vec![RecentFile::new("mine.skx", "{}").unwrap()];
+        assert!(add_demo(&mut recent, demo()));
+        assert_eq!(recent[0].name, "mine.skx");
+        assert_eq!(recent[1].name, "fallingwater.sketchie");
+        assert!(!add_demo(&mut recent, demo()), "already listed");
+        assert_eq!(recent.len(), 2);
+        let mut full: Vec<RecentFile> = (0..MAX_FILES)
+            .map(|i| RecentFile::new(&format!("f{i}.skx"), "{}").unwrap())
+            .collect();
+        assert!(
+            !add_demo(&mut full, demo()),
+            "a full list keeps the user's files"
+        );
+        assert_eq!(full.len(), MAX_FILES);
+    }
 
     #[test]
     fn record_dedupes_unshifts_and_caps_at_ten() {

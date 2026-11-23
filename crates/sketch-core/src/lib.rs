@@ -1,10 +1,8 @@
-//! sketch-core — headless kernel for the standalone Sketch app.
-//!
-//! Clean-room port of `00) sketch standalone.html` (Appraisal Sketch 1.1).
-//! The browser sources extracted into `refs/` are the porting oracle:
-//! every number, sign convention, and tolerance is transcribed, never invented.
+//! sketch-core — headless geometry, area calculation, CAD/PDF/SVG/PNG/DXF
+//! export, and sketch file kernel for Sketch Rust.
 
 pub mod area_calc;
+pub mod axf;
 pub mod breakdown;
 pub mod cad_import;
 pub mod disto;

@@ -1,0 +1,114 @@
+name: Windows release
+
+on:
+  push:
+    branches: ['release/*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    env:
+      CARGO_TERM_COLOR: always
+      DOTNET_ROLL_FORWARD: Major
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Validate release version
+        run: |
+          $version = [regex]::Match((Get-Content Cargo.toml -Raw), '(?m)^version\s*=\s*"([^"]+)"').Groups[1].Value
+          if ($env:GITHUB_REF_NAME -ne "release/$version") { throw 'Release branch does not match Cargo.toml' }
+          "RELEASE_VERSION=$version" >> $env:GITHUB_ENV
+      - name: Set up Rust
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustup default stable
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo fetch --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test drawing layout and toolbar
+        timeout-minutes: 15
+        run: |
+          cargo test -p sketch-app --no-default-features --locked drawing_chrome -- --test-threads=1 --nocapture
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p sketch-app --no-default-features --locked freeform -- --test-threads=1 --nocapture
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p sketch-app --no-default-features --locked every_command_has_an_embedded_icon -- --test-threads=1 --nocapture
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p sketch-app --no-default-features --locked p5_tray_and_flyouts -- --test-threads=1 --nocapture
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Preserve drawing layout screenshots
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-layout-checks
+          path: target/e2e-next/chrome-*.png
+          if-no-files-found: error
+          retention-days: 7
+      - name: Test workspace
+        timeout-minutes: 15
+        run: |
+          cargo test --workspace --no-default-features --locked -- --test-threads=1 --nocapture
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compile optimized application
+        run: |
+          cargo build --release --locked -p sketch-app
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Package and check portable application
+        run: |
+          ./tools/package.ps1 -NativePreview -SkipBuild
+          ./tools/package-smoke.ps1
+      - name: Build and check Windows installer
+        run: ./tools/installer.ps1 -FetchWix -SkipPackage -Test
+      - name: Make checked release files available
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-release-files
+          path: |
+            dist/SketchRust-*.msi
+            dist/SketchRust-*.zip
+            dist/SketchRust-*.sha256
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish checked release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = $env:RELEASE_VERSION
+          $notes = "docs/RELEASE_$version.md"
+          if (!(Test-Path -LiteralPath $notes)) { throw "Missing release notes: $notes" }
+          $assets = @(Get-ChildItem dist -File | Where-Object { $_.Name -like "SketchRust-$version-*" -and $_.Name -match '\.(msi|zip)(\.sha256)?$' })
+          if ($assets.Count -ne 4) { throw "Expected installer, portable archive, and their checksums; found $($assets.Count)" }
+          git fetch origin main
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git merge-base --is-ancestor origin/main HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Main has changed; reconcile the release branch before publishing' }
+          git push origin HEAD:refs/heads/main
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $assetPaths = @($assets.FullName)
+          gh release create "v$version" @assetPaths --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "Sketch Rust v$version Windows preview" --notes-file $notes --prerelease
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Preserve test screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-release-diagnostics
+          path: |
+            target/e2e-next
+            target/package-smoke
+            target/msi
+          if-no-files-found: ignore
+          retention-days: 7

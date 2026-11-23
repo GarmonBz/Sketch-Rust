@@ -259,11 +259,17 @@ pub fn move_selected(d: &mut Drawing, sel: &Selection, dx: f64, dy: f64) -> bool
         .polygons
         .iter()
         .map(|p| {
-            (
-                p.id,
-                crate::handles::label_position(d, p),
-                crate::handles::size_position(d, p),
-            )
+            if !sel.polys.contains(&p.id)
+                && (sel.area_labels.contains(&p.id) || sel.area_sizes.contains(&p.id))
+            {
+                (
+                    p.id,
+                    crate::handles::label_position(d, p),
+                    crate::handles::size_position(d, p),
+                )
+            } else {
+                (p.id, Pt::new(0.0, 0.0), Pt::new(0.0, 0.0))
+            }
         })
         .collect();
 
@@ -393,17 +399,45 @@ pub fn move_line_endpoint(
         return false;
     };
     let old = if start { line.start } else { line.end };
-    if (next.x - old.x).hypot(next.y - old.y) < 1e-8 {
+    if !move_joined_vertex(d, old, next) {
+        return false;
+    }
+    sel.active_endpoint = Some((line_id, start));
+    true
+}
+
+pub fn move_area_corner(d: &mut Drawing, area_id: i64, vertex: usize, next: Pt) -> bool {
+    let Some(old) = d
+        .polygons
+        .iter()
+        .find(|p| p.id == area_id)
+        .and_then(|p| p.points.get(vertex))
+        .copied()
+    else {
+        return false;
+    };
+    move_joined_vertex(d, old, next)
+}
+
+pub(crate) fn move_joined_vertex(d: &mut Drawing, old: Pt, next: Pt) -> bool {
+    if !next.x.is_finite() || !next.y.is_finite() || (next.x - old.x).hypot(next.y - old.y) < 1e-8 {
         return false;
     }
     let matches = |p: Pt| (p.x - old.x).hypot(p.y - old.y) < 1e-5;
 
     for line in &mut d.lines {
-        if matches(line.start) {
+        let at_start = matches(line.start);
+        let at_end = matches(line.end);
+        if at_start {
             line.start = next;
         }
-        if matches(line.end) {
+        if at_end {
             line.end = next;
+        }
+        // A bowed wall keeps its angle when its chord changes.
+        if (at_start || at_end) && line.bow_angle.abs() > 0.001 {
+            let chord = (line.end.x - line.start.x).hypot(line.end.y - line.start.y);
+            line.arc_height = chord / 2.0 * (line.bow_angle * std::f64::consts::PI / 720.0).tan();
         }
     }
     for poly in &mut d.polygons {
@@ -413,15 +447,7 @@ pub fn move_line_endpoint(
             }
         }
     }
-    sel.active_endpoint = Some((line_id, start));
-
-    // A bowed wall keeps its angle: the arc height follows the new chord.
-    if let Some(line) = d.lines.iter_mut().find(|l| l.id == line_id) {
-        if line.bow_angle.abs() > 0.001 {
-            let chord = (line.end.x - line.start.x).hypot(line.end.y - line.start.y);
-            line.arc_height = chord / 2.0 * (line.bow_angle * std::f64::consts::PI / 720.0).tan();
-        }
-    }
+    crate::placed_symbol::refresh_hosted_symbols(&mut d.symbols, &HashSet::new(), &d.lines);
     true
 }
 
@@ -495,7 +521,7 @@ fn transform_sketch(d: &mut Drawing, f: impl Fn(Pt) -> Pt, rotation_delta: f64) 
 /// `rotateSketch(degrees)`: the whole sketch about its own centre, north
 /// included.
 ///
-/// Its ribbon buttons (`rotate-sketch`, `flip-sketch`) are **hidden in the
+/// Its buttons (`rotate-sketch`, `flip-sketch`) are **hidden in the
 /// original's own build** — they exist in the command registry with zero-sized
 /// rects, so nothing on screen can reach them. Kept because the behaviour is
 /// verified against the original and a command palette or the buttons
@@ -844,7 +870,7 @@ mod tests {
         d.texts[0].y = 5.0;
         d.symbols.push(
             serde_json::from_value(serde_json::json!({
-                "id": 8, "symbolType": "windows/36in", "x": 0.0, "y": 5.0
+                "id": 8, "symbolType": "caddillo/window-single-36", "x": 0.0, "y": 5.0
             }))
             .unwrap(),
         );

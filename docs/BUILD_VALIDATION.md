@@ -1,4 +1,16 @@
-# Build validation — 0.1.29 native compatibility preview
+# Historical build validation through 0.1.29
+
+Windows release CI runs the complete workspace suite with
+`cargo test --workspace --no-default-features --locked -- --test-threads=1`.
+This uses the tiny-skia software renderer for headless UI checks. Desktop
+release builds retain the default GPU renderer. Native file selection is
+injected in tests; the preview layout case uses a page fixture instead of
+starting Windows.Data.Pdf COM threads. These layout checks do not validate
+the native PDF renderer.
+
+These results describe earlier builds. Sketch Rust 0.1.30 removed the Apex
+compatibility runtime, AXF file handling and provider setup. See
+[the Appraise-It Pro plan](APPRAISE_IT_PRO_INTEGRATION.md).
 
 0.1.29 User Guide and installer (2026-11-11):
 
@@ -6,7 +18,7 @@
   crates/sketch-app/src/guide.rs). Headless screenshots of the Help tab and
   two topics were reviewed; the guide was not clicked through in the running
   app. The integration steps follow the behavior documented in
-  APEX-COMPATIBILITY.md and were not re-run against Appraise-It Pro.
+  the 0.1.29 release and were not re-run against Appraise-It Pro.
 - Automated: 626 app and 178 core tests passed, 0 failed.
 - Installer: tools/installer.ps1 builds SketchRust-<version>-x64.msi (WiX 5.0.2).
   Its -Test installs silently into a scratch folder, checks the program files,
@@ -242,7 +254,7 @@
 - All 303 application regressions and 167 core tests passed (269 GUI tests
   excluded from that broad run; one timing probe ignored). All three focused
   setup checks passed, including pending-job guards, and all five disposable
-  registration-backend tests passed. The control audit covers 130 ribbon
+  registration-backend tests passed. The control audit covers 130 toolbar
   instances and 17 File items with zero missing actions. Workspace/all-target
   Clippy and formatting checks passed. Existing print and report-transfer
   implementations remain unchanged from the previous build.
@@ -374,7 +386,7 @@
 - All 13 audited controls now invoke the existing native handlers. Home shares
   clipboard/selection/Delete handlers with Edit Tools; Rotate Sketch is mapped;
   two-line captions normalize before lookup; File Open/Save/Save As are mapped.
-- Wiring guards cover 129 ribbon button/field instances and 17 File-menu items.
+- Wiring guards cover 129 toolbar button/field instances and 17 File-menu items.
   Actual widget tests exercise the repaired Home, View and Tools buttons with
   selected walls and defined areas, plus File Save/Save As naming prompts.
 - 296 application regressions passed (260 GUI/e2e tests excluded), and all six
@@ -486,7 +498,7 @@ Actual Appraise-It Pro 3.8.8 desktop transfer checks (2026-10-30):
   remains separate. UAD vehicle-storage field mapping was not independently verified.
 - Both were reopened through Pro's native Apex integration helper and returned
   a second time with the same area totals and two images (no duplicate pages).
-- Legacy launch was exercised using Pro's Apex ribbon button. Further runs used
+- Legacy launch was exercised using Pro's Apex toolbar button. Further runs used
   its installed native helper against the actual report PID. Return packets were
   frozen from the real Rust model and signalled through the embedded session
   interface; returned fields were read through Pro's transaction/data-store API.

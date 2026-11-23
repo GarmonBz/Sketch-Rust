@@ -8,21 +8,19 @@
 //! padding 8/10; the group title 11px/600 uppercase muted; the rows 11.5px
 //! with a 96px-min mono key chip (1px border, 2px bottom border, radius 3).
 
-use iced::widget::{button, column, container, mouse_area, opaque, row, text, Space};
-use iced::{Background, Border, Color, Element, Length};
-
-use crate::theme::*;
-use crate::Message;
-
-/// The cheat sheet's groups, verbatim from `showShortcuts`.
+/// The keyboard shortcuts cheat sheet groups, written in the current UI
+/// vocabulary while preserving every keybinding.
 pub const GROUPS: &[(&str, &[(&str, &str)])] = &[
     (
         "File",
         &[
             ("Ctrl + N", "New sketch"),
-            ("Ctrl + O or F3", "Open sketch"),
-            ("Ctrl + S or F2", "Save"),
-            ("Ctrl + F12 or F12", "Save As"),
+            ("Ctrl + O or F3", "Open file"),
+            ("Ctrl + S or F2", "Save sketch"),
+            ("Ctrl + Shift + S or F12", "Save a copy as"),
+            ("Ctrl + P", "Print"),
+            ("Ctrl + Shift + P", "Print preview"),
+            ("Ctrl + W", "Close window"),
             ("Ctrl + F1", "Email support"),
         ],
     ),
@@ -33,41 +31,47 @@ pub const GROUPS: &[(&str, &[(&str, &str)])] = &[
             ("Ctrl + Shift + Z or Ctrl + Y", "Redo"),
             ("Ctrl + X / C / V", "Cut / Copy / Paste"),
             ("Ctrl + A", "Select all"),
-            ("Delete", "Delete selection"),
-            ("Esc", "Cancel draw / clear selection / exit tool"),
-            ("Arrow keys", "Nudge selection (Shift = fine)"),
+            ("Delete", "Remove selection"),
+            (
+                "Esc",
+                "Stop drawing / close menu or sheet / clear selection",
+            ),
+            (
+                "Arrow keys",
+                "Nudge selection by the snap pitch (Shift = 10x)",
+            ),
         ],
     ),
     (
         "Drawing",
         &[
-            ("E", "Draw exterior walls"),
-            ("I or F5", "Draw interior walls"),
-            ("Enter", "Start exterior / commit wall"),
+            ("E", "Wall tool (exterior)"),
+            ("I or F5", "Inner wall tool"),
+            ("Enter", "Start exterior wall / commit typed length"),
             ("10 then arrow", "Draw 10 ft in arrow direction"),
             ("10x5", "Rise 10, run 5 diagonal"),
             ("10<45", "10 ft at 45 degrees"),
             ("10l / 10r", "Turn left / right (default 90 degrees)"),
             ("Tab", "Decimal point while typing"),
-            ("A", "Auto-close area while drawing"),
+            ("A", "Close area back to start"),
             ("B", "Bay window mirror"),
-            ("J", "Jump cursor to nearest endpoint"),
-            ("D", "Toggle curve degree/height mode"),
-            ("Insert", "Insert vertex tool"),
+            ("J", "Jump cursor to nearest corner"),
+            ("D", "Toggle curve height / angle mode"),
+            ("Insert", "Insert vertex on wall"),
             ("Backspace", "Erase last typed character"),
         ],
     ),
     (
         "Measure",
         &[
-            ("Click", "Add a point to the run"),
-            ("Shift + drag", "Lock the leg to 45 degrees"),
-            ("Enter / double-click", "Finish the run"),
-            ("Shift + Enter", "Close the run and read its area"),
-            ("Backspace", "Undo the last point"),
-            ("Delete", "Clear all measurements"),
+            ("Click", "Add point to measure run"),
+            ("Shift + drag", "Lock segment to 45 degrees"),
+            ("Enter / double-click", "Finish measure run"),
+            ("Shift + Enter", "Close measure run and read area"),
+            ("Backspace", "Undo last measure point"),
+            ("Delete", "Clear measurements"),
             ("Ctrl + C", "Copy measurements as text"),
-            ("Esc", "Cancel run, clear, then exit"),
+            ("Esc", "Cancel run, clear, then switch to Select"),
         ],
     ),
     (
@@ -78,28 +82,29 @@ pub const GROUPS: &[(&str, &[(&str, &str)])] = &[
             ("Ctrl + Shift + R", "Rotate selection 1 degree"),
             ("H / V", "Orient selection horizontal / vertical"),
             ("+ / -", "Scale selection up / down"),
-            ("Space (tap)", "Toggle dimension labels"),
+            ("Space (tap)", "Toggle wall dimension labels"),
         ],
     ),
     (
         "View",
         &[
             ("G", "Toggle grid"),
-            ("C", "Center sketch"),
-            ("Shift + C", "Center & fit"),
-            ("Space (hold)", "Temporary pan"),
-            ("F / M", "Flip sketch horizontal / vertical"),
+            ("C", "Center drawing"),
+            ("Shift + C", "Center & fit all"),
+            ("Space (hold)", "Temporary Pan tool"),
+            ("F / M", "Flip sketch horizontally / vertically"),
             ("L / R", "Rotate sketch left / right 90 degrees"),
         ],
     ),
     (
-        "Panels",
+        "Workspace",
         &[
-            ("F4", "Define Area panel"),
-            ("F6", "Calculations panel"),
-            ("S", "Symbol library"),
-            ("T", "Text library"),
-            ("F1", "This cheat sheet"),
+            ("Ctrl + K", "Search commands"),
+            ("F4", "Toggle Areas drawer"),
+            ("F6", "Open Areas drawer totals"),
+            ("S", "Open Insert drawer (Symbols)"),
+            ("T", "Open Insert drawer (Room labels)"),
+            ("F1", "Open Keyboard Shortcuts"),
         ],
     ),
 ];
@@ -114,105 +119,4 @@ pub struct Shortcuts {
 pub enum ShortcutsMsg {
     Open,
     Close,
-}
-
-/// The dialog's layer, or None when closed.
-pub fn layer(d: &Shortcuts) -> Option<Element<'static, Message>> {
-    if !d.open {
-        return None;
-    }
-    let title = text("Keyboard Shortcuts")
-        .font(SEGOE_SEMIBOLD)
-        .size(13.0)
-        .color(text_main());
-
-    let group_card = |(name, rows): &'static (
-        &'static str,
-        &'static [(&'static str, &'static str)],
-    )|
-     -> Element<'static, Message> {
-        let mut card = column![text(name.to_uppercase())
-            .font(SEGOE_SEMIBOLD)
-            .size(11.0)
-            .color(muted()),]
-        .spacing(6);
-        for (key, desc) in *rows {
-            card = card.push(
-                row![
-                    container(text(*key).font(CONSOLAS).size(10.5).color(text_main()),)
-                        .width(96)
-                        .padding([1, 6])
-                        .style(|_| container::Style {
-                            background: Some(Background::Color(bg_panel())),
-                            border: Border {
-                                color: border(),
-                                width: 1.0,
-                                radius: 3.0.into(),
-                            },
-                            ..container::Style::default()
-                        }),
-                    text(*desc).font(SEGOE).size(11.5).color(text_main()),
-                    Space::new().width(Length::Fill),
-                ]
-                .spacing(8)
-                .padding([2, 0]),
-            );
-        }
-        container(card.padding(8))
-            .width(Length::Fill)
-            .style(|_| container::Style {
-                background: Some(Background::Color(bg_app())),
-                border: Border {
-                    color: border(),
-                    width: 1.0,
-                    radius: 3.0.into(),
-                },
-                ..container::Style::default()
-            })
-            .into()
-    };
-
-    let grid = iced::widget::Grid::with_children(GROUPS.iter().map(group_card).collect::<Vec<_>>())
-        .columns(3)
-        .spacing(12)
-        .width(736);
-
-    let actions = row![button(
-        container(text("Close").font(SEGOE).size(12.0).color(WHITE),).padding([5, 12]),
-    )
-    .on_press(Message::Shortcuts(ShortcutsMsg::Close))
-    .style(move |_, _| button::Style {
-        background: Some(Background::Color(accent())),
-        ..button::Style::default()
-    })]
-    .align_y(iced::alignment::Alignment::End)
-    .width(Length::Fill);
-
-    let card = container(column![title, grid, actions].spacing(10).padding(12))
-        .width(760)
-        .max_height(812)
-        .style(|_| container::Style {
-            background: Some(Background::Color(bg_panel())),
-            border: Border {
-                color: border(),
-                width: 1.0,
-                radius: 5.0.into(),
-            },
-            ..container::Style::default()
-        });
-
-    // The card swallows its own presses; the backdrop closes.
-    let centred = container(opaque(card))
-        .center_x(Length::Fill)
-        .center_y(Length::Fill);
-    let backdrop = container(centred)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .style(|_| container::Style {
-            background: Some(Color::from_rgba(0.0, 0.0, 0.0, 0.46).into()),
-            ..container::Style::default()
-        });
-    Some(opaque(
-        mouse_area(backdrop).on_press(Message::Shortcuts(ShortcutsMsg::Close)),
-    ))
 }

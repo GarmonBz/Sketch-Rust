@@ -70,6 +70,9 @@ pub enum Msg {
     /// Fold every group of identical symbols into its first member.
     MergeDuplicates,
     Import,
+    /// The Import picker resolved (None = cancelled): import the files.
+    #[cfg_attr(test, allow(dead_code))]
+    ImportPicked(Option<Vec<std::path::PathBuf>>),
     View,
     Favorites,
 }
@@ -109,15 +112,30 @@ impl App {
             }
         }
         for c in &mut lib.categories {
-            c.symbol_ids = lib
-                .symbols
-                .values()
-                .filter(|s| s.category == c.key && !self.symbol_changes.hidden.contains(&s.id))
-                .map(|s| s.id.clone())
-                .collect();
+            let mut ordered: Vec<String> = Vec::with_capacity(c.symbol_ids.len());
+            let mut seen = BTreeSet::new();
+            for id in &c.symbol_ids {
+                if let Some(s) = lib.symbols.get(id) {
+                    if s.category == c.key
+                        && !self.symbol_changes.hidden.contains(id)
+                        && seen.insert(id.clone())
+                    {
+                        ordered.push(id.clone());
+                    }
+                }
+            }
+            for s in lib.symbols.values() {
+                if s.category == c.key
+                    && !self.symbol_changes.hidden.contains(&s.id)
+                    && seen.insert(s.id.clone())
+                {
+                    ordered.push(s.id.clone());
+                }
+            }
+            c.symbol_ids = ordered;
         }
         lib.default_favorites
-            .retain(|id| !self.symbol_changes.hidden.contains(id) && lib.symbols.contains_key(id));
+            .retain(|id| !self.symbol_changes.hidden.contains(id));
         lib.categories.retain(|c| {
             !self.symbol_changes.deleted_categories.contains(&c.key) || !c.symbol_ids.is_empty()
         });
@@ -157,7 +175,7 @@ impl App {
             self.symbol_manager.focus = next_focus;
         }
     }
-    fn store_symbols(&mut self) -> Task<Message> {
+    pub(crate) fn store_symbols(&mut self) -> Task<Message> {
         self.rebuild_symbols();
         if persist::write_json("symbol-library.json", &self.symbol_changes) == Some(false) {
             return self
@@ -212,6 +230,9 @@ impl App {
                     self.symbol_manager.open = false;
                     self.placing_symbol = Some(id.clone());
                     self.dock.preview = Some(id);
+                    if !self.ui.drawer_pinned {
+                        self.ui.drawer = None;
+                    }
                     return self.set_mode(crate::view_state::Mode::PlaceSymbol);
                 }
             }
@@ -222,21 +243,17 @@ impl App {
                 self.symbol_manager.confirm = 4;
             }
             Msg::Open => {
-                if self.symbol_manager.context {
-                    self.symbol_manager.context = false;
+                let focus = if self.symbol_manager.context {
+                    self.symbol_manager.focus.clone()
                 } else {
-                    self.symbol_manager = Manager {
-                        open: true,
-                        category: if self.dock.active == crate::dock::DockTab::Symbols
-                            && self.category_is_real(&self.dock.symbol_category)
-                        {
-                            self.dock.symbol_category.clone()
-                        } else {
-                            String::new()
-                        },
-                        ..Manager::default()
-                    };
-                }
+                    None
+                };
+                self.symbol_manager.open = false;
+                self.symbol_manager.context = false;
+                return crate::ui::symbol_library::update(
+                    self,
+                    crate::ui::symbol_library::Msg::Open(focus),
+                );
             }
             Msg::Close => {
                 self.symbol_manager.open = false;
@@ -422,55 +439,30 @@ impl App {
             }
             Msg::Import => {
                 #[cfg(not(test))]
-                if let Some(paths) = rfd::FileDialog::new()
-                    .add_filter("Symbol or DXF", &["json", "dxf", "dwg"])
-                    .pick_files()
                 {
-                    let mut added = 0;
-                    let mut errors = vec![];
-                    for path in paths {
-                        let result = if path
-                            .extension()
-                            .is_some_and(|s| s.eq_ignore_ascii_case("dwg"))
-                        {
-                            Err("DWG requires conversion to DXF.".to_string())
-                        } else {
-                            std::fs::read_to_string(&path)
-                                .map_err(|e| e.to_string())
-                                .and_then(|body| {
-                                    self.import_symbol(
-                                        &body,
-                                        path.file_stem()
-                                            .and_then(|s| s.to_str())
-                                            .unwrap_or("Imported"),
-                                        path.extension().and_then(|s| s.to_str()).unwrap_or(""),
-                                    )
-                                })
-                        };
-                        match result {
-                            Ok(()) => added += 1,
-                            Err(e) => errors.push(format!(
-                                "{}: {e}",
-                                path.file_name().unwrap_or_default().to_string_lossy()
-                            )),
-                        }
-                    }
-                    let task = self.store_symbols();
-                    if errors.is_empty() {
-                        return task.chain(self.toasts.show(format!("Added {added} symbols.")));
-                    }
-                    return task.chain(
-                        self.toasts
-                            .show(format!("Added {added} symbols. {}", errors.join("; "))),
+                    return Task::perform(
+                        crate::platform::pick_files_async(
+                            "Symbol or DXF".to_owned(),
+                            vec!["json".to_owned(), "dxf".to_owned(), "dwg".to_owned()],
+                        ),
+                        |paths| Message::SymbolManager(Msg::ImportPicked(paths)),
                     );
+                }
+                #[cfg(test)]
+                {}
+            }
+            Msg::ImportPicked(paths) => {
+                if let Some(paths) = paths {
+                    return self.import_symbol_files(paths);
                 }
             }
 
             Msg::View => self.symbol_manager.enlarged = self.symbol_manager.focus.is_some(),
             Msg::Favorites => {
                 self.symbol_manager.open = false;
-                return self
-                    .symbol_organizer_msg(crate::symbol_organizer::SymbolOrganizerMsg::Open);
+                return self.update(Message::Ui(crate::ui::Msg::SymbolLibrary(
+                    crate::ui::symbol_library::Msg::Open(None),
+                )));
             }
         }
         if self.symbol_manager.open && !self.symbol_manager.context {
@@ -478,6 +470,49 @@ impl App {
         }
         Task::none()
     }
+    /// `Msg::ImportPicked`: read and add each picked symbol file, collecting
+    /// per-file errors into the summary toast.
+    fn import_symbol_files(&mut self, paths: Vec<std::path::PathBuf>) -> Task<Message> {
+        let mut added = 0;
+        let mut errors = vec![];
+        for path in paths {
+            let result = if path
+                .extension()
+                .is_some_and(|s| s.eq_ignore_ascii_case("dwg"))
+            {
+                Err("DWG requires conversion to DXF.".to_string())
+            } else {
+                std::fs::read_to_string(&path)
+                    .map_err(|e| e.to_string())
+                    .and_then(|body| {
+                        self.import_symbol(
+                            &body,
+                            path.file_stem()
+                                .and_then(|s| s.to_str())
+                                .unwrap_or("Imported"),
+                            path.extension().and_then(|s| s.to_str()).unwrap_or(""),
+                        )
+                    })
+            };
+            match result {
+                Ok(()) => added += 1,
+                Err(e) => errors.push(format!(
+                    "{}: {e}",
+                    path.file_name().unwrap_or_default().to_string_lossy()
+                )),
+            }
+        }
+        let task = self.store_symbols();
+        if errors.is_empty() {
+            task.chain(self.toasts.show(format!("Added {added} symbols.")))
+        } else {
+            task.chain(
+                self.toasts
+                    .show(format!("Added {added} symbols. {}", errors.join("; "))),
+            )
+        }
+    }
+
     /// What the manager list shows, narrowed by the category and search: the
     /// live library, or one of the views over it (groups of
     /// Duplicates keeper first, the Largest first).
@@ -638,7 +673,7 @@ impl App {
     /// Points every placed instance of a retired symbol at the symbol that
     /// replaced it: the document, every page, undo/redo, the clipboard and the
     /// user's favorites.
-    fn remap_symbols(&mut self, map: &BTreeMap<String, String>) {
+    pub(crate) fn remap_symbols(&mut self, map: &BTreeMap<String, String>) {
         self.save_current_page();
         let fix = |s: &mut crate::placed_symbol::PlacedSymbol| {
             if let Some(to) = map.get(&s.symbol_type) {
@@ -669,9 +704,11 @@ impl App {
         }
         self.persist_library();
     }
-    /// A placed symbol whose id was retired by a merge takes the id that
-    /// replaced it (`aliases` in `symbols.json`), for sketches saved before.
-    pub(crate) fn resolve_symbol_aliases(
+    /// A placed symbol whose id was retired (by Merge duplicates, or as a
+    /// duplicate of a newer symbol, 2026-11-17) takes the id that replaced
+    /// it (`aliases` in `symbols.json`). Older placements also inherit the
+    /// library's gap offset at their saved scale.
+    pub(crate) fn resolve_placed_symbol_definitions(
         &self,
         symbols: &mut [crate::placed_symbol::PlacedSymbol],
     ) {
@@ -682,12 +719,17 @@ impl App {
                     s.symbol_type = to.clone();
                 }
             }
+            if s.wall_gap_offset.is_none() && s.wall_gap_width > 0.0 {
+                s.wall_gap_offset = lib
+                    .symbol(&s.symbol_type)
+                    .map(|def| def.wall_gap_alignment / 12.0 * s.scale);
+            }
         }
     }
     /// Takes `ids` out of the document and everything that could bring them
     /// back: placed instances on every page, undo/redo history, the clipboard,
     /// the selection, and the library overrides and favorites.
-    fn forget_symbols(&mut self, ids: &BTreeSet<String>) {
+    pub(crate) fn forget_symbols(&mut self, ids: &BTreeSet<String>) {
         self.save_current_page();
         for page in &mut self.pages.pages {
             page.symbols.retain(|s| !ids.contains(&s.symbol_type));
@@ -754,8 +796,8 @@ impl App {
         {
             return Err("Symbol requires valid geometry and bounds.".into());
         }
-        let stamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
+        let stamp = web_time::SystemTime::now()
+            .duration_since(web_time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos();
         s.id = format!("custom/{stamp}");
@@ -810,7 +852,7 @@ impl App {
                     ]
                     .spacing(8),
                     row![
-                        action("Manage / Rename…", Msg::Open),
+                        action("Edit in library…", Msg::Open),
                         action("Close", Msg::Close)
                     ]
                     .spacing(8),
@@ -1260,7 +1302,7 @@ fn plural(n: usize) -> &'static str {
 }
 /// The category key a new category name files under: `Window Treatments` ->
 /// `window-treatments`.
-fn category_key(name: &str) -> String {
+pub(crate) fn category_key(name: &str) -> String {
     let key: String = name
         .trim()
         .to_lowercase()

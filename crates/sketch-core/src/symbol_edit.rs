@@ -11,7 +11,9 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use crate::symbols::{SymbolLibraryError, SYMBOL_LIBRARY_FILENAME};
+use crate::symbols::{
+    Bounds, Entity, Symbol, SymbolLibraryError, WallSnap, SYMBOL_LIBRARY_FILENAME,
+};
 
 type Edit = Result<usize, SymbolLibraryError>;
 
@@ -272,6 +274,478 @@ pub fn merge(path: &Path, pairs: &[(String, String)]) -> Edit {
     })
 }
 
+/// Editable metadata/wall-behaviour properties for [`update_properties`].
+#[derive(Debug, Clone, Default)]
+pub struct SymbolProps {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub wall_snap: Option<WallSnap>,
+    pub wall_gap_width: Option<f64>,
+    pub wall_gap_alignment: Option<f64>,
+    pub wall_cap_length: Option<f64>,
+}
+
+/// Result returned by [`import_with_report`].
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ImportReport {
+    pub added: usize,
+    pub conflicts: Vec<String>,
+}
+
+fn formatted_label(category_name: &str, name: &str) -> String {
+    let cat = category_name.trim();
+    if cat.is_empty() {
+        name.to_owned()
+    } else {
+        format!("{cat} - {name}")
+    }
+}
+
+fn set_f64_if_changed(obj: &mut serde_json::Map<String, Value>, key: &str, val: f64) -> bool {
+    if !val.is_finite() {
+        return false;
+    }
+    let unchanged = obj
+        .get(key)
+        .and_then(Value::as_f64)
+        .is_some_and(|prev| (prev - val).abs() <= 1e-9);
+    if unchanged {
+        return false;
+    }
+    obj.insert(key.to_owned(), Value::from(val));
+    true
+}
+
+fn ensure_category_has_symbol(doc: &mut Value, cat_key: &str, cat_name: &str, sym_id: &str) {
+    if cat_key.is_empty() {
+        return;
+    }
+    let all = match categories(doc) {
+        Some(all) => all,
+        None => {
+            doc["categories"] = Value::Array(Vec::new());
+            categories(doc).expect("categories array just initialized")
+        }
+    };
+    let name = if cat_name.trim().is_empty() {
+        cat_key
+    } else {
+        cat_name.trim()
+    };
+    if let Some(cat) = all.iter_mut().find(|c| c["key"].as_str() == Some(cat_key)) {
+        if cat["name"].as_str().unwrap_or("").trim().is_empty() {
+            cat["name"] = Value::from(name);
+        }
+        let ids = match cat.get_mut("symbolIds").and_then(Value::as_array_mut) {
+            Some(ids) => ids,
+            None => {
+                cat["symbolIds"] = Value::Array(Vec::new());
+                cat.get_mut("symbolIds")
+                    .and_then(Value::as_array_mut)
+                    .expect("symbolIds array just initialized")
+            }
+        };
+        if !ids.iter().any(|v| v.as_str() == Some(sym_id)) {
+            ids.push(Value::from(sym_id));
+        }
+    } else {
+        all.push(serde_json::json!({
+            "key": cat_key,
+            "name": name,
+            "symbolIds": [sym_id],
+        }));
+    }
+}
+
+/// Updates properties and wall-snap behaviour on symbol `id` inside `path`.
+pub fn update_properties(path: &Path, id: &str, props: &SymbolProps) -> Edit {
+    rewrite(path, |doc| {
+        let Some(sym) = doc
+            .get_mut("symbols")
+            .and_then(Value::as_object_mut)
+            .and_then(|s| s.get_mut(id))
+            .and_then(Value::as_object_mut)
+        else {
+            return 0;
+        };
+        let mut dirty = false;
+        if let Some(name) = &props.name {
+            let trimmed = name.trim();
+            if !trimmed.is_empty() {
+                let cat_name = sym
+                    .get("categoryName")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_owned();
+                let next_label = formatted_label(&cat_name, trimmed);
+                if sym.get("name").and_then(Value::as_str) != Some(trimmed) {
+                    sym.insert("name".into(), Value::from(trimmed));
+                    dirty = true;
+                }
+                if sym.get("label").and_then(Value::as_str) != Some(next_label.as_str()) {
+                    sym.insert("label".into(), Value::from(next_label));
+                    dirty = true;
+                }
+            }
+        }
+        if let Some(desc) = &props.description {
+            if sym.get("description").and_then(Value::as_str) != Some(desc.as_str()) {
+                sym.insert("description".into(), Value::from(desc.as_str()));
+                dirty = true;
+            }
+        }
+        if let Some(snap) = props.wall_snap {
+            let snap_val = serde_json::to_value(snap).unwrap_or(Value::String("NONE".into()));
+            if sym.get("wallSnap") != Some(&snap_val) {
+                sym.insert("wallSnap".into(), snap_val);
+                dirty = true;
+            }
+        }
+        if let Some(gap) = props.wall_gap_width {
+            dirty |= set_f64_if_changed(sym, "wallGapWidth", gap.max(0.0));
+        }
+        if let Some(align) = props.wall_gap_alignment {
+            dirty |= set_f64_if_changed(sym, "wallGapAlignment", align);
+        }
+        if let Some(cap) = props.wall_cap_length {
+            dirty |= set_f64_if_changed(sym, "wallCapLength", cap.max(0.0));
+        }
+        usize::from(dirty)
+    })
+}
+
+/// Replaces geometry and bounds on symbol `id` inside `path`.
+pub fn replace_geometry(path: &Path, id: &str, geometry: &[Entity], bounds: Bounds) -> Edit {
+    rewrite(path, |doc| {
+        let Some(sym) = doc
+            .get_mut("symbols")
+            .and_then(Value::as_object_mut)
+            .and_then(|s| s.get_mut(id))
+            .and_then(Value::as_object_mut)
+        else {
+            return 0;
+        };
+        let next_geom = serde_json::to_value(geometry).unwrap_or(Value::Array(Vec::new()));
+        let next_bounds = serde_json::to_value(bounds).unwrap_or(Value::Null);
+        let changed =
+            sym.get("geometry") != Some(&next_geom) || sym.get("bounds") != Some(&next_bounds);
+        if !changed {
+            return 0;
+        }
+        sym.insert("geometry".into(), next_geom);
+        sym.insert("bounds".into(), next_bounds);
+        1
+    })
+}
+
+/// Adds a new symbol with a unique `symbol.id` to `path` and files it in its category.
+pub fn add(path: &Path, symbol: &Symbol) -> Edit {
+    if symbol.id.trim().is_empty() {
+        return Ok(0);
+    }
+    rewrite(path, |doc| {
+        if doc.get("symbols").and_then(Value::as_object).is_none() {
+            doc["symbols"] = Value::Object(serde_json::Map::new());
+        }
+        let Some(symbols) = doc.get_mut("symbols").and_then(Value::as_object_mut) else {
+            return 0;
+        };
+        if symbols.contains_key(&symbol.id) {
+            return 0;
+        }
+        let mut to_insert = symbol.clone();
+        if to_insert.units.trim().is_empty() {
+            to_insert.units = "INCHES".to_owned();
+        }
+        if to_insert.label.trim().is_empty() && !to_insert.name.trim().is_empty() {
+            to_insert.label = formatted_label(&to_insert.category_name, to_insert.name.trim());
+        }
+        let Ok(val) = serde_json::to_value(&to_insert) else {
+            return 0;
+        };
+        symbols.insert(to_insert.id.clone(), val);
+        ensure_category_has_symbol(
+            doc,
+            &to_insert.category,
+            &to_insert.category_name,
+            &to_insert.id,
+        );
+        1
+    })
+}
+
+/// Duplicates symbol `id` to unique `new_id` with display name `new_name`.
+pub fn duplicate(path: &Path, id: &str, new_id: &str, new_name: &str) -> Edit {
+    let new_id = new_id.trim();
+    let new_name = new_name.trim();
+    if new_id.is_empty() || new_id == id || new_name.is_empty() {
+        return Ok(0);
+    }
+    rewrite(path, |doc| {
+        let Some(symbols) = doc.get_mut("symbols").and_then(Value::as_object_mut) else {
+            return 0;
+        };
+        if symbols.contains_key(new_id) {
+            return 0;
+        }
+        let Some(mut copy) = symbols.get(id).cloned() else {
+            return 0;
+        };
+        let cat_key = copy["category"].as_str().unwrap_or("").to_owned();
+        let cat_name = copy["categoryName"].as_str().unwrap_or("").to_owned();
+        copy["id"] = Value::from(new_id);
+        copy["name"] = Value::from(new_name);
+        copy["label"] = Value::from(formatted_label(&cat_name, new_name));
+        symbols.insert(new_id.to_owned(), copy);
+        if !cat_key.is_empty() {
+            if let Some(cat) = categories(doc).and_then(|all| {
+                all.iter_mut()
+                    .find(|c| c["key"].as_str() == Some(cat_key.as_str()))
+            }) {
+                if let Some(list) = cat.get_mut("symbolIds").and_then(Value::as_array_mut) {
+                    if let Some(pos) = list.iter().position(|v| v.as_str() == Some(id)) {
+                        list.insert(pos + 1, Value::from(new_id));
+                    } else {
+                        list.push(Value::from(new_id));
+                    }
+                    return 1;
+                }
+            }
+            ensure_category_has_symbol(doc, &cat_key, &cat_name, new_id);
+        }
+        1
+    })
+}
+
+/// Adds an empty category `(key, name)` to `path` if `key` is not already present.
+pub fn add_category(path: &Path, key: &str, name: &str) -> Edit {
+    let key = key.trim();
+    let name = name.trim();
+    if key.is_empty() || name.is_empty() {
+        return Ok(0);
+    }
+    rewrite(path, |doc| {
+        if categories(doc).is_none() {
+            doc["categories"] = Value::Array(Vec::new());
+        }
+        let Some(all) = categories(doc) else {
+            return 0;
+        };
+        if all.iter().any(|c| c["key"].as_str() == Some(key)) {
+            return 0;
+        }
+        all.push(serde_json::json!({
+            "key": key,
+            "name": name,
+            "symbolIds": [],
+        }));
+        1
+    })
+}
+
+/// Reorders `doc["categories"]` so keys in `keys` lead in the given order; any
+/// remaining categories keep their relative order afterward.
+pub fn reorder_categories(path: &Path, keys: &[String]) -> Edit {
+    rewrite(path, |doc| {
+        let Some(all) = categories(doc) else {
+            return 0;
+        };
+        let old_keys: Vec<String> = all
+            .iter()
+            .filter_map(|c| c["key"].as_str().map(str::to_owned))
+            .collect();
+        let mut by_key: BTreeMap<String, Value> = BTreeMap::new();
+        let mut tail = Vec::new();
+        for cat in all.drain(..) {
+            if let Some(k) = cat["key"].as_str() {
+                by_key.insert(k.to_owned(), cat);
+            } else {
+                tail.push(cat);
+            }
+        }
+        let mut reordered = Vec::with_capacity(old_keys.len() + tail.len());
+        for k in keys {
+            if let Some(cat) = by_key.remove(k) {
+                reordered.push(cat);
+            }
+        }
+        for k in &old_keys {
+            if let Some(cat) = by_key.remove(k) {
+                reordered.push(cat);
+            }
+        }
+        reordered.extend(tail);
+        let new_keys: Vec<String> = reordered
+            .iter()
+            .filter_map(|c| c["key"].as_str().map(str::to_owned))
+            .collect();
+        *all = reordered;
+        usize::from(new_keys != old_keys)
+    })
+}
+
+/// Reorders `symbolIds` inside `category` according to `ids`; remaining ids
+/// keep their relative order afterward.
+pub fn reorder_symbols(path: &Path, category: &str, ids: &[String]) -> Edit {
+    rewrite(path, |doc| {
+        let Some(cat) = categories(doc)
+            .and_then(|all| all.iter_mut().find(|c| c["key"].as_str() == Some(category)))
+        else {
+            return 0;
+        };
+        let Some(list) = cat.get_mut("symbolIds").and_then(Value::as_array_mut) else {
+            return 0;
+        };
+        let old_ids: Vec<String> = list
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_owned))
+            .collect();
+        let old_set: BTreeSet<&str> = old_ids.iter().map(String::as_str).collect();
+        let mut seen = BTreeSet::new();
+        let mut new_ids: Vec<String> = Vec::with_capacity(old_ids.len());
+        for id in ids {
+            if old_set.contains(id.as_str()) && seen.insert(id.clone()) {
+                new_ids.push(id.clone());
+            }
+        }
+        for id in &old_ids {
+            if seen.insert(id.clone()) {
+                new_ids.push(id.clone());
+            }
+        }
+        if new_ids == old_ids {
+            return 0;
+        }
+        *list = new_ids.into_iter().map(Value::from).collect();
+        1
+    })
+}
+
+/// Writes a library subset (or whole library when `ids` is `None`) to `dest`.
+/// Does not modify `path` and returns the number of symbols exported.
+pub fn export(path: &Path, dest: &Path, ids: Option<&BTreeSet<String>>) -> Edit {
+    let original = std::fs::read_to_string(path)?;
+    let mut doc: Value = serde_json::from_str(&original)?;
+    if let Some(keep) = ids {
+        if let Some(symbols) = doc.get_mut("symbols").and_then(Value::as_object_mut) {
+            symbols.retain(|id, _| keep.contains(id));
+        }
+        if let Some(all) = categories(&mut doc) {
+            all.retain_mut(|cat| {
+                let Some(list) = cat.get_mut("symbolIds").and_then(Value::as_array_mut) else {
+                    return false;
+                };
+                list.retain(|v| v.as_str().is_some_and(|id| keep.contains(id)));
+                !list.is_empty()
+            });
+        }
+        if let Some(favs) = doc
+            .get_mut("defaultFavorites")
+            .and_then(Value::as_array_mut)
+        {
+            favs.retain(|v| v.as_str().is_some_and(|id| keep.contains(id)));
+        }
+        if let Some(aliases) = doc.get_mut("aliases").and_then(Value::as_object_mut) {
+            aliases.retain(|_, to| to.as_str().is_some_and(|id| keep.contains(id)));
+        }
+    }
+    let exported = doc
+        .get("symbols")
+        .and_then(Value::as_object)
+        .map(|s| s.len())
+        .unwrap_or(0);
+    doc["symbolCount"] = Value::from(exported);
+    if let Some(parent) = dest.parent().filter(|p| !p.as_os_str().is_empty()) {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(dest, serde_json::to_vec_pretty(&doc)?)?;
+    Ok(exported)
+}
+
+/// Imports symbols from `source` into `path` by id, skipping colliding ids and
+/// reporting them alongside the count added.
+pub fn import_with_report(path: &Path, source: &Path) -> Result<ImportReport, SymbolLibraryError> {
+    let body = std::fs::read_to_string(source)?;
+    let src: Value = serde_json::from_str(&body)?;
+    let mut category_names: BTreeMap<String, String> = BTreeMap::new();
+    if let Some(cats) = src.get("categories").and_then(Value::as_array) {
+        for c in cats {
+            if let (Some(k), Some(n)) = (c["key"].as_str(), c["name"].as_str()) {
+                category_names.insert(k.to_owned(), n.to_owned());
+            }
+        }
+    }
+    let incoming: Vec<(String, Value)> =
+        if let Some(symbols) = src.get("symbols").and_then(Value::as_object) {
+            symbols
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect()
+        } else if src.get("geometry").is_some() {
+            let fallback_id = src["id"]
+                .as_str()
+                .filter(|s| !s.trim().is_empty())
+                .map(str::to_owned)
+                .unwrap_or_else(|| {
+                    let stem = source
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("imported");
+                    format!("imported/{stem}")
+                });
+            vec![(fallback_id, src)]
+        } else {
+            Vec::new()
+        };
+
+    let mut report = ImportReport::default();
+    rewrite(path, |doc| {
+        if doc.get("symbols").and_then(Value::as_object).is_none() {
+            doc["symbols"] = Value::Object(serde_json::Map::new());
+        }
+        let mut added = 0;
+        for (sym_id, mut sym_val) in incoming {
+            let exists = doc
+                .get("symbols")
+                .and_then(Value::as_object)
+                .is_some_and(|s| s.contains_key(&sym_id));
+            if exists {
+                report.conflicts.push(sym_id);
+                continue;
+            }
+            if sym_val["id"].as_str().unwrap_or("").trim().is_empty() {
+                sym_val["id"] = Value::from(sym_id.as_str());
+            }
+            let cat_key = sym_val["category"]
+                .as_str()
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or("imported")
+                .to_owned();
+            let cat_name = sym_val["categoryName"]
+                .as_str()
+                .filter(|s| !s.trim().is_empty())
+                .map(str::to_owned)
+                .or_else(|| category_names.get(&cat_key).cloned())
+                .unwrap_or_else(|| cat_key.clone());
+            sym_val["category"] = Value::from(cat_key.as_str());
+            sym_val["categoryName"] = Value::from(cat_name.as_str());
+            if let Some(symbols) = doc.get_mut("symbols").and_then(Value::as_object_mut) {
+                symbols.insert(sym_id.clone(), sym_val);
+            }
+            ensure_category_has_symbol(doc, &cat_key, &cat_name, &sym_id);
+            added += 1;
+        }
+        report.added = added;
+        added
+    })?;
+    Ok(report)
+}
+
+/// Imports symbols from `source` into `path` by id; returns how many symbols were added.
+pub fn import(path: &Path, source: &Path) -> Edit {
+    import_with_report(path, source).map(|report| report.added)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -456,5 +930,176 @@ mod tests {
         assert_eq!(f.load().aliases["a/one"], "a/two");
         assert_eq!(delete(&f.path(), &ids(&["a/two"])).unwrap(), 1);
         assert!(f.load().aliases.is_empty());
+    }
+
+    #[test]
+    fn update_properties_and_replace_geometry_preserve_unknown_fields() {
+        let f = Fixture::new("props-geom");
+        let unchanged = SymbolProps {
+            name: Some("One".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            update_properties(&f.path(), "a/one", &unchanged).unwrap(),
+            1,
+            "label becomes A - One"
+        );
+        assert_eq!(
+            update_properties(&f.path(), "a/one", &unchanged).unwrap(),
+            0,
+            "no-op writes nothing"
+        );
+
+        let props = SymbolProps {
+            name: Some("Updated One".into()),
+            description: Some("Door fixture".into()),
+            wall_snap: Some(WallSnap::Side),
+            wall_gap_width: Some(36.0),
+            wall_gap_alignment: Some(1.5),
+            wall_cap_length: Some(4.0),
+        };
+        assert_eq!(update_properties(&f.path(), "a/one", &props).unwrap(), 1);
+        let raw = f.raw();
+        assert_eq!(raw["symbols"]["a/one"]["futureField"], 1);
+        let lib = f.load();
+        let s = lib.symbol("a/one").unwrap();
+        assert_eq!(s.name, "Updated One");
+        assert_eq!(s.label, "A - Updated One");
+        assert_eq!(s.description, "Door fixture");
+        assert_eq!(s.wall_snap, WallSnap::Side);
+        assert_eq!(s.wall_gap_width, 36.0);
+        assert_eq!(s.wall_gap_alignment, 1.5);
+        assert_eq!(s.wall_cap_length, 4.0);
+
+        let next_geom = vec![Entity {
+            start_point: Some(crate::symbols::Point { x: -12.0, y: 0.0 }),
+            end_point: Some(crate::symbols::Point { x: 12.0, y: 6.0 }),
+            ..Default::default()
+        }];
+        let next_bounds = Bounds {
+            min_x: -12.0,
+            min_y: 0.0,
+            max_x: 12.0,
+            max_y: 6.0,
+        };
+        assert_eq!(
+            replace_geometry(&f.path(), "a/one", &next_geom, next_bounds).unwrap(),
+            1
+        );
+        assert_eq!(
+            replace_geometry(&f.path(), "a/one", &next_geom, next_bounds).unwrap(),
+            0
+        );
+        let lib = f.load();
+        let s = lib.symbol("a/one").unwrap();
+        assert_eq!(s.geometry.len(), 1);
+        assert_eq!(s.bounds, next_bounds);
+        assert!(f.0.join("symbols.json.bak").is_file());
+    }
+
+    #[test]
+    fn add_duplicate_categories_and_reorder_keep_counts_and_ids_consistent() {
+        let f = Fixture::new("add-dup-order");
+        let new_sym = Symbol {
+            id: "a/custom".into(),
+            category: "a".into(),
+            category_name: "A".into(),
+            name: "Custom Box".into(),
+            label: "".into(),
+            bounds: Bounds {
+                min_x: -6.0,
+                min_y: -6.0,
+                max_x: 6.0,
+                max_y: 6.0,
+            },
+            geometry: vec![Entity {
+                start_point: Some(crate::symbols::Point { x: -6.0, y: 0.0 }),
+                end_point: Some(crate::symbols::Point { x: 6.0, y: 0.0 }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        assert_eq!(add(&f.path(), &new_sym).unwrap(), 1);
+        assert_eq!(add(&f.path(), &new_sym).unwrap(), 0, "unique id enforced");
+        let lib = f.load();
+        assert_eq!(lib.symbol_count, 5);
+        assert_eq!(lib.symbol("a/custom").unwrap().label, "A - Custom Box");
+        assert!(lib.categories[0]
+            .symbol_ids
+            .contains(&"a/custom".to_owned()));
+
+        assert_eq!(
+            duplicate(&f.path(), "a/one", "a/one-copy", "One Copy").unwrap(),
+            1
+        );
+        assert_eq!(
+            duplicate(&f.path(), "a/one", "a/one-copy", "One Copy").unwrap(),
+            0
+        );
+        let raw = f.raw();
+        assert_eq!(raw["symbols"]["a/one-copy"]["futureField"], 1);
+        let lib = f.load();
+        assert_eq!(lib.symbol_count, 6);
+        assert_eq!(lib.symbol("a/one-copy").unwrap().label, "A - One Copy");
+
+        assert_eq!(add_category(&f.path(), "fresh", "Fresh Cat").unwrap(), 1);
+        assert_eq!(add_category(&f.path(), "fresh", "Fresh Cat").unwrap(), 0);
+        assert_eq!(
+            reorder_categories(&f.path(), &["fresh".into(), "b".into(), "a".into()]).unwrap(),
+            1
+        );
+        assert_eq!(
+            reorder_categories(&f.path(), &["fresh".into(), "b".into(), "a".into()]).unwrap(),
+            0
+        );
+        let lib = f.load();
+        let keys: Vec<_> = lib.categories.iter().map(|c| c.key.as_str()).collect();
+        assert_eq!(keys, ["fresh", "b", "a", "favorites", "empty"]);
+
+        assert_eq!(
+            reorder_symbols(
+                &f.path(),
+                "a",
+                &["a/custom".into(), "a/two".into(), "a/one".into()]
+            )
+            .unwrap(),
+            1
+        );
+        let lib = f.load();
+        let a_cat = lib.categories.iter().find(|c| c.key == "a").unwrap();
+        assert_eq!(
+            a_cat.symbol_ids,
+            ["a/custom", "a/two", "a/one", "a/one-copy"]
+        );
+    }
+
+    #[test]
+    fn export_and_import_round_trip_and_report_conflicts() {
+        let src = Fixture::new("export-src");
+        let dest = src.0.join("subset.json");
+        assert_eq!(
+            export(&src.path(), &dest, Some(&ids(&["a/one", "b/three"]))).unwrap(),
+            2
+        );
+
+        let clean = Fixture::new("clean-dst");
+        let clean_empty = delete(
+            &clean.path(),
+            &ids(&["a/one", "a/two", "b/three", "favorites/one"]),
+        )
+        .unwrap();
+        assert_eq!(clean_empty, 4);
+        assert_eq!(import(&clean.path(), &dest).unwrap(), 2);
+        let clean_lib = clean.load();
+        assert_eq!(clean_lib.symbol_count, 2);
+        assert!(clean_lib.symbol("a/one").is_some());
+        assert!(clean_lib.symbol("b/three").is_some());
+
+        // Re-importing the subset reports both ids as conflicts and changes nothing.
+        let report = import_with_report(&clean.path(), &dest).unwrap();
+        assert_eq!(report.added, 0);
+        assert_eq!(report.conflicts.len(), 2);
+        assert!(report.conflicts.contains(&"a/one".to_owned()));
+        assert!(report.conflicts.contains(&"b/three".to_owned()));
     }
 }

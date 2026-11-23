@@ -11,7 +11,7 @@
 
 use std::fmt;
 use std::io::Read;
-use std::time::{SystemTime, UNIX_EPOCH};
+use web_time::{SystemTime, UNIX_EPOCH};
 
 use flate2::read::{DeflateDecoder, DeflateEncoder};
 use flate2::Compression;

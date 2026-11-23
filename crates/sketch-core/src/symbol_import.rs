@@ -130,11 +130,9 @@ mod tests {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
     }
     fn source(name: &str) -> Symbol {
-        from_dxf(
-            &fs::read_to_string(root().join(format!("refs/caddillo/fixtures/{name}.dxf"))).unwrap(),
-            name,
-        )
-        .unwrap()
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join(format!("tests/fixtures/dxf/{name}.dxf"));
+        from_dxf(&fs::read_to_string(path).unwrap(), name).unwrap()
     }
     #[test]
     fn real_caddillo_blocks_import_geometry_in_inches_without_advertising() {
@@ -171,7 +169,11 @@ mod tests {
             // The wall is cut from the origin across the width (side snap)
             // or about the origin (centre snap); either way the symbol must
             // sit centred on that cut, with its frame overhanging equally.
-            let cut_centre = if snap == WallSnap::Side { width / 2.0 } else { 0.0 };
+            let cut_centre = if snap == WallSnap::Side {
+                width / 2.0
+            } else {
+                0.0
+            };
             assert!(
                 ((s.bounds.min_x + s.bounds.max_x) / 2.0 - cut_centre).abs() < 1e-6,
                 "{name}"
@@ -194,9 +196,49 @@ mod tests {
         let current: serde_json::Value =
             serde_json::from_str(&fs::read_to_string(root().join("assets/symbols.json")).unwrap())
                 .unwrap();
+        // Every original definition keeps its shape in the library, or (if a
+        // newer symbol replaced it, 2026-11-17) its id is an alias for that
+        // replacement, so old sketches open with the new symbol in its place.
+        // Kept symbols may be recategorized and old midpoint markers are
+        // converted to the equivalent gap offset in inches.
+        let curation: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(root().join("tools/symbol-curation.json")).unwrap(),
+        )
+        .unwrap();
+        let shape = |s: &serde_json::Value| {
+            let mut s = s.clone();
+            let o = s.as_object_mut().unwrap();
+            for k in ["category", "categoryName"] {
+                o.remove(k);
+            }
+            s
+        };
+        let aliases = current["aliases"].as_object().unwrap();
         for (id, symbol) in previous["symbols"].as_object().unwrap() {
-            assert_eq!(&current["symbols"][id], symbol, "{id}");
+            match (current["symbols"].get(id), aliases.get(id)) {
+                (Some(now), None) => {
+                    let mut expected = shape(symbol);
+                    if let Some(offset) = curation["legacyGapOffsets"].get(id) {
+                        expected["wallGapAlignment"] = offset.clone();
+                    }
+                    assert_eq!(shape(now), expected, "{id}");
+                }
+                (None, Some(to)) => {
+                    let to = to.as_str().unwrap();
+                    assert!(current["symbols"].get(to).is_some(), "{id} -> {to}");
+                }
+                (Some(_), Some(_)) => panic!("{id} is both live and aliased"),
+                // The default library dropped the Arrows, Doors, Windows and
+                // Miscellaneous categories on purpose.
+                (None, None)
+                    if matches!(
+                        symbol["category"].as_str(),
+                        Some("arrows" | "doors" | "windows" | "miscellaneous")
+                    ) => {}
+                (None, None) => panic!("{id} is gone"),
+            }
         }
+        assert!(!root().join("assets/symbols.retired.json").exists());
         let lib: crate::symbols::SymbolLibrary = serde_json::from_value(current).unwrap();
         assert_eq!(
             lib.symbols

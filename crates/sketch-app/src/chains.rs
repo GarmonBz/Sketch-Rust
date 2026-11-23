@@ -156,6 +156,7 @@ impl crate::drawing::Drawing {
                 y: s.y,
                 wall_id: s.wall_id,
                 wall_gap_width: s.wall_gap_width,
+                wall_gap_offset: s.wall_gap_offset.unwrap_or_default(),
                 wall_snap: match s.wall_snap {
                     sketch_core::symbols::WallSnap::Side => Some("SIDE".to_string()),
                     sketch_core::symbols::WallSnap::Center => Some("CENTER".to_string()),

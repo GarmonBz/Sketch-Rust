@@ -15,6 +15,7 @@
 # shortcut and an entry under Settings > Apps for this user.
 param([switch]$FetchWix, [switch]$Test, [switch]$SkipPackage)
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'assert-release-executable.ps1')
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 Push-Location $repoRoot
 try {
@@ -47,27 +48,26 @@ try {
 
     $version = [regex]::Match((Get-Content -LiteralPath 'Cargo.toml' -Raw), 'version\s*=\s*"([^"]+)"').Groups[1].Value
     if (-not $SkipPackage) {
-        # A release must include the Apex compatibility component; package.ps1
-        # builds with SKETCH_REQUIRE_APEX=1 unless it is already set (use '0'
-        # for an Apex-less dev package). A failed package build must not fall
-        # through to a stale staged folder.
-        if (-not $env:SKETCH_REQUIRE_APEX) { $env:SKETCH_REQUIRE_APEX = '1' }
         & (Join-Path $PSScriptRoot 'package.ps1') -NativePreview | Out-Null
     }
     $stage = Get-ChildItem -LiteralPath 'target\package' -Directory -Filter "SketchRust-$version-*" |
+        Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'manifest.json') -PathType Leaf } |
         Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if (-not $stage) { throw "No staged package for $version under target\package. Run tools\package.ps1 first." }
 
+    Assert-ReleaseExecutable (Join-Path $stage.FullName 'sketch-app.exe')
+
     # Everything generated for the build goes here.
-    $work = Join-Path $repoRoot 'target\msi'
-    if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }
+    $work = Join-Path $repoRoot "target\msi\$PID"
     New-Item -ItemType Directory -Path $work -Force | Out-Null
 
     # Files.wxs: one component per staged file.
     $lines = @('<?xml version="1.0" encoding="utf-8"?>',
         '<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">', '  <Fragment>',
         '    <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">')
-    foreach ($file in Get-ChildItem -LiteralPath $stage.FullName -File | Sort-Object Name) {
+    $manifest = Get-Content -LiteralPath (Join-Path $stage.FullName 'manifest.json') -Raw | ConvertFrom-Json
+    foreach ($fileName in @($manifest.files.name) + @('manifest.json')) {
+        $file = Get-Item -LiteralPath (Join-Path $stage.FullName $fileName)
         $id = 'F_' + ($file.Name -replace '[^A-Za-z0-9]', '_')
         $src = [Security.SecurityElement]::Escape($file.FullName)
         $name = [Security.SecurityElement]::Escape($file.Name)
@@ -76,7 +76,7 @@ try {
     $lines += '    </ComponentGroup>', '  </Fragment>', '</Wix>'
     Set-Content -LiteralPath (Join-Path $work 'Files.wxs') -Value $lines -Encoding utf8
 
-    # Licence page: the repository's MIT licence as RTF.
+    # Licence page: the repository licence as RTF.
     $text = (Get-Content -LiteralPath 'LICENSE' -Raw) -replace '\\', '\\\\' -replace '\{', '\{' -replace '\}', '\}'
     $rtf = '{\rtf1\ansi\deff0{\fonttbl{\f0 Segoe UI;}}\f0\fs20 ' + (($text -split "\r?\n\r?\n") -replace "\r?\n", ' ' -join '\par\par ') + '}'
     Set-Content -LiteralPath (Join-Path $work 'License.rtf') -Value $rtf -Encoding ascii
@@ -131,7 +131,7 @@ try {
         $log = Join-Path $work 'install.log'
         $p = Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /l*v `"$log`" INSTALLFOLDER=`"$scratch\`"" -Wait -PassThru
         if ($p.ExitCode -ne 0) { throw "msiexec /i exited $($p.ExitCode); see $log" }
-        foreach ($f in 'sketch-app.exe', 'symbols.json') { if (-not (Test-Path -LiteralPath (Join-Path $scratch $f))) { throw "$f was not installed" } }
+        foreach ($f in 'sketch-app.exe', 'symbols.json', 'symbols.original.json') { if (-not (Test-Path -LiteralPath (Join-Path $scratch $f))) { throw "$f was not installed" } }
         $startMenu = Join-Path ([Environment]::GetFolderPath('Programs')) 'Sketch Rust.lnk'
         $desktop = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Sketch Rust.lnk'
         foreach ($l in $startMenu, $desktop) { if (-not (Test-Path -LiteralPath $l)) { throw "missing shortcut $l" } }

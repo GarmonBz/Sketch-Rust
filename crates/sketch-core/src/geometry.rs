@@ -117,6 +117,8 @@ pub struct DimensionSymbol {
     #[serde(default)]
     pub wall_gap_width: f64,
     #[serde(default)]
+    pub wall_gap_offset: f64,
+    #[serde(default)]
     pub wall_snap: Option<String>,
     #[serde(default)]
     pub wall_side_flip: bool,
@@ -946,28 +948,19 @@ impl GeometryEngine {
                     .and_then(|lib| lib.get(ty))
                     .and_then(|entry| entry.wall_snap.clone())
             });
-            if snap.as_deref() == Some("SIDE") {
-                // Hinge-anchored opening: refs at the hinge and at the far
-                // edge, which lies along the wall direction unless the swing
-                // is flipped.
-                let dir_sign = {
-                    let wall_dir_sign = symbols_sign(&line_by_id(lines, wall_id), &dir);
-                    wall_dir_sign * if symbol.flip_h { -1.0 } else { 1.0 }
-                };
-                add_ref(t, &mut refs);
-                add_ref(
-                    t + dir_sign
-                        * if symbol.wall_side_flip {
-                            -gap_width
-                        } else {
-                            gap_width
-                        },
-                    &mut refs,
-                );
+            let snap = if snap.as_deref() == Some("SIDE") {
+                crate::solids::WallSnap::Side
             } else {
-                add_ref(t - gap_width / 2.0, &mut refs);
-                add_ref(t + gap_width / 2.0, &mut refs);
-            }
+                crate::solids::WallSnap::Center
+            };
+            let against_run = symbols_sign(&line_by_id(lines, wall_id), &dir) < 0.0;
+            let (start, end) = snap.gap_offsets(
+                gap_width,
+                symbol.wall_gap_offset,
+                against_run ^ symbol.flip_h ^ symbol.wall_side_flip,
+            );
+            add_ref(t + start, &mut refs);
+            add_ref(t + end, &mut refs);
         }
         refs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         Some(DimensionChain {
@@ -1143,21 +1136,39 @@ impl GeometryEngine {
             return self.polygon_centroid(&ring);
         }
         let centroid = self.polygon_centroid(&ring);
+        let mut min_x = f64::INFINITY;
+        let mut max_x = f64::NEG_INFINITY;
+        let mut min_y = f64::INFINITY;
+        let mut max_y = f64::NEG_INFINITY;
+        for point in &ring {
+            min_x = min_x.min(point.x);
+            max_x = max_x.max(point.x);
+            min_y = min_y.min(point.y);
+            max_y = max_y.max(point.y);
+        }
+        let max_possible_pole_distance = ((max_x - min_x).min(max_y - min_y)) * 0.5;
+        let centroid_clearance = if self.point_in_polygon(centroid, &ring) {
+            self.boundary_distance(centroid, &ring)
+        } else {
+            0.0
+        };
+        // Any interior point has boundary distance at most min(width, height) / 2.
+        // When the centroid already clears at least half of that upper bound,
+        // centroid_clearance < pole.distance * 0.5 can never hold, so we can
+        // return the centroid directly without running polylabel cell refinement.
+        if max_possible_pole_distance > 0.0
+            && centroid_clearance >= max_possible_pole_distance * 0.5
+        {
+            return centroid;
+        }
         let pole = self.pole_of_inaccessibility(&ring, 0.05);
         let mut anchor = centroid;
         if let Some(pole) = pole {
-            if pole.distance > 1e-9 {
-                let centroid_clearance = if self.point_in_polygon(centroid, &ring) {
-                    self.boundary_distance(centroid, &ring)
-                } else {
-                    0.0
+            if pole.distance > 1e-9 && centroid_clearance < pole.distance * 0.5 {
+                anchor = Pt {
+                    x: pole.x,
+                    y: pole.y,
                 };
-                if centroid_clearance < pole.distance * 0.5 {
-                    anchor = Pt {
-                        x: pole.x,
-                        y: pole.y,
-                    };
-                }
             }
         }
         anchor
@@ -1189,7 +1200,9 @@ impl GeometryEngine {
             min_y = min_y.min(point.y);
             max_y = max_y.max(point.y);
         }
-        let size = (max_x - min_x).min(max_y - min_y);
+        let width = max_x - min_x;
+        let height = max_y - min_y;
+        let size = width.min(height);
         // JS: if (!(size > 0)) return null — negation transcribed literally
         // so a NaN size also yields None.
         #[allow(clippy::neg_cmp_op_on_partial_ord)]
@@ -1223,16 +1236,22 @@ impl GeometryEngine {
                 max: d + half * std::f64::consts::SQRT_2,
             }
         };
-        let half = size / 2.0;
+        let max_span = width.max(height);
+        let step = if max_span / size > 64.0 {
+            max_span / 64.0
+        } else {
+            size
+        };
+        let half = step / 2.0;
         let mut queue: Vec<Cell> = Vec::new();
         let mut x = min_x;
         while x < max_x {
             let mut y = min_y;
             while y < max_y {
                 queue.push(cell(x + half, y + half, half));
-                y += size;
+                y += step;
             }
-            x += size;
+            x += step;
         }
         let centroid = self.polygon_centroid(ring);
         let mut best = cell(centroid.x, centroid.y, 0.0);
@@ -1240,8 +1259,9 @@ impl GeometryEngine {
         if box_center.d > best.d {
             best = box_center;
         }
+        let effective_precision = precision.max(size * 1e-4);
         let mut guard = 0usize;
-        while !queue.is_empty() && guard < 20000 {
+        while !queue.is_empty() && guard < 2000 {
             guard += 1;
             let mut index = 0usize;
             for i in 1..queue.len() {
@@ -1249,7 +1269,7 @@ impl GeometryEngine {
                     index = i;
                 }
             }
-            let current = queue.remove(index);
+            let current = queue.swap_remove(index);
             if current.d > best.d {
                 best = Cell {
                     x: current.x,
@@ -1259,7 +1279,7 @@ impl GeometryEngine {
                     max: current.max,
                 };
             }
-            if current.max - best.d <= precision {
+            if current.max - best.d <= effective_precision {
                 continue;
             }
             let h = current.half / 2.0;
@@ -1633,21 +1653,15 @@ pub mod area_codes {
     pub const DEFAULT_AREA_CODES_JSON: &str = r##"[
 
   { "code": "GLA1", "name": "First Floor", "description": "Gross Living Area", "group": "GLA", "multiplier": 1, "positive": true, "includeInGLA": true, "color": "#2B6CB0", "fill": "rgba(43,108,176,.10)" },
-  { "code": "GLA2", "name": "Second Floor", "description": "Gross Living Area", "group": "GLA", "multiplier": 1, "positive": true, "includeInGLA": true, "color": "#2C5282", "fill": "rgba(44,82,130,.10)" },
-  { "code": "GLA3", "name": "Third Floor", "description": "Gross Living Area", "group": "GLA", "multiplier": 1, "positive": true, "includeInGLA": true, "color": "#3182CE", "fill": "rgba(49,130,206,.10)" },
-  { "code": "GLA4", "name": "Fourth Floor", "description": "Gross Living Area", "group": "GLA", "multiplier": 1, "positive": true, "includeInGLA": true, "color": "#4299E1", "fill": "rgba(66,153,225,.10)" },
+  { "code": "GLA2", "name": "Second Floor", "description": "Gross Living Area", "group": "GLA", "multiplier": 1, "positive": true, "includeInGLA": true, "color": "#0987A0", "fill": "rgba(9,135,160,.10)" },
+  { "code": "GLA3", "name": "Third Floor", "description": "Gross Living Area", "group": "GLA", "multiplier": 1, "positive": true, "includeInGLA": true, "color": "#B83280", "fill": "rgba(184,50,128,.10)" },
+  { "code": "GLA4", "name": "Fourth Floor", "description": "Gross Living Area", "group": "GLA", "multiplier": 1, "positive": true, "includeInGLA": true, "color": "#C53030", "fill": "rgba(197,48,48,.10)" },
   { "code": "GBA1", "name": "First Floor", "description": "Gross Building Area", "group": "GBA", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#024F39", "fill": "rgba(2,79,57,.10)" },
   { "code": "GBA2", "name": "Second Floor", "description": "Gross Building Area", "group": "GBA", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#065F40", "fill": "rgba(6,95,64,.10)" },
   { "code": "GBA3", "name": "Third Floor", "description": "Gross Building Area", "group": "GBA", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#017142", "fill": "rgba(1,113,66,.10)" },
   { "code": "GBA4", "name": "Fourth Floor", "description": "Gross Building Area", "group": "GBA", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#238247", "fill": "rgba(35,130,71,.10)" },
-  { "code": "GBA5", "name": "Fifth Floor", "description": "Gross Building Area", "group": "GBA", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#42924D", "fill": "rgba(66,146,77,.10)" },
-  { "code": "GBA6", "name": "Sixth Floor", "description": "Gross Building Area", "group": "GBA", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#5DA254", "fill": "rgba(93,162,84,.10)" },
-  { "code": "GBA7", "name": "Seventh Floor", "description": "Gross Building Area", "group": "GBA", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#77B25B", "fill": "rgba(119,178,91,.10)" },
-  { "code": "GBA8", "name": "Eighth Floor", "description": "Gross Building Area", "group": "GBA", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#92C263", "fill": "rgba(146,194,99,.10)" },
-  { "code": "GBA9", "name": "Ninth Floor", "description": "Gross Building Area", "group": "GBA", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#ADD26B", "fill": "rgba(173,210,107,.10)" },
-  { "code": "GBA10", "name": "Tenth Floor", "description": "Gross Building Area", "group": "GBA", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#C9E274", "fill": "rgba(201,226,116,.10)" },
   { "code": "GAR", "name": "Garage", "description": "Garage", "group": "GAR", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#805AD5", "fill": "rgba(128,90,213,.10)" },
-  { "code": "GAR2", "name": "Carport", "description": "Carport", "group": "GAR", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#9F7AEA", "fill": "rgba(159,122,234,.10)" },
+  { "code": "CPT", "name": "Carport", "description": "Carport", "group": "GAR", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#9F7AEA", "fill": "rgba(159,122,234,.10)" },
   { "code": "BSMT", "name": "Finished BSMT", "description": "Basement", "group": "BSMT", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#4A5568", "fill": "rgba(74,85,104,.10)" },
   { "code": "BSMT2", "name": "Unfinished BSMT", "description": "Basement", "group": "BSMT", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#718096", "fill": "rgba(113,128,150,.10)" },
   { "code": "OFP", "name": "Open Frame Porch", "description": "Porch/Patio", "group": "P/P", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#B7791F", "fill": "rgba(183,121,31,.10)" },
@@ -2500,6 +2514,7 @@ mod tests {
             y: 0.0,
             wall_id: Some(1),
             wall_gap_width: 3.0,
+            wall_gap_offset: 0.0,
             wall_snap: None,
             wall_side_flip: false,
             flip_h: false,
@@ -2527,7 +2542,7 @@ mod tests {
     #[test]
     fn default_area_codes_parse_to_32_verified_entries() {
         let codes = default_area_codes();
-        assert_eq!(codes.len(), 32);
+        assert_eq!(codes.len(), 26);
         let first = &codes[0];
         assert_eq!(first.code, "GLA1");
         assert_eq!(first.name, "First Floor");
@@ -2640,5 +2655,31 @@ mod tests {
         }]);
         assert_eq!(map.get("GAR").unwrap().name, "Garage");
         assert!(as_map(&[]).is_empty());
+    }
+
+    #[test]
+    fn default_area_codes_order_and_gla_palette() {
+        let codes = area_codes::default_area_codes();
+        let actual_codes: Vec<&str> = codes.iter().map(|c| c.code.as_str()).collect();
+        let expected_codes = [
+            "GLA1", "GLA2", "GLA3", "GLA4", "GBA1", "GBA2", "GBA3", "GBA4", "GAR", "CPT", "BSMT",
+            "BSMT2", "OFP", "SFP", "EFP", "PAT", "PORCH", "DK", "BAL", "POOL", "SHED", "LAND",
+            "SITE", "OTH", "NCA", "UND",
+        ];
+        assert_eq!(actual_codes, expected_codes);
+        let gla: Vec<(&str, &str, &str)> = codes
+            .iter()
+            .take(4)
+            .map(|c| (c.code.as_str(), c.color.as_str(), c.fill.as_str()))
+            .collect();
+        assert_eq!(
+            gla,
+            vec![
+                ("GLA1", "#2B6CB0", "rgba(43,108,176,.10)"),
+                ("GLA2", "#0987A0", "rgba(9,135,160,.10)"),
+                ("GLA3", "#B83280", "rgba(184,50,128,.10)"),
+                ("GLA4", "#C53030", "rgba(197,48,48,.10)"),
+            ]
+        );
     }
 }

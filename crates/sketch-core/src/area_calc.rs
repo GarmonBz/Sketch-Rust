@@ -251,7 +251,7 @@ pub fn recalculate(
     let mut polys: Vec<CalcPoly> = polygons.iter().map(|p| CalcPoly::from(p, geo)).collect();
     build_containment_tree(&mut polys, geo);
     let mut resolved = resolve_subtraction(&mut polys, polygons);
-    apply_subtractions(&mut polys);
+    apply_subtractions(&mut polys, polygons, geo);
     apply_factors(&mut polys, code_table);
     resolved.extend(apply_native_calculations(&mut polys, polygons));
     let totals = rollup(&polys, code_table, polygons);
@@ -261,18 +261,23 @@ pub fn recalculate(
         warnings: resolved,
     }
 }
+/// Attribute key that marks an area as carrying its own net calculation.
+pub const NATIVE_CALCULATION_KEY: &str = "native.calculation";
+/// The key older files used for the same marker; still read, never written.
+const LEGACY_CALCULATION_KEY: &str = "apex.calculation";
 
-/// Native AXF areas use signed multipliers independently of the code table and
+/// True when the area asks for the native "net" calculation, under the
+/// current key or the legacy one.
+pub fn uses_native_net(p: &Polygon) -> bool {
+    [NATIVE_CALCULATION_KEY, LEGACY_CALCULATION_KEY]
+        .iter()
+        .any(|key| p.attributes.get(*key).is_some_and(|v| v == "net"))
+}
+
+/// Natively calculated areas use signed multipliers independently of the code table and
 /// deduct the child's recursively calculated net, including its own factor.
 fn apply_native_calculations(polys: &mut [CalcPoly], originals: &[Polygon]) -> Vec<String> {
-    let native: Vec<bool> = originals
-        .iter()
-        .map(|p| {
-            p.attributes
-                .get("apex.calculation")
-                .is_some_and(|v| v == "net")
-        })
-        .collect();
+    let native: Vec<bool> = originals.iter().map(uses_native_net).collect();
     for (i, calc) in polys.iter_mut().enumerate() {
         if native[i] {
             let multiplier = calc.factor_override.unwrap_or(calc.factor * calc.sign);
@@ -341,7 +346,7 @@ mod native_tests {
             serde_json::from_value(serde_json::json!({
                 "id":id,"type":"GLA1","points":[{"x":0,"y":0},{"x":width,"y":0},{"x":width,"y":10},{"x":0,"y":10}],
                 "factorOverride":factor,"subtractMode":if target==0 {"never"} else {"always"},"subtractTargetId":if target==0 {None} else {Some(target)},
-                "attributes":{"apex.calculation":"net"}
+                "attributes":{"native.calculation":"net"}
             })).unwrap()
         };
         let mut codes = crate::geometry::area_codes::default_area_codes();
@@ -442,7 +447,7 @@ fn resolve_subtraction(polys: &mut [CalcPoly], originals: &[Polygon]) -> Vec<Str
 
 /// `applySubtractions` — each container's `subtracted` is the sum of the
 /// gross areas deducted into it.
-fn apply_subtractions(polys: &mut [CalcPoly]) {
+fn apply_subtractions(polys: &mut [CalcPoly], originals: &[Polygon], geo: &GeometryEngine) {
     let mut deducted: BTreeMap<i64, f64> = BTreeMap::new();
     for calc in polys.iter() {
         if let Some(target) = calc.subtracted_from_id {
@@ -451,6 +456,90 @@ fn apply_subtractions(polys: &mut [CalcPoly]) {
     }
     for calc in polys.iter_mut() {
         calc.subtracted = deducted.get(&calc.id).copied().unwrap_or(0.0);
+    }
+    if !originals.iter().any(is_sketchy_space) {
+        return;
+    }
+    let mut regions = BTreeMap::new();
+    for (calc, original) in polys.iter().zip(originals) {
+        if is_sketchy_space(original) {
+            let cutouts = polys.iter().zip(originals).filter_map(|(cutout, item)| {
+                (cutout.subtracted_from_id == Some(calc.id)
+                    || item
+                        .attributes
+                        .get("sketchy.void")
+                        .is_some_and(|v| v == "true"))
+                .then_some(cutout)
+            });
+            regions.insert(
+                calc.id,
+                sketchy_deduction(calc, cutouts, polys, originals, geo),
+            );
+        }
+    }
+    for calc in polys.iter_mut() {
+        if let Some(&deduction) = regions.get(&calc.id) {
+            calc.subtracted = deduction;
+        }
+    }
+}
+
+fn is_sketchy_space(poly: &Polygon) -> bool {
+    poly.attributes
+        .get("sketchy.area_rule")
+        .is_some_and(|value| value == "0.2")
+}
+
+fn sketchy_deduction<'a>(
+    space: &CalcPoly,
+    cutouts: impl Iterator<Item = &'a CalcPoly>,
+    polys: &[CalcPoly],
+    originals: &[Polygon],
+    geo: &GeometryEngine,
+) -> f64 {
+    use geo::{Area, BooleanOps, LineString, MultiPolygon, Polygon as Region};
+    let ring = |poly: &CalcPoly| {
+        let ring = geo.flatten_ring(&poly.points, &poly.edges, 0.0005);
+        LineString::from(ring.into_iter().map(|p| (p.x, p.y)).collect::<Vec<_>>())
+    };
+    let mut candidates = cutouts.filter(|p| p.points.len() >= 3).peekable();
+    if space.points.len() < 3 || candidates.peek().is_none() {
+        return 0.0;
+    }
+    let mut union = MultiPolygon(vec![]);
+    let mut exact = 0.0;
+    let mut disjoint_and_contained = true;
+    let boundary = Region::new(ring(space), vec![]);
+    for cutout in candidates {
+        let holes: Vec<_> = if polys.iter().zip(originals).any(|(poly, original)| {
+            poly.id == cutout.id
+                && original
+                    .attributes
+                    .get("sketchy.void")
+                    .is_some_and(|value| value == "true")
+        }) {
+            polys
+                .iter()
+                .filter(|poly| poly.subtracted_from_id == Some(cutout.id))
+                .collect()
+        } else {
+            vec![]
+        };
+        let outline = Region::new(ring(cutout), holes.iter().map(|hole| ring(hole)).collect());
+        let clipped = boundary.intersection(&outline);
+        if clipped.unsigned_area() <= 1e-9 {
+            continue;
+        }
+        disjoint_and_contained &= (clipped.unsigned_area() - outline.unsigned_area()).abs() < 1e-7
+            && union.intersection(&clipped).unsigned_area() < 1e-7;
+        exact += cutout.gross - holes.iter().map(|hole| hole.gross).sum::<f64>();
+        union = union.union(&clipped);
+    }
+    // Keep exact circular segment areas when polygon clipping wasn't needed.
+    if disjoint_and_contained {
+        exact.min(space.gross)
+    } else {
+        union.unsigned_area().min(space.gross)
     }
 }
 
@@ -486,12 +575,9 @@ fn rollup(polys: &[CalcPoly], code_table: &[AreaCode], originals: &[Polygon]) ->
         // deducting it from its container already cuts the hole.
         if calc.subtracted_from_id.is_some()
             && calc.net <= 0.0
-            && !originals.iter().any(|p| {
-                p.id == calc.id
-                    && p.attributes
-                        .get("apex.calculation")
-                        .is_some_and(|v| v == "net")
-            })
+            && !originals
+                .iter()
+                .any(|p| p.id == calc.id && uses_native_net(p))
         {
             continue;
         }

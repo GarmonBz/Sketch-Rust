@@ -106,12 +106,83 @@ pub fn walk_closed_loop(
     start_key: &str,
     first_id: &str,
 ) -> Option<ClosedLoop> {
+    let start_node = nodes.get(start_key)?;
+    let first_line = by_id.get(first_id)?;
+    let passes_through =
+        first_line.bow_angle.abs() < 1e-6 && line_passes_through(start_node.point, first_line);
+    if !passes_through && !start_node.ids.iter().any(|id| id != first_id) {
+        return None;
+    }
     let path: Vec<Pt> = Vec::new();
     let edges: Vec<(i64, f64)> = Vec::new();
     let used: Vec<String> = Vec::new();
+    let visited: Vec<String> = Vec::new();
     rec(
-        nodes, by_id, start_key, start_key, first_id, &used, &path, &edges,
+        nodes, by_id, start_key, start_key, first_id, &used, &visited, &path, &edges,
     )
+}
+
+fn line_exits(current_key: &str, line: &SketchLine) -> Vec<String> {
+    let start_k = point_key(line.start);
+    let end_k = point_key(line.end);
+    if current_key == start_k {
+        vec![end_k]
+    } else if current_key == end_k {
+        vec![start_k]
+    } else {
+        vec![start_k, end_k]
+    }
+}
+
+fn can_reach_loop_start(
+    nodes: &std::collections::HashMap<String, Node>,
+    by_id: &std::collections::HashMap<String, SketchLine>,
+    loop_start: &str,
+    from_key: &str,
+    first_edge_id: &str,
+    used_edges: &[String],
+    visited_keys: &[String],
+) -> bool {
+    use std::collections::{HashSet, VecDeque};
+    let Some(first_line) = by_id.get(first_edge_id) else {
+        return false;
+    };
+    let mut seen_nodes: HashSet<String> = visited_keys.iter().cloned().collect();
+    seen_nodes.insert(from_key.to_string());
+    let mut queue: VecDeque<String> = VecDeque::new();
+    for exit_key in line_exits(from_key, first_line) {
+        if exit_key == loop_start {
+            if used_edges.len() + 1 >= 3 {
+                return true;
+            }
+            continue;
+        }
+        if seen_nodes.insert(exit_key.clone()) {
+            queue.push_back(exit_key);
+        }
+    }
+    while let Some(curr_key) = queue.pop_front() {
+        let Some(curr_node) = nodes.get(&curr_key) else {
+            continue;
+        };
+        for edge_id in &curr_node.ids {
+            if *edge_id == first_edge_id || used_edges.iter().any(|u| u == edge_id) {
+                continue;
+            }
+            let Some(line) = by_id.get(edge_id) else {
+                continue;
+            };
+            for next_key in line_exits(&curr_key, line) {
+                if next_key == loop_start {
+                    return true;
+                }
+                if seen_nodes.insert(next_key.clone()) {
+                    queue.push_back(next_key);
+                }
+            }
+        }
+    }
+    false
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -122,6 +193,7 @@ fn rec(
     current_key: &str,
     current_id: &str,
     used: &[String],
+    visited: &[String],
     path: &[Pt],
     edges: &[(i64, f64)],
 ) -> Option<ClosedLoop> {
@@ -140,6 +212,8 @@ fn rec(
     } else {
         vec![start_k.as_str(), end_k.as_str()]
     };
+    let mut next_visited = visited.to_vec();
+    next_visited.push(current_key.to_string());
     for next_key in exits {
         let mut next_points = path.to_vec();
         next_points.push(node.point);
@@ -160,6 +234,9 @@ fn rec(
                     used: next_used,
                 });
             }
+            continue;
+        }
+        if next_visited.iter().any(|k| k == next_key) {
             continue;
         }
         let Some(next_node) = nodes.get(next_key) else {
@@ -189,6 +266,17 @@ fn rec(
             da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
         });
         for cand in candidates {
+            if !can_reach_loop_start(
+                nodes,
+                by_id,
+                loop_start,
+                next_key,
+                &cand,
+                &next_used,
+                &next_visited,
+            ) {
+                continue;
+            }
             if let Some(result) = rec(
                 nodes,
                 by_id,
@@ -196,6 +284,7 @@ fn rec(
                 next_key,
                 &cand,
                 &next_used,
+                &next_visited,
                 &next_points,
                 &next_edges,
             ) {
@@ -275,8 +364,10 @@ pub fn closed_area_vertex_keys(
 
 #[derive(Debug, Clone)]
 struct Weld {
-    /// Index into the exterior list.
+    /// Index into `lines` for the wall being welded.
     line: usize,
+    /// Index into `lines` for the host wall being welded onto.
+    host: usize,
     at_start: bool,
     target: Pt,
     at_endpoint: bool,
@@ -421,6 +512,7 @@ pub fn heal_exterior_wall_joins(
                         if d > 1e-9 && d <= tolerance {
                             consider(Weld {
                                 line: *line,
+                                host: *host,
                                 at_start,
                                 target,
                                 at_endpoint: true,
@@ -442,6 +534,7 @@ pub fn heal_exterior_wall_joins(
                 }
                 consider(Weld {
                     line: *line,
+                    host: *host,
                     at_start,
                     target,
                     at_endpoint: false,
@@ -474,8 +567,7 @@ pub fn heal_exterior_wall_joins(
     }
     for weld in &welds {
         if !weld.at_endpoint {
-            let host = weld.line;
-            add_split(&mut splits, host, weld.target);
+            add_split(&mut splits, weld.host, weld.target);
         }
     }
     if welds.is_empty() && splits.is_empty() {
@@ -646,6 +738,35 @@ pub fn heal_exterior_wall_joins(
             continue;
         }
         virtual_nodes.insert(key.clone(), node.clone());
+    }
+    // Strip degree-<2 trees/open chains from the cycle-search copy so open
+    // wall runs never trigger dead-end walks across the connected floorplan.
+    let mut core_queue: Vec<String> = virtual_nodes
+        .iter()
+        .filter(|(_, node)| node.ids.len() < 2)
+        .map(|(k, _)| k.clone())
+        .collect();
+    while let Some(key) = core_queue.pop() {
+        let Some(node) = virtual_nodes.get(&key) else {
+            continue;
+        };
+        if node.ids.len() >= 2 {
+            continue;
+        }
+        let ids = node.ids.clone();
+        virtual_nodes.remove(&key);
+        for edge_id in ids {
+            virtual_by_id.remove(&edge_id);
+            if let Some(edge) = sub_edges.iter().find(|e| e.id == edge_id) {
+                let other_key = if edge.a == key { &edge.b } else { &edge.a };
+                if let Some(other) = virtual_nodes.get_mut(other_key) {
+                    other.ids.retain(|id| *id != edge_id);
+                    if other.ids.len() < 2 {
+                        core_queue.push(other_key.clone());
+                    }
+                }
+            }
+        }
     }
     let mut new_loop: Option<ClosedLoop> = None;
     'outer: for edge in &sub_edges {
@@ -1321,5 +1442,73 @@ mod tests {
             0
         );
         assert!(polygons.is_empty());
+    }
+
+    #[test]
+    fn t_junction_weld_splits_the_host_wall_and_heals_the_loop() {
+        // Wall 1 runs from (0,-5) to (0,15); walls 2, 3, 4 form a 10x10 room
+        // whose two vertical ends meet the body of wall 1 at (0,0) and nearly
+        // at (0,10). Welding wall 4's end onto wall 1 at (0,10) must split
+        // wall 1 (the host), not wall 4, so the closed loop can be walked.
+        let mut lines = vec![
+            line(1, 0.0, -5.0, 0.0, 15.0),
+            line(2, 0.0, 0.0, 10.0, 0.0),
+            line(3, 10.0, 0.0, 10.0, 10.0),
+            line(4, 10.0, 10.0, 0.1, 10.0),
+        ];
+        let mut polygons: Vec<Polygon> = Vec::new();
+        assert!(heal_exterior_wall_joins(&mut lines, &mut polygons, 1.6));
+        assert_eq!(lines[3].end, Pt::new(0.0, 10.0));
+    }
+
+    #[test]
+    fn multi_room_grid_with_open_welded_spurs_does_not_hang() {
+        // A 5x5 grid of rooms (60 walls) plus an open spur that welds near the
+        // grid without forming a new loop. Without 2-core pruning and
+        // reachability-guided cycle search, walk_closed_loop exhaustively
+        // backtracks through all simple paths in the grid and hangs.
+        let mut lines = Vec::new();
+        let mut id = 1i64;
+        let n = 5;
+        for row in 0..=n {
+            let y = row as f64 * 10.0;
+            for col in 0..n {
+                let x0 = col as f64 * 10.0;
+                let x1 = (col + 1) as f64 * 10.0;
+                lines.push(line(id, x0, y, x1, y));
+                id += 1;
+            }
+        }
+        for col in 0..=n {
+            let x = col as f64 * 10.0;
+            for row in 0..n {
+                let y0 = row as f64 * 10.0;
+                let y1 = (row + 1) as f64 * 10.0;
+                lines.push(line(id, x, y0, x, y1));
+                id += 1;
+            }
+        }
+        let mut polygons: Vec<Polygon> = Vec::new();
+        let mut next_id = 1000;
+        let created =
+            close_joined_exterior_loops(&mut lines, &mut polygons, &close_opts(), &mut next_id);
+        assert_eq!(created, 25);
+
+        // Now add an open 3-wall spur whose start welds near an open wing,
+        // creating a weld candidate but no new closed loop.
+        lines.push(line(id, 50.0, 50.0, 60.0, 50.0));
+        id += 1;
+        lines.push(line(id, 60.0, 50.0, 60.05, 60.0));
+        id += 1;
+        lines.push(line(id, 60.0, 60.0, 70.0, 60.0));
+
+        let started = std::time::Instant::now();
+        let healed = heal_exterior_wall_joins(&mut lines, &mut polygons, 0.8);
+        assert!(!healed);
+        assert!(
+            started.elapsed().as_millis() < 200,
+            "heal_exterior_wall_joins took {:?}",
+            started.elapsed()
+        );
     }
 }

@@ -81,6 +81,8 @@ pub struct Row {
     pub locked: bool,
     pub collapsed: bool,
     pub active: bool,
+    /// The closed area this dedicated layer holds, if any.
+    pub area_poly_id: Option<String>,
 }
 
 /// A drop position for `moveLayer` (S10-031): before / after / inside a group.
@@ -89,26 +91,6 @@ pub enum DragPos {
     Before,
     After,
     Inside,
-}
-
-/// `getAreaLayersForCurrentPage`'s filter inputs (sketch-app.js:1211): the
-/// live page's polygon ids and the layers those polygons point at.
-#[derive(Debug, Clone, Default)]
-pub struct AreaLayerFilter {
-    pub poly_ids: std::collections::HashSet<String>,
-    pub layer_ids: std::collections::HashSet<String>,
-}
-
-impl AreaLayerFilter {
-    /// A layer shows when its `areaPolyId` names a live polygon on the page
-    /// and that polygon still points back at the layer.
-    pub fn keeps(&self, layer: &Layer) -> bool {
-        layer
-            .area_poly_id
-            .as_deref()
-            .is_some_and(|aid| self.poly_ids.contains(aid))
-            && self.layer_ids.contains(&layer.id)
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -393,6 +375,7 @@ impl Layers {
                 locked: layer.locked,
                 collapsed: layer.collapsed,
                 active: layer.id == self.active,
+                area_poly_id: layer.area_poly_id.clone(),
             });
         }
         rows
@@ -431,6 +414,9 @@ impl Layers {
             .iter()
             .position(|l| l.id == target)
             .expect("target survived the strip");
+        // Before / After make the moved branch a sibling of the target, so a
+        // drag between folders reparents it; Inside nests it in the target.
+        let target_parent = self.layer(target).and_then(|t| t.parent_id.clone());
         match position {
             DragPos::Inside => {
                 if let Some(t) = self.items.iter_mut().find(|l| l.id == target) {
@@ -440,14 +426,101 @@ impl Layers {
                 layer.parent_id = Some(target.to_string());
                 self.items.insert(insert_at + 1, layer);
             }
-            DragPos::Before => self.items.insert(insert_at, moving_layer),
+            DragPos::Before => {
+                let mut layer = moving_layer;
+                layer.parent_id = target_parent;
+                self.items.insert(insert_at, layer);
+            }
             DragPos::After => {
                 let mut at = insert_at + 1;
                 while at < self.items.len() && target_children.contains(&self.items[at].id) {
                     at += 1;
                 }
-                self.items.insert(at, moving_layer);
+                let mut layer = moving_layer;
+                layer.parent_id = target_parent;
+                self.items.insert(at, layer);
             }
+        }
+        true
+    }
+
+    /// Moves `id` (with its branch) to the end of the children of `parent`,
+    /// or to the end of the top level when `parent` is `None`. Refused
+    /// (false) for an unknown id, a parent that is not a folder, or a move
+    /// into its own branch.
+    pub fn move_into(&mut self, id: &str, parent: Option<&str>) -> bool {
+        if self.layer(id).is_none() {
+            return false;
+        }
+        match parent {
+            Some(p) => {
+                let Some(target) = self.layer(p) else {
+                    return false;
+                };
+                if !target.is_group || self.descendant_layer_ids(id).iter().any(|d| d == p) {
+                    return false;
+                }
+                let moving: std::collections::HashSet<String> =
+                    self.descendant_layer_ids(id).into_iter().collect();
+                // After the last child that is not part of the moving branch.
+                let last = self
+                    .descendant_layer_ids(p)
+                    .into_iter()
+                    .rev()
+                    .find(|d| d != p && !moving.contains(d));
+                let ok = match last {
+                    Some(last) => self.move_layer(id, &last, DragPos::After),
+                    None => self.move_layer(id, p, DragPos::Inside),
+                };
+                if let Some(l) = self.items.iter_mut().find(|l| l.id == id) {
+                    l.parent_id = Some(p.to_string());
+                }
+                if let Some(t) = self.items.iter_mut().find(|l| l.id == p) {
+                    t.collapsed = false;
+                }
+                ok
+            }
+            None => {
+                let branch: std::collections::HashSet<String> =
+                    self.descendant_layer_ids(id).into_iter().collect();
+                let taken: Vec<Layer> = self
+                    .items
+                    .iter()
+                    .filter(|l| branch.contains(&l.id))
+                    .cloned()
+                    .collect();
+                self.items.retain(|l| !branch.contains(&l.id));
+                for mut layer in taken {
+                    if layer.id == id {
+                        layer.parent_id = None;
+                    }
+                    self.items.push(layer);
+                }
+                true
+            }
+        }
+    }
+
+    /// Dissolves the folder `id`: its children move up to the parent of the
+    /// folder, then the folder goes. Refused (false) for a non-folder.
+    pub fn ungroup(&mut self, id: &str) -> bool {
+        let Some(folder) = self.layer(id) else {
+            return false;
+        };
+        if !folder.is_group {
+            return false;
+        }
+        let parent = folder.parent_id.clone();
+        for l in self
+            .items
+            .iter_mut()
+            .filter(|l| l.parent_id.as_deref() == Some(id))
+        {
+            l.parent_id = parent.clone();
+        }
+        self.items.retain(|l| l.id != id);
+        if self.active == id {
+            self.active = self.default_layer_id();
         }
         true
     }
@@ -461,9 +534,18 @@ impl Layers {
 pub struct LayerGates {
     pub hidden: std::collections::HashSet<i64>,
     pub locked: std::collections::HashSet<i64>,
+    /// Paint rank of each wall and area: 0 paints first (the back), in the
+    /// order of the layers list (the first layer is the back, as in exports).
+    pub z: std::collections::HashMap<i64, usize>,
 }
 
 impl LayerGates {
+    /// Where the id paints in the stack (0 = the back); entities without a
+    /// recorded rank paint with the back.
+    pub fn z_of(&self, id: i64) -> usize {
+        self.z.get(&id).copied().unwrap_or(0)
+    }
+
     /// The id paints (its layer chain is visible).
     pub fn shows(&self, id: i64) -> bool {
         !self.hidden.contains(&id)
@@ -580,6 +662,79 @@ mod tests {
         );
         // A move into its own branch is refused.
         assert!(!l.move_layer("grp", "room-a", DragPos::Inside));
+    }
+
+    fn order(l: &Layers) -> Vec<&str> {
+        l.flatten_layer_order()
+            .iter()
+            .map(|x| x.id.as_str())
+            .collect()
+    }
+
+    #[test]
+    fn dragging_before_or_after_adopts_the_folder_of_the_target() {
+        let mut l = tree();
+        // Kitchen (top level) dropped before Room B joins the Areas folder.
+        assert!(l.move_layer("kitchen", "room-b", DragPos::Before));
+        assert_eq!(
+            l.layer("kitchen").unwrap().parent_id.as_deref(),
+            Some("grp")
+        );
+        assert_eq!(
+            order(&l),
+            vec!["layer-1", "grp", "room-a", "kitchen", "room-b"]
+        );
+        // Room A dropped after Layer 1 leaves the folder.
+        assert!(l.move_layer("room-a", "layer-1", DragPos::After));
+        assert!(l.layer("room-a").unwrap().parent_id.is_none());
+        assert_eq!(
+            order(&l),
+            vec!["layer-1", "room-a", "grp", "kitchen", "room-b"]
+        );
+    }
+
+    #[test]
+    fn move_into_appends_to_a_folder_or_the_top_level() {
+        let mut l = tree();
+        assert!(l.move_into("kitchen", Some("grp")));
+        assert_eq!(
+            l.layer("kitchen").unwrap().parent_id.as_deref(),
+            Some("grp")
+        );
+        assert_eq!(
+            order(&l),
+            vec!["layer-1", "grp", "room-a", "room-b", "kitchen"]
+        );
+        assert!(l.move_into("room-a", None));
+        assert!(l.layer("room-a").unwrap().parent_id.is_none());
+        assert_eq!(
+            order(&l),
+            vec!["layer-1", "grp", "room-b", "kitchen", "room-a"]
+        );
+        // An empty folder takes its first child, unfolded.
+        let mut empty = Layer::new("empty", "Empty");
+        empty.is_group = true;
+        empty.collapsed = true;
+        l.items.push(empty);
+        assert!(l.move_into("room-b", Some("empty")));
+        assert_eq!(
+            l.layer("room-b").unwrap().parent_id.as_deref(),
+            Some("empty")
+        );
+        assert!(!l.layer("empty").unwrap().collapsed);
+        // Not into a plain layer, nor into itself.
+        assert!(!l.move_into("room-b", Some("kitchen")));
+        assert!(!l.move_into("grp", Some("grp")));
+    }
+
+    #[test]
+    fn ungroup_hands_the_children_to_the_parent_of_the_folder() {
+        let mut l = tree();
+        assert!(l.ungroup("grp"));
+        assert!(l.layer("grp").is_none());
+        assert!(l.layer("room-a").unwrap().parent_id.is_none());
+        assert!(l.layer("room-b").unwrap().parent_id.is_none());
+        assert!(!l.ungroup("kitchen"), "a plain layer is not a folder");
     }
 
     #[test]

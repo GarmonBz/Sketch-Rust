@@ -1,5 +1,6 @@
 param([string]$ArchivePath)
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'assert-release-executable.ps1')
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 if (-not $ArchivePath) {
     $ArchivePath = (Get-ChildItem -LiteralPath (Join-Path $repoRoot 'dist') -Filter 'SketchRust-*-windows-x64.zip' |
@@ -11,7 +12,8 @@ $unpacked = Join-Path $work 'unpacked'
 $emptyCwd = Join-Path $work 'empty-cwd'
 $missing = Join-Path $work 'missing-library'
 New-Item -ItemType Directory -Path $work,$unpacked,$emptyCwd,$missing -Force | Out-Null
-Expand-Archive -LiteralPath $ArchivePath -DestinationPath $unpacked -Force
+$unpacked = Join-Path $unpacked ([guid]::NewGuid().ToString('N'))
+Expand-Archive -LiteralPath $ArchivePath -DestinationPath $unpacked
 $manifest = Get-Content -LiteralPath (Join-Path $unpacked 'manifest.json') -Raw | ConvertFrom-Json
 foreach ($entry in $manifest.files) {
     $filePath = [IO.Path]::GetFullPath((Join-Path $unpacked $entry.name))
@@ -23,6 +25,7 @@ foreach ($entry in $manifest.files) {
     }
 }
 $exe = Join-Path $unpacked 'sketch-app.exe'
+Assert-ReleaseExecutable $exe
 $peBytes = [IO.File]::ReadAllBytes($exe)
 $peOffset = [BitConverter]::ToInt32($peBytes, 0x3c)
 $subsystem = [BitConverter]::ToUInt16($peBytes, $peOffset + 92)
@@ -48,27 +51,35 @@ $positive = Invoke-InstallationCheck $exe 'installed'
 if ($positive.exitCode -ne 0 -or $positive.stdout -notmatch 'OK; \d+ external symbols; native view; SKX round trip') {
     throw "Packaged installation failed: $($positive | ConvertTo-Json -Compress)"
 }
+$sketchy = $null
+$sampleName = @('try-sketchie.sketchie.json', 'try-sketchy.sketchy.json') |
+    Where-Object { Test-Path -LiteralPath (Join-Path $unpacked $_) } | Select-Object -First 1
+if ($sampleName) {
+    $sample = Join-Path $work $sampleName
+    Copy-Item -LiteralPath (Join-Path $unpacked $sampleName) -Destination $sample -Force
+    $sketchyOut = Join-Path $work 'sketchy-stdout.txt'
+    $sketchyErr = Join-Path $work 'sketchy-stderr.txt'
+    $probe = Start-Process -FilePath $exe -ArgumentList "--check-sketchy-workfile `"$sample`"" `
+        -WorkingDirectory $emptyCwd -WindowStyle Hidden -PassThru `
+        -RedirectStandardOutput $sketchyOut -RedirectStandardError $sketchyErr
+    if (-not $probe.WaitForExit(30000)) { $probe.Kill(); throw 'Sketchy workfile check timed out.' }
+    $probe.Refresh()
+    $sketchy = (Get-Content -LiteralPath $sketchyOut -Raw).Trim()
+    if ($probe.ExitCode -ne 0 -or $sketchy -notmatch 'Sketchy open, edit, save in place, and reopen') {
+        throw "Packaged Sketchy check failed: $(Get-Content -LiteralPath $sketchyErr -Raw)"
+    }
+}
 $missingExe = Join-Path $missing 'sketch-app.exe'
 Copy-Item -LiteralPath $exe -Destination $missingExe -Force
 $negative = Invoke-InstallationCheck $missingExe 'missing-library'
 if ($negative.exitCode -eq 0 -or $negative.stderr -notmatch 'Installation check failed:') {
     throw "Missing-library check failed: $($negative | ConvertTo-Json -Compress)"
 }
-$contractOut = Join-Path $work 'host-contract-stdout.txt'
-$contractErr = Join-Path $work 'host-contract-stderr.txt'
-$contract = Start-Process -FilePath $missingExe -ArgumentList '--check-apex-inprocess' -WorkingDirectory $emptyCwd `
-    -WindowStyle Hidden -PassThru -RedirectStandardOutput $contractOut -RedirectStandardError $contractErr
-if (-not $contract.WaitForExit(30000)) { $contract.Kill(); throw 'Embedded host-contract check timed out.' }
-$contract.Refresh()
-if ($contract.ExitCode -ne 0 -or (Get-Content -LiteralPath $contractOut -Raw) -notmatch 'runs inside sketch-app.exe') {
-    throw "Embedded host-contract check failed: $(Get-Content -LiteralPath $contractErr -Raw)"
-}
 $result = [ordered]@{
     checkedAtUtc=[DateTime]::UtcNow.ToString('o'); archive=$ArchivePath
     archiveSha256=(Get-FileHash -LiteralPath $ArchivePath -Algorithm SHA256).Hash
     executableSha256=$exeHash; windowsSubsystem=$subsystem; manifestFilesVerified=$manifest.files.Count
-    installation=$positive.stdout.Trim(); missingLibraryExitCode=$negative.exitCode
-    embeddedHostContract=(Get-Content -LiteralPath $contractOut -Raw).Trim()
+    installation=$positive.stdout.Trim(); sketchyWorkfile=$sketchy; missingLibraryExitCode=$negative.exitCode
 }
 $result | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $work 'result.json') -Encoding utf8
 $result | ConvertTo-Json

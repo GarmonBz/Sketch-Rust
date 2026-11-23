@@ -6,7 +6,6 @@
 use iced::widget::svg;
 use iced::{Color, Element};
 
-use crate::theme::ink;
 use crate::Message;
 
 macro_rules! icon_table {
@@ -49,9 +48,15 @@ icon_table! {
         "washing-machine", "circle",
         // Layer rows + their context menu (screen 10's `.layer-row`). The
         // locked state renders `ph-lock-simple-fill` (updateLayersPanel).
-        "folder-simple", "lock-simple", "lock-simple-open", "export", "eye", "eye-slash",
+        "folder-simple", "folder-simple-plus", "lock-simple", "lock-simple-open", "export", "eye", "eye-slash",
         // Wall-shape menu (UIManager.showWallShapeMenu).
         "rectangle", "line-segment",
+        // Next shell chrome & tool tray icons (Phosphor 2.1.1).
+        "arrow-counter-clockwise", "arrow-down", "arrow-left", "arrow-right", "arrow-up",
+        "backspace", "caret-up", "check", "compass", "dots-six-vertical", "dots-three",
+        "files", "list", "plus-circle", "push-pin",
+        // Top bar Open / Save.
+        "floppy-disk", "folder-open", "eraser",
     ],
     fill: [
         "arrow-clockwise", "arrow-counter-clockwise", "arrow-square-in", "arrow-square-out",
@@ -71,12 +76,11 @@ fn handle(name: &str, fill: bool) -> svg::Handle {
 }
 
 fn glyph<'a>(h: svg::Handle, size: f32, color: Color) -> Element<'a, Message> {
-    ink(move || {
-        svg(h.clone())
-            .width(size)
-            .height(size)
-            .style(move |_, _| svg::Style { color: Some(color) })
-    })
+    svg(h)
+        .width(size)
+        .height(size)
+        .style(move |_, _| svg::Style { color: Some(color) })
+        .into()
 }
 
 /// `<i class="ph ph-NAME">` (or `ph-fill`) at `size` px in `color`.
@@ -89,30 +93,123 @@ pub fn ph<'a>(name: &str, size: f32, color: Color) -> Element<'a, Message> {
     icon(name, false, size, color)
 }
 
-/// Fill-weight icon element.
-pub fn ph_fill<'a>(name: &str, size: f32, color: Color) -> Element<'a, Message> {
-    icon(name, true, size, color)
+/// Single-pass monochrome icon element for Next chrome (no double-ink pass).
+pub fn mono<'a>(name: &str, size: f32, color: Color) -> Element<'a, Message> {
+    mono_icon(name, false, size, color)
 }
 
-/// Icon rotated in place (CSS `transform: rotate(deg)`). The rotation is
-/// baked into the SVG (about the 256-unit viewBox center) because the
-/// tiny-skia backend mis-sizes rotated vector images.
-pub fn rotated<'a>(
-    name: &str,
-    fill: bool,
-    size: f32,
-    color: Color,
-    degrees: f32,
-) -> Element<'a, Message> {
-    let src = std::str::from_utf8(bytes(name, fill)).unwrap_or_default();
-    let open_end = src.find('>').map_or(0, |i| i + 1);
-    let close = src.rfind("</svg>").unwrap_or(src.len());
-    let rotated = format!(
-        "{}<g transform=\"rotate({degrees} 128 128)\">{}</g></svg>",
-        &src[..open_end],
-        &src[open_end..close]
-    );
-    glyph(svg::Handle::from_memory(rotated.into_bytes()), size, color)
+/// Single-pass monochrome icon element with optional fill weight.
+pub fn mono_icon<'a>(name: &str, fill: bool, size: f32, color: Color) -> Element<'a, Message> {
+    svg(handle(name, fill))
+        .width(size)
+        .height(size)
+        .style(move |_, _| svg::Style { color: Some(color) })
+        .into()
+}
+
+/// The colour an icon carries by meaning (see `ui::tokens::IconTint`).
+/// Structural glyphs (carets, dots, the menu lines, close, plain arrows,
+/// check marks, plus and minus) return `None` and stay in the text colour, so
+/// the colour lands on the icons that name an action.
+pub fn tint_of(name: &str) -> Option<crate::ui::tokens::IconTint> {
+    use crate::ui::tokens::IconTint::{Blue, Green, Orange, Red, Slate};
+    Some(match name {
+        "cursor"
+        | "selection-background"
+        | "selection-all"
+        | "lasso"
+        | "intersect"
+        | "arrows-out-cardinal"
+        | "magnifying-glass"
+        | "arrows-in"
+        | "arrows-out"
+        | "corners-out"
+        | "grid-four"
+        | "compass"
+        | "globe-hemisphere-west"
+        | "map-trifold"
+        | "info"
+        | "keyboard"
+        | "list-numbers"
+        | "clipboard-text"
+        | "gear"
+        | "circle-half-tilt"
+        | "house-line"
+        | "polygon"
+        | "scissors"
+        | "arrow-clockwise"
+        | "arrow-counter-clockwise"
+        | "arrow-u-up-left"
+        | "arrow-u-up-right"
+        | "arrows-left-right"
+        | "arrows-down-up"
+        | "eye"
+        | "layout"
+        | "browser"
+        | "moon"
+        | "sun"
+        | "caret-line-left"
+        | "caret-line-right" => Blue,
+        "pencil-simple"
+        | "ruler"
+        | "arrows-horizontal"
+        | "bezier-curve"
+        | "line-segments"
+        | "line-segment"
+        | "copy"
+        | "copy-simple"
+        | "calculator"
+        | "funnel"
+        | "crop"
+        | "map-pin"
+        | "square-split-vertical"
+        | "text-t"
+        | "text-aa"
+        | "couch"
+        | "sliders"
+        | "magnet"
+        | "drop"
+        | "square"
+        | "rectangle"
+        | "circle"
+        | "shapes"
+        | "vector-two"
+        | "blueprint"
+        | "list-bullets"
+        | "list-dashes"
+        | "arrow-line-up"
+        | "arrow-line-down"
+        | "star"
+        | "stairs"
+        | "door-open"
+        | "bathtub"
+        | "oven"
+        | "washing-machine"
+        | "swimming-pool"
+        | "fire" => Orange,
+        "eraser" | "x-bold" | "trash" | "file-x" | "file-minus" | "eye-slash" | "bounding-box"
+        | "hand-pointing" | "minus-circle" | "warning" | "power" | "fire-extinguisher" => Red,
+        "plus-circle" | "file-plus" | "file" | "files" | "folder-open" | "folder-simple"
+        | "folder-simple-plus" | "floppy-disk" | "check-circle" | "export" | "arrow-square-in"
+        | "arrow-square-out" | "printer" | "file-pdf" | "file-image" | "image" | "monitor"
+        | "envelope-simple" | "arrow-up-right" => Green,
+        "bluetooth"
+        | "bluetooth-connected"
+        | "lock-simple"
+        | "lock-simple-open"
+        | "clock-counter-clockwise"
+        | "crosshair"
+        | "camera" => Slate,
+        _ => return None,
+    })
+}
+
+/// An icon in its tint, or in `fallback` when it has none. Use for icons in
+/// their resting state; active (on accent) and disabled states keep their
+/// own single colour so the state reads first.
+pub fn tinted<'a>(name: &str, fill: bool, size: f32, fallback: Color) -> Element<'a, Message> {
+    let color = tint_of(name).map_or(fallback, crate::ui::tokens::icon_tint);
+    mono_icon(name, fill, size, color)
 }
 
 /// The 20x20 application logo at the left of the title bar.
