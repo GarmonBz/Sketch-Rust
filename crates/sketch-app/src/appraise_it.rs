@@ -526,12 +526,16 @@ impl Session {
     }
 
     fn initialize_for_process(&self, process_id: i32) -> Result<bool> {
-        self.call(
+        let result = self.call(
             w!("InitializeForProcess"),
             "connecting to the reviewed session",
             &mut [Value::from_i32(process_id), Value::from_text("Sketch Rust")],
-        )?
-        .boolean("InitializeForProcess")
+        )?;
+        match result.data().vt {
+            VT_BOOL => result.boolean("InitializeForProcess"),
+            VT_EMPTY | VT_NULL => Ok(true),
+            _ => result.boolean("InitializeForProcess"),
+        }
     }
 
     fn running(&self) -> Result<bool> {

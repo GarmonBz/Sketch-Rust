@@ -4130,7 +4130,7 @@ checksum = "33f4fe9184a62d842c9ef383018f3306d8ba224fd9d836f56d7288308847c256"
 
 [[package]]
 name = "sketch-app"
-version = "0.3.14"
+version = "0.3.15"
 dependencies = [
  "btleplug",
  "console_error_panic_hook",
@@ -4156,7 +4156,7 @@ dependencies = [
 
 [[package]]
 name = "sketch-core"
-version = "0.3.14"
+version = "0.3.15"
 dependencies = [
  "crc32fast",
  "flate2",
