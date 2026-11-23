@@ -3,10 +3,7 @@
 use rfd::AsyncFileDialog;
 
 /// Prompt the user to pick a single file and return `(file_name, bytes)`.
-pub async fn pick_file_bytes(
-    filter: String,
-    extensions: Vec<String>,
-) -> Option<(String, Vec<u8>)> {
+pub async fn pick_file_bytes(filter: String, extensions: Vec<String>) -> Option<(String, Vec<u8>)> {
     let mut dialog = AsyncFileDialog::new();
     if !extensions.is_empty() {
         let ext_refs: Vec<&str> = extensions.iter().map(String::as_str).collect();

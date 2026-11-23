@@ -271,7 +271,9 @@ impl App {
         self.autosave_prompt = false;
         if accept {
             if let Some((path, mut model)) = self.autosave.recovery.clone() {
-                let source = model.as_object_mut().and_then(|m| m.remove("recoverySource"));
+                let source = model
+                    .as_object_mut()
+                    .and_then(|m| m.remove("recoverySource"));
                 let task = self.apply_model(&model, "Recovered sketch");
                 if let Some(source) = source {
                     let _ = self.rebind_recovered_source(&source);

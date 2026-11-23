@@ -97,10 +97,17 @@ fn err(msg: impl Into<String>) -> SketchyError {
 // ---------------------------------------------------------------- helpers
 
 /// Splits `obj` into (keys in `keys`, everything else).
-fn split_object(obj: &Map<String, Value>, keys: &[&str]) -> (Map<String, Value>, Map<String, Value>) {
+fn split_object(
+    obj: &Map<String, Value>,
+    keys: &[&str],
+) -> (Map<String, Value>, Map<String, Value>) {
     let (mut owned, mut rest) = (Map::new(), Map::new());
     for (k, v) in obj {
-        let side = if keys.contains(&k.as_str()) { &mut owned } else { &mut rest };
+        let side = if keys.contains(&k.as_str()) {
+            &mut owned
+        } else {
+            &mut rest
+        };
         side.insert(k.clone(), v.clone());
     }
     (owned, rest)
@@ -161,7 +168,9 @@ fn finite_guard<T>(run: impl FnOnce() -> Result<T, SketchyError>) -> Result<T, S
     NON_FINITE.with(|f| f.set(false));
     let out = run();
     if NON_FINITE.with(|f| f.replace(false)) {
-        return Err(err("a number became infinite or NaN while converting (coordinates too large?)"));
+        return Err(err(
+            "a number became infinite or NaN while converting (coordinates too large?)",
+        ));
     }
     out
 }
@@ -175,7 +184,8 @@ fn to_map<T: serde::Serialize>(v: &T) -> Result<Map<String, Value>, SketchyError
 }
 
 fn as_object<'a>(v: &'a Value, what: &str) -> Result<&'a Map<String, Value>, SketchyError> {
-    v.as_object().ok_or_else(|| err(format!("{what} must be an object")))
+    v.as_object()
+        .ok_or_else(|| err(format!("{what} must be an object")))
 }
 
 /// The app's world is +y up, like Sketchy. `geometry.rs` `flatten_ring` and
@@ -205,7 +215,12 @@ fn arc_height(chord: f64, bow: f64) -> f64 {
 
 /// Length of an app object's `start`-`end` chord, when it has both.
 fn chord_of(obj: &Map<String, Value>) -> Option<f64> {
-    let p = |k: &str| Some((obj.get(k)?.get("x")?.as_f64()?, obj.get(k)?.get("y")?.as_f64()?));
+    let p = |k: &str| {
+        Some((
+            obj.get(k)?.get("x")?.as_f64()?,
+            obj.get(k)?.get("y")?.as_f64()?,
+        ))
+    };
     let ((x0, y0), (x1, y1)) = (p("start")?, p("end")?);
     Some((x1 - x0).hypot(y1 - y0))
 }
@@ -261,13 +276,21 @@ struct Ctx {
 
 impl Ctx {
     fn new(scale: f64) -> Self {
-        Ctx { scale, ..Ctx::default() }
+        Ctx {
+            scale,
+            ..Ctx::default()
+        }
     }
 
     /// Sketchy id of an app wall referenced from an annotation.
     fn wall_sid(&self, v: &Value) -> Option<String> {
         let plain = plain_id(v)?;
-        Some(self.wall_sk.get(&v.to_string()).cloned().unwrap_or_else(|| format!("w-{plain}")))
+        Some(
+            self.wall_sk
+                .get(&v.to_string())
+                .cloned()
+                .unwrap_or_else(|| format!("w-{plain}")),
+        )
     }
 
     fn point_to_sketchy(&self, p: &Value) -> Result<[f64; 2], SketchyError> {
@@ -298,7 +321,12 @@ impl Ctx {
     /// Sketchy id for an app polygon id referenced from another polygon.
     fn space_ref_to_sketchy(&self, v: &Value) -> Option<String> {
         let plain = plain_id(v)?;
-        Some(self.to_sk.get(&v.to_string()).cloned().unwrap_or_else(|| format!("a-{plain}")))
+        Some(
+            self.to_sk
+                .get(&v.to_string())
+                .cloned()
+                .unwrap_or_else(|| format!("a-{plain}")),
+        )
     }
 
     /// App id of a referenced element; `None` when no converted element has the Sketchy
@@ -309,10 +337,14 @@ impl Ctx {
 
     /// App id of a converted element (every one is in `to_app` after [`Ctx::assign_ids`]).
     fn app_id(&self, kind: char, prefix: &str, sid: &str) -> Value {
-        self.to_app.get(&(kind, sid.to_string())).cloned().unwrap_or_else(|| {
-            let rest = sid.strip_prefix(prefix).unwrap_or(sid);
-            rest.parse::<i64>().map_or_else(|_| Value::String(rest.to_string()), Value::from)
-        })
+        self.to_app
+            .get(&(kind, sid.to_string()))
+            .cloned()
+            .unwrap_or_else(|| {
+                let rest = sid.strip_prefix(prefix).unwrap_or(sid);
+                rest.parse::<i64>()
+                    .map_or_else(|_| Value::String(rest.to_string()), Value::from)
+            })
     }
 
     /// Assigns an app id to every wall, area and mapped annotation. Returns the
@@ -329,16 +361,27 @@ impl Ctx {
         let reserved: Vec<i64> = parked
             .iter()
             .filter_map(|a| {
-                let spec = ANNO_SPECS.iter().find(|s| a.get("kind").and_then(Value::as_str) == Some(s.kind))?;
+                let spec = ANNO_SPECS
+                    .iter()
+                    .find(|s| a.get("kind").and_then(Value::as_str) == Some(s.kind))?;
                 canonical_id(spec.prefix, a.get("id")?.as_str()?)
             })
             .collect();
         used.extend(&reserved);
         let mut elems: Vec<Elem> = Vec::new();
         for level in levels {
-            elems.extend(level.walls.iter().map(|w| ('w', w.id.as_str(), ns_extras(&w.extras))));
             elems.extend(
-                level.spaces.iter().filter(|s| is_area(&s.shape)).map(|s| ('a', s.id.as_str(), ns_extras(&s.extras))),
+                level
+                    .walls
+                    .iter()
+                    .map(|w| ('w', w.id.as_str(), ns_extras(&w.extras))),
+            );
+            elems.extend(
+                level
+                    .spaces
+                    .iter()
+                    .filter(|s| is_area(&s.shape))
+                    .map(|s| ('a', s.id.as_str(), ns_extras(&s.extras))),
             );
         }
         elems.extend(annos.iter().map(|m| (m.spec.ch, m.id, ns_of(m.obj))));
@@ -364,7 +407,12 @@ impl Ctx {
                 None => fresh.push((kind, sid)),
             }
         }
-        let max_used = used.iter().copied().filter(|n| id_in_range(*n)).max().unwrap_or(0);
+        let max_used = used
+            .iter()
+            .copied()
+            .filter(|n| id_in_range(*n))
+            .max()
+            .unwrap_or(0);
         self.taken = used;
         self.next_free = (max_used + 1).max(next_id.unwrap_or(1));
         let any_fresh = !fresh.is_empty();
@@ -379,7 +427,10 @@ impl Ctx {
                 _ => None,
             };
         }
-        let outgrown = reserved.iter().max().is_some_and(|m| next_id.is_none_or(|n| *m >= n));
+        let outgrown = reserved
+            .iter()
+            .max()
+            .is_some_and(|m| next_id.is_none_or(|n| *m >= n));
         Ok(any_fresh || outgrown)
     }
 
@@ -424,7 +475,8 @@ impl Seg {
 /// residual holds the app polygon) keeps the wall-less edges its author chose,
 /// unless it was opened outline-only before.
 fn wants_display(space: &Space) -> bool {
-    ns_extras(&space.extras).is_none_or(|r| !r.contains_key("points") || r.get(DISPLAY) == Some(&Value::Bool(true)))
+    ns_extras(&space.extras)
+        .is_none_or(|r| !r.contains_key("points") || r.get(DISPLAY) == Some(&Value::Bool(true)))
 }
 
 impl Ctx {
@@ -456,33 +508,58 @@ impl Ctx {
             let mut segs: Vec<Seg> = level
                 .walls
                 .iter()
-                .map(|w| Seg { a: self.to_app_xy(w.start), b: self.to_app_xy(w.end), bulge: w.bulge.unwrap_or(0.0), id: None })
+                .map(|w| Seg {
+                    a: self.to_app_xy(w.start),
+                    b: self.to_app_xy(w.end),
+                    bulge: w.bulge.unwrap_or(0.0),
+                    id: None,
+                })
                 .collect();
             for subdivision in [false, true] {
-                for space in level.spaces.iter().filter(|s| s.within.is_some() == subdivision && wants_display(s)) {
-                    let Some(outline) = outline_of(&space.shape, &Value::Null) else { continue };
+                for space in level
+                    .spaces
+                    .iter()
+                    .filter(|s| s.within.is_some() == subdivision && wants_display(s))
+                {
+                    let Some(outline) = outline_of(&space.shape, &Value::Null) else {
+                        continue;
+                    };
                     let kind = if subdivision { "interior" } else { "exterior" };
                     let mut assigned = Vec::new();
                     let n = outline.points.len();
                     for i in 0..n {
-                        let (a, b) = (self.to_app_xy(outline.points[i]), self.to_app_xy(outline.points[(i + 1) % n]));
+                        let (a, b) = (
+                            self.to_app_xy(outline.points[i]),
+                            self.to_app_xy(outline.points[(i + 1) % n]),
+                        );
                         if same_point(a, b) {
                             continue;
                         }
-                        let bulge = outline.bulges.as_ref().and_then(|b| b.get(i)).copied().unwrap_or(0.0);
+                        let bulge = outline
+                            .bulges
+                            .as_ref()
+                            .and_then(|b| b.get(i))
+                            .copied()
+                            .unwrap_or(0.0);
                         match segs.iter().find(|s| s.joins(a, b, bulge)) {
                             Some(Seg { id: Some(id), .. }) => assigned.push((i, *id)),
                             Some(_) => {}
                             None => {
                                 let id = self.display_id(space, i)?;
-                                segs.push(Seg { a, b, bulge, id: Some(id) });
+                                segs.push(Seg {
+                                    a,
+                                    b,
+                                    bulge,
+                                    id: Some(id),
+                                });
                                 let bow = bow_of_bulge(bulge);
                                 let mut line = json!({"id": id, "start": {"x": num(a[0]), "y": num(a[1])},
                                                       "end": {"x": num(b[0]), "y": num(b[1])},
                                                       "type": kind, DISPLAY: true});
                                 if bow != 0.0 {
                                     line["bowAngle"] = num(bow);
-                                    line["arcHeight"] = num(arc_height((b[0] - a[0]).hypot(b[1] - a[1]), bow));
+                                    line["arcHeight"] =
+                                        num(arc_height((b[0] - a[0]).hypot(b[1] - a[1]), bow));
                                 }
                                 self.display_lines[li].push(line);
                                 assigned.push((i, id));
@@ -515,17 +592,25 @@ fn prefix_of(kind: char) -> &'static str {
     match kind {
         'w' => "w-",
         'a' => "a-",
-        c => ANNO_SPECS.iter().find(|s| s.ch == c).map_or("", |s| s.prefix),
+        c => ANNO_SPECS
+            .iter()
+            .find(|s| s.ch == c)
+            .map_or("", |s| s.prefix),
     }
 }
 
 /// The `extras[NS]` residual of a raw Sketchy object.
 fn ns_of(obj: &Map<String, Value>) -> Option<&Map<String, Value>> {
-    obj.get("extras").and_then(|e| e.get(NS)).and_then(Value::as_object)
+    obj.get("extras")
+        .and_then(|e| e.get(NS))
+        .and_then(Value::as_object)
 }
 
 fn ns_extras(extras: &Option<Map<String, Value>>) -> Option<&Map<String, Value>> {
-    extras.as_ref().and_then(|e| e.get(NS)).and_then(Value::as_object)
+    extras
+        .as_ref()
+        .and_then(|e| e.get(NS))
+        .and_then(Value::as_object)
 }
 
 /// `Some(n)` only for exactly `<prefix><n>` (digits, no leading zeros).
@@ -542,7 +627,9 @@ fn canonical_id(prefix: &str, id: &str) -> Option<i64> {
 fn used_ids(levels: &[Level]) -> HashSet<i64> {
     let mut used = HashSet::new();
     for level in levels {
-        let Some(page) = ns_extras(&level.extras) else { continue };
+        let Some(page) = ns_extras(&level.extras) else {
+            continue;
+        };
         for item in page.values().filter_map(Value::as_array).flatten() {
             used.extend(item.get("id").and_then(Value::as_i64));
         }
@@ -551,7 +638,10 @@ fn used_ids(levels: &[Level]) -> HashSet<i64> {
 }
 
 fn is_area(shape: &Shape) -> bool {
-    matches!(shape, Shape::Polygon { .. } | Shape::Circle { .. } | Shape::Ellipse { .. })
+    matches!(
+        shape,
+        Shape::Polygon { .. } | Shape::Circle { .. } | Shape::Ellipse { .. }
+    )
 }
 
 // ------------------------------------------------- lossy field groups
@@ -587,11 +677,19 @@ fn put(obj: &mut Map<String, Value>, key: &str, v: Option<Value>) {
 }
 
 fn bulge_fwd(_: &Ctx, obj: &Map<String, Value>) -> Map<String, Value> {
-    single("bulge", f64_of(obj, "bowAngle").filter(|b| *b != 0.0).map(|b| num(bulge_of_bow(b))))
+    single(
+        "bulge",
+        f64_of(obj, "bowAngle")
+            .filter(|b| *b != 0.0)
+            .map(|b| num(bulge_of_bow(b))),
+    )
 }
 
 fn bulge_back(_: &Ctx, obj: &mut Map<String, Value>, core: &Map<String, Value>) {
-    let bow = core.get("bulge").and_then(Value::as_f64).map_or(0.0, bow_of_bulge);
+    let bow = core
+        .get("bulge")
+        .and_then(Value::as_f64)
+        .map_or(0.0, bow_of_bulge);
     if bow != 0.0 || obj.contains_key("bowAngle") {
         obj.insert("bowAngle".into(), num(bow));
     }
@@ -604,27 +702,60 @@ fn bulge_back(_: &Ctx, obj: &mut Map<String, Value>, core: &Map<String, Value>) 
 }
 
 fn thickness_fwd(ctx: &Ctx, obj: &Map<String, Value>) -> Map<String, Value> {
-    single("thickness", f64_of(obj, "thickness").map(|t| num(t / 12.0 / ctx.scale)))
+    single(
+        "thickness",
+        f64_of(obj, "thickness").map(|t| num(t / 12.0 / ctx.scale)),
+    )
 }
 
 fn thickness_back(ctx: &Ctx, obj: &mut Map<String, Value>, core: &Map<String, Value>) {
-    put(obj, "thickness", core.get("thickness").and_then(Value::as_f64).map(|t| num(t * ctx.scale * 12.0)));
+    put(
+        obj,
+        "thickness",
+        core.get("thickness")
+            .and_then(Value::as_f64)
+            .map(|t| num(t * ctx.scale * 12.0)),
+    );
 }
 
 fn kind_fwd(_: &Ctx, obj: &Map<String, Value>) -> Map<String, Value> {
-    let kind = str_of(obj, "type").map(|t| if t == "exterior" { "exterior" } else { "interior" });
+    let kind = str_of(obj, "type").map(|t| {
+        if t == "exterior" {
+            "exterior"
+        } else {
+            "interior"
+        }
+    });
     single("kind", kind.map(Value::from))
 }
 
 fn kind_back(_: &Ctx, obj: &mut Map<String, Value>, core: &Map<String, Value>) {
-    let t = core.get("kind").and_then(Value::as_str).map(|k| if k == "exterior" { "exterior" } else { "interior" });
+    let t = core.get("kind").and_then(Value::as_str).map(|k| {
+        if k == "exterior" {
+            "exterior"
+        } else {
+            "interior"
+        }
+    });
     put(obj, "type", t.map(Value::from));
 }
 
 const WALL_GROUPS: &[Group] = &[
-    Group { core_keys: &["bulge"], fwd: bulge_fwd, back: bulge_back },
-    Group { core_keys: &["thickness"], fwd: thickness_fwd, back: thickness_back },
-    Group { core_keys: &["kind"], fwd: kind_fwd, back: kind_back },
+    Group {
+        core_keys: &["bulge"],
+        fwd: bulge_fwd,
+        back: bulge_back,
+    },
+    Group {
+        core_keys: &["thickness"],
+        fwd: thickness_fwd,
+        back: thickness_back,
+    },
+    Group {
+        core_keys: &["kind"],
+        fwd: kind_fwd,
+        back: kind_back,
+    },
 ];
 
 fn name_fwd(_: &Ctx, obj: &Map<String, Value>) -> Map<String, Value> {
@@ -644,7 +775,10 @@ fn is_code_class(c: &Value) -> bool {
 }
 
 fn code_fwd(_: &Ctx, obj: &Map<String, Value>) -> Map<String, Value> {
-    single("classifications", str_of(obj, "type").map(|c| json!([{"scheme": code_scheme(), "code": c}])))
+    single(
+        "classifications",
+        str_of(obj, "type").map(|c| json!([{"scheme": code_scheme(), "code": c}])),
+    )
 }
 
 fn code_back(_: &Ctx, obj: &mut Map<String, Value>, core: &Map<String, Value>) {
@@ -657,7 +791,10 @@ fn code_back(_: &Ctx, obj: &mut Map<String, Value>, core: &Map<String, Value>) {
 }
 
 fn factor_fwd(_: &Ctx, obj: &Map<String, Value>) -> Map<String, Value> {
-    single("area_factor", f64_of(obj, "factor").filter(|f| *f != 1.0).map(num))
+    single(
+        "area_factor",
+        f64_of(obj, "factor").filter(|f| *f != 1.0).map(num),
+    )
 }
 
 fn factor_back(_: &Ctx, obj: &mut Map<String, Value>, core: &Map<String, Value>) {
@@ -679,18 +816,24 @@ fn measured_fwd(_: &Ctx, obj: &Map<String, Value>) -> Map<String, Value> {
 }
 
 fn measured_back(_: &Ctx, obj: &mut Map<String, Value>, core: &Map<String, Value>) {
-    let m = core.get("measured_to").and_then(Value::as_str).and_then(|m| match m {
-        "interior_face" => Some("interior"),
-        "exterior_face" => Some("exterior"),
-        "centerline" => Some("center"),
-        _ => None,
-    });
+    let m = core
+        .get("measured_to")
+        .and_then(Value::as_str)
+        .and_then(|m| match m {
+            "interior_face" => Some("interior"),
+            "exterior_face" => Some("exterior"),
+            "centerline" => Some("center"),
+            _ => None,
+        });
     put(obj, "measureTo", m.map(Value::from));
 }
 
 fn subtract_fwd(ctx: &Ctx, obj: &Map<String, Value>) -> Map<String, Value> {
     let within = (str_of(obj, "subtractMode") == Some("always"))
-        .then(|| obj.get("subtractTargetId").and_then(|t| ctx.space_ref_to_sketchy(t)))
+        .then(|| {
+            obj.get("subtractTargetId")
+                .and_then(|t| ctx.space_ref_to_sketchy(t))
+        })
         .flatten();
     let mut m = single("within", within.map(Value::from));
     if m.contains_key("within") {
@@ -724,7 +867,12 @@ fn subtract_back(ctx: &Ctx, obj: &mut Map<String, Value>, core: &Map<String, Val
 }
 
 fn attributes_fwd(_: &Ctx, obj: &Map<String, Value>) -> Map<String, Value> {
-    single("attributes", obj.get("attributes").filter(|a| a.as_object().is_some_and(|m| !m.is_empty())).cloned())
+    single(
+        "attributes",
+        obj.get("attributes")
+            .filter(|a| a.as_object().is_some_and(|m| !m.is_empty()))
+            .cloned(),
+    )
 }
 
 fn attributes_back(_: &Ctx, obj: &mut Map<String, Value>, core: &Map<String, Value>) {
@@ -740,8 +888,14 @@ fn bow_of_edge(edge: &Value) -> f64 {
 }
 
 fn bulges_fwd(_: &Ctx, obj: &Map<String, Value>) -> Map<String, Value> {
-    let edges = obj.get("edges").and_then(Value::as_array).map_or(&[][..], Vec::as_slice);
-    let points = obj.get("points").and_then(Value::as_array).map_or(0, Vec::len);
+    let edges = obj
+        .get("edges")
+        .and_then(Value::as_array)
+        .map_or(&[][..], Vec::as_slice);
+    let points = obj
+        .get("points")
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len);
     if edges.iter().all(|e| bow_of_edge(e) == 0.0) {
         return Map::new();
     }
@@ -755,8 +909,14 @@ fn bulges_back(_: &Ctx, obj: &mut Map<String, Value>, core: &Map<String, Value>)
     let bulges: Vec<f64> = core
         .get("bulges")
         .and_then(Value::as_array)
-        .map_or_else(Vec::new, |b| b.iter().map(|v| v.as_f64().unwrap_or(0.0)).collect());
-    let mut edges: Vec<Value> = obj.get("edges").and_then(Value::as_array).cloned().unwrap_or_default();
+        .map_or_else(Vec::new, |b| {
+            b.iter().map(|v| v.as_f64().unwrap_or(0.0)).collect()
+        });
+    let mut edges: Vec<Value> = obj
+        .get("edges")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     while edges.len() < bulges.len() {
         edges.push(json!({"lineId": null, "bowAngle": num(0.0)}));
     }
@@ -775,14 +935,46 @@ fn bulges_back(_: &Ctx, obj: &mut Map<String, Value>, core: &Map<String, Value>)
 }
 
 const POLYGON_GROUPS: &[Group] = &[
-    Group { core_keys: &["name"], fwd: name_fwd, back: name_back },
-    Group { core_keys: &["classifications"], fwd: code_fwd, back: code_back },
-    Group { core_keys: &["area_factor"], fwd: factor_fwd, back: factor_back },
-    Group { core_keys: &["measured_to"], fwd: measured_fwd, back: measured_back },
-    Group { core_keys: &["within", "subtract"], fwd: subtract_fwd, back: subtract_back },
-    Group { core_keys: &["attributes"], fwd: attributes_fwd, back: attributes_back },
-    Group { core_keys: &["bulges"], fwd: bulges_fwd, back: bulges_back },
-    Group { core_keys: &["use", "finished", "enclosure"], fwd: space_use_fwd, back: keep_back },
+    Group {
+        core_keys: &["name"],
+        fwd: name_fwd,
+        back: name_back,
+    },
+    Group {
+        core_keys: &["classifications"],
+        fwd: code_fwd,
+        back: code_back,
+    },
+    Group {
+        core_keys: &["area_factor"],
+        fwd: factor_fwd,
+        back: factor_back,
+    },
+    Group {
+        core_keys: &["measured_to"],
+        fwd: measured_fwd,
+        back: measured_back,
+    },
+    Group {
+        core_keys: &["within", "subtract"],
+        fwd: subtract_fwd,
+        back: subtract_back,
+    },
+    Group {
+        core_keys: &["attributes"],
+        fwd: attributes_fwd,
+        back: attributes_back,
+    },
+    Group {
+        core_keys: &["bulges"],
+        fwd: bulges_fwd,
+        back: bulges_back,
+    },
+    Group {
+        core_keys: &["use", "finished", "enclosure"],
+        fwd: space_use_fwd,
+        back: keep_back,
+    },
 ];
 
 /// Core keys handled elsewhere, so the leftover rule skips them.
@@ -795,14 +987,25 @@ fn project(ctx: &Ctx, obj: &Map<String, Value>, groups: &[Group]) -> Map<String,
 
 /// Applies the core view to `obj`, keeping residual values whose projection
 /// still equals the core value (core wins otherwise).
-fn apply_groups(ctx: &Ctx, obj: &mut Map<String, Value>, view: &Map<String, Value>, groups: &[Group]) {
+fn apply_groups(
+    ctx: &Ctx,
+    obj: &mut Map<String, Value>,
+    view: &Map<String, Value>,
+    groups: &[Group],
+) {
     for g in groups {
         let stale = (g.fwd)(ctx, obj);
-        if g.core_keys.iter().all(|k| approx_eq(stale.get(*k), view.get(*k))) {
+        if g.core_keys
+            .iter()
+            .all(|k| approx_eq(stale.get(*k), view.get(*k)))
+        {
             continue;
         }
-        let core: Map<String, Value> =
-            g.core_keys.iter().filter_map(|k| view.get(*k).map(|v| (k.to_string(), v.clone()))).collect();
+        let core: Map<String, Value> = g
+            .core_keys
+            .iter()
+            .filter_map(|k| view.get(*k).map(|v| (k.to_string(), v.clone())))
+            .collect();
         (g.back)(ctx, obj, &core);
     }
 }
@@ -822,7 +1025,10 @@ fn park_leftovers(
     for g in groups {
         let now = (g.fwd)(ctx, obj);
         for k in g.core_keys.iter().filter(|k| !NO_LEFTOVER.contains(k)) {
-            if let Some(v) = view.get(*k).filter(|_| !approx_eq(now.get(*k), view.get(*k))) {
+            if let Some(v) = view
+                .get(*k)
+                .filter(|_| !approx_eq(now.get(*k), view.get(*k)))
+            {
                 rest.insert(k.to_string(), v.clone());
                 lossy.insert(k.to_string(), now.get(*k).cloned().unwrap_or(Value::Null));
             }
@@ -844,11 +1050,13 @@ fn restore_lossy(core: &Map<String, Value>, other: &mut Map<String, Value>) {
     }
 }
 
-
 /// `use`/`finished` the area-code table gives a space with this code. The app
 /// polygon has no field for them, so a differing Sketchy value is parked.
 fn space_use_fwd(ctx: &Ctx, obj: &Map<String, Value>) -> Map<String, Value> {
-    str_of(obj, "type").and_then(|c| ctx.code_defaults.get(c)).cloned().unwrap_or_default()
+    str_of(obj, "type")
+        .and_then(|c| ctx.code_defaults.get(c))
+        .cloned()
+        .unwrap_or_default()
 }
 
 /// For core fields the app object cannot hold; leftovers are parked instead.
@@ -857,12 +1065,17 @@ fn keep_back(_: &Ctx, _: &mut Map<String, Value>, _: &Map<String, Value>) {}
 // ------------------------------------------------ annotation field groups
 
 fn position_fwd(ctx: &Ctx, obj: &Map<String, Value>) -> Map<String, Value> {
-    let p = f64_of(obj, "x").zip(f64_of(obj, "y")).map(|(x, y)| json!([num(x / ctx.scale), num(y / ctx.scale)]));
+    let p = f64_of(obj, "x")
+        .zip(f64_of(obj, "y"))
+        .map(|(x, y)| json!([num(x / ctx.scale), num(y / ctx.scale)]));
     single("position", p)
 }
 
 fn position_back(ctx: &Ctx, obj: &mut Map<String, Value>, core: &Map<String, Value>) {
-    let p = core.get("position").and_then(Value::as_array).and_then(|p| Some((p.first()?.as_f64()?, p.get(1)?.as_f64()?)));
+    let p = core
+        .get("position")
+        .and_then(Value::as_array)
+        .and_then(|p| Some((p.first()?.as_f64()?, p.get(1)?.as_f64()?)));
     if let Some((x, y)) = p {
         obj.insert("x".into(), num(x * ctx.scale));
         obj.insert("y".into(), num(y * ctx.scale));
@@ -897,25 +1110,41 @@ fn symbols_scheme() -> String {
 }
 
 fn ref_fwd(_: &Ctx, obj: &Map<String, Value>) -> Map<String, Value> {
-    single("ref", str_of(obj, "symbolType").map(|n| json!({"scheme": symbols_scheme(), "name": n})))
+    single(
+        "ref",
+        str_of(obj, "symbolType").map(|n| json!({"scheme": symbols_scheme(), "name": n})),
+    )
 }
 
 fn ref_back(_: &Ctx, obj: &mut Map<String, Value>, core: &Map<String, Value>) {
-    let name = core.get("ref").and_then(|r| r.get("name")).filter(|n| n.is_string());
+    let name = core
+        .get("ref")
+        .and_then(|r| r.get("name"))
+        .filter(|n| n.is_string());
     put(obj, "symbolType", name.cloned());
 }
 
 fn scale_fwd(_: &Ctx, obj: &Map<String, Value>) -> Map<String, Value> {
-    single("scale", f64_of(obj, "scale").map(|s| json!([num(s), num(s)])))
+    single(
+        "scale",
+        f64_of(obj, "scale").map(|s| json!([num(s), num(s)])),
+    )
 }
 
 fn scale_back(_: &Ctx, obj: &mut Map<String, Value>, core: &Map<String, Value>) {
-    let s = core.get("scale").and_then(Value::as_array).and_then(|s| s.first()).filter(|s| s.is_number());
+    let s = core
+        .get("scale")
+        .and_then(Value::as_array)
+        .and_then(|s| s.first())
+        .filter(|s| s.is_number());
     put(obj, "scale", s.cloned());
 }
 
 fn mirror_fwd(_: &Ctx, obj: &Map<String, Value>) -> Map<String, Value> {
-    let m = obj.get("flipH").and_then(Value::as_bool).map(|f| if f { "x" } else { "none" });
+    let m = obj
+        .get("flipH")
+        .and_then(Value::as_bool)
+        .map(|f| if f { "x" } else { "none" });
     single("mirror", m.map(Value::from))
 }
 
@@ -928,12 +1157,22 @@ fn mirror_back(_: &Ctx, obj: &mut Map<String, Value>, core: &Map<String, Value>)
 }
 
 fn host_fwd(ctx: &Ctx, obj: &Map<String, Value>) -> Map<String, Value> {
-    single("host", obj.get("wallId").and_then(|w| ctx.wall_sid(w)).map(|w| json!({"wall": w})))
+    single(
+        "host",
+        obj.get("wallId")
+            .and_then(|w| ctx.wall_sid(w))
+            .map(|w| json!({"wall": w})),
+    )
 }
 
 fn host_back(ctx: &Ctx, obj: &mut Map<String, Value>, core: &Map<String, Value>) {
     // A host naming no wall is parked in `sketchy_other` by the leftover rule.
-    match core.get("host").and_then(|h| h.get("wall")).and_then(Value::as_str).and_then(|w| ctx.app_ref('w', w)) {
+    match core
+        .get("host")
+        .and_then(|h| h.get("wall"))
+        .and_then(Value::as_str)
+        .and_then(|w| ctx.app_ref('w', w))
+    {
         Some(id) => put(obj, "wallId", Some(id)),
         None if obj.contains_key("wallId") => put(obj, "wallId", Some(Value::Null)),
         None => {}
@@ -945,11 +1184,18 @@ fn host_back(ctx: &Ctx, obj: &mut Map<String, Value>, core: &Map<String, Value>)
 /// is the left of start to end with +y up. Sketchy's positive offset is also left.
 fn offset_fwd(ctx: &Ctx, obj: &Map<String, Value>) -> Map<String, Value> {
     let side = f64_of(obj, "side").filter(|s| *s != 0.0).unwrap_or(1.0);
-    single("offset", f64_of(obj, "offset").map(|o| num(o * side / ctx.scale)))
+    single(
+        "offset",
+        f64_of(obj, "offset").map(|o| num(o * side / ctx.scale)),
+    )
 }
 
 fn offset_back(ctx: &Ctx, obj: &mut Map<String, Value>, core: &Map<String, Value>) {
-    let Some(o) = core.get("offset").and_then(Value::as_f64).map(|o| o * ctx.scale) else {
+    let Some(o) = core
+        .get("offset")
+        .and_then(Value::as_f64)
+        .map(|o| o * ctx.scale)
+    else {
         obj.remove("offset");
         return;
     };
@@ -960,11 +1206,19 @@ fn offset_back(ctx: &Ctx, obj: &mut Map<String, Value>, core: &Map<String, Value
 }
 
 fn target_fwd(ctx: &Ctx, obj: &Map<String, Value>) -> Map<String, Value> {
-    single("target", obj.get("seedLineId").and_then(|w| ctx.wall_sid(w)).map(|w| json!({"wall": w})))
+    single(
+        "target",
+        obj.get("seedLineId")
+            .and_then(|w| ctx.wall_sid(w))
+            .map(|w| json!({"wall": w})),
+    )
 }
 
 fn target_back(ctx: &Ctx, obj: &mut Map<String, Value>, core: &Map<String, Value>) {
-    let target = core.get("target").and_then(|t| t.get("wall")).and_then(Value::as_str);
+    let target = core
+        .get("target")
+        .and_then(|t| t.get("wall"))
+        .and_then(Value::as_str);
     if let Some(id) = target.and_then(|w| ctx.app_ref('w', w)) {
         obj.insert("seedLineId".into(), id);
     }
@@ -972,34 +1226,91 @@ fn target_back(ctx: &Ctx, obj: &mut Map<String, Value>, core: &Map<String, Value
 
 /// A chain measures its seed wall, so its Sketchy `points` are the wall's ends.
 fn chain_points_fwd(ctx: &Ctx, obj: &Map<String, Value>) -> Map<String, Value> {
-    single("points", obj.get("seedLineId").and_then(|w| ctx.wall_pts.get(&w.to_string())).cloned())
+    single(
+        "points",
+        obj.get("seedLineId")
+            .and_then(|w| ctx.wall_pts.get(&w.to_string()))
+            .cloned(),
+    )
 }
 
 const LABEL_GROUPS: &[Group] = &[
-    Group { core_keys: &["position"], fwd: position_fwd, back: position_back },
-    Group { core_keys: &["text"], fwd: text_fwd, back: text_back },
-    Group { core_keys: &["rotation"], fwd: rotation_fwd, back: rotation_back },
+    Group {
+        core_keys: &["position"],
+        fwd: position_fwd,
+        back: position_back,
+    },
+    Group {
+        core_keys: &["text"],
+        fwd: text_fwd,
+        back: text_back,
+    },
+    Group {
+        core_keys: &["rotation"],
+        fwd: rotation_fwd,
+        back: rotation_back,
+    },
 ];
 const SYMBOL_GROUPS: &[Group] = &[
-    Group { core_keys: &["position"], fwd: position_fwd, back: position_back },
-    Group { core_keys: &["rotation"], fwd: rotation_fwd, back: rotation_back },
-    Group { core_keys: &["ref"], fwd: ref_fwd, back: ref_back },
-    Group { core_keys: &["scale"], fwd: scale_fwd, back: scale_back },
-    Group { core_keys: &["mirror"], fwd: mirror_fwd, back: mirror_back },
-    Group { core_keys: &["host"], fwd: host_fwd, back: host_back },
+    Group {
+        core_keys: &["position"],
+        fwd: position_fwd,
+        back: position_back,
+    },
+    Group {
+        core_keys: &["rotation"],
+        fwd: rotation_fwd,
+        back: rotation_back,
+    },
+    Group {
+        core_keys: &["ref"],
+        fwd: ref_fwd,
+        back: ref_back,
+    },
+    Group {
+        core_keys: &["scale"],
+        fwd: scale_fwd,
+        back: scale_back,
+    },
+    Group {
+        core_keys: &["mirror"],
+        fwd: mirror_fwd,
+        back: mirror_back,
+    },
+    Group {
+        core_keys: &["host"],
+        fwd: host_fwd,
+        back: host_back,
+    },
 ];
 const CHAIN_GROUPS: &[Group] = &[
-    Group { core_keys: &["offset"], fwd: offset_fwd, back: offset_back },
-    Group { core_keys: &["target"], fwd: target_fwd, back: target_back },
-    Group { core_keys: &["points"], fwd: chain_points_fwd, back: keep_back },
+    Group {
+        core_keys: &["offset"],
+        fwd: offset_fwd,
+        back: offset_back,
+    },
+    Group {
+        core_keys: &["target"],
+        fwd: target_fwd,
+        back: target_back,
+    },
+    Group {
+        core_keys: &["points"],
+        fwd: chain_points_fwd,
+        back: keep_back,
+    },
 ];
 
 const LABEL_OWNED: &[&str] = &["id", "kind", "level", "position", "text", "rotation"];
-const SYMBOL_OWNED: &[&str] = &["id", "kind", "level", "position", "rotation", "ref", "scale", "mirror", "host"];
+const SYMBOL_OWNED: &[&str] = &[
+    "id", "kind", "level", "position", "rotation", "ref", "scale", "mirror", "host",
+];
 const CHAIN_OWNED: &[&str] = &["id", "kind", "level", "offset", "target", "points"];
 
 fn has_position(o: &Map<String, Value>) -> bool {
-    o.get("position").and_then(Value::as_array).is_some_and(|p| p.len() == 2 && p.iter().all(Value::is_number))
+    o.get("position")
+        .and_then(Value::as_array)
+        .is_some_and(|p| p.len() == 2 && p.iter().all(Value::is_number))
 }
 
 /// The annotation has what the app label needs.
@@ -1009,12 +1320,17 @@ fn text_ok(o: &Map<String, Value>) -> bool {
 
 /// A library symbol (`ref`), not an inline `definition`.
 fn symbol_ok(o: &Map<String, Value>) -> bool {
-    has_position(o) && o.get("ref").and_then(|r| r.get("name")).is_some_and(Value::is_string)
+    has_position(o)
+        && o.get("ref")
+            .and_then(|r| r.get("name"))
+            .is_some_and(Value::is_string)
 }
 
 /// A chain that follows a wall.
 fn dimension_ok(o: &Map<String, Value>) -> bool {
-    o.get("target").and_then(|t| t.get("wall")).is_some_and(Value::is_string)
+    o.get("target")
+        .and_then(|t| t.get("wall"))
+        .is_some_and(Value::is_string)
 }
 
 /// An annotation kind the app has: where it lives in a page and how it maps.
@@ -1034,8 +1350,24 @@ struct AnnoSpec {
 }
 
 const ANNO_SPECS: &[AnnoSpec] = &[
-    AnnoSpec { kind: "text", ch: 't', prefix: "t-", key: "labels", groups: LABEL_GROUPS, owned: LABEL_OWNED, ok: text_ok },
-    AnnoSpec { kind: "symbol", ch: 'y', prefix: "y-", key: "symbols", groups: SYMBOL_GROUPS, owned: SYMBOL_OWNED, ok: symbol_ok },
+    AnnoSpec {
+        kind: "text",
+        ch: 't',
+        prefix: "t-",
+        key: "labels",
+        groups: LABEL_GROUPS,
+        owned: LABEL_OWNED,
+        ok: text_ok,
+    },
+    AnnoSpec {
+        kind: "symbol",
+        ch: 'y',
+        prefix: "y-",
+        key: "symbols",
+        groups: SYMBOL_GROUPS,
+        owned: SYMBOL_OWNED,
+        ok: symbol_ok,
+    },
     AnnoSpec {
         kind: "dimension",
         ch: 'd',
@@ -1059,11 +1391,20 @@ struct Mapped<'a> {
 
 /// Splits annotations into those the app maps and the rest (kept verbatim,
 /// with their original index).
-fn split_annotations<'a>(levels: &[Level], annotations: &'a [Value]) -> (Vec<Mapped<'a>>, Vec<(usize, Value)>) {
-    let walls: HashSet<&str> = levels.iter().flat_map(|l| l.walls.iter().map(|w| w.id.as_str())).collect();
+fn split_annotations<'a>(
+    levels: &[Level],
+    annotations: &'a [Value],
+) -> (Vec<Mapped<'a>>, Vec<(usize, Value)>) {
+    let walls: HashSet<&str> = levels
+        .iter()
+        .flat_map(|l| l.walls.iter().map(|w| w.id.as_str()))
+        .collect();
     let (mut mapped, mut parked) = (Vec::new(), Vec::new());
     for (index, a) in annotations.iter().enumerate() {
-        match a.as_object().and_then(|o| mapped_of(levels, &walls, index, o)) {
+        match a
+            .as_object()
+            .and_then(|o| mapped_of(levels, &walls, index, o))
+        {
             Some(m) => mapped.push(m),
             None => parked.push((index, a.clone())),
         }
@@ -1088,37 +1429,74 @@ fn in_default_order(mapped: &[Mapped]) -> bool {
     mapped.windows(2).all(|w| key(&w[0]) <= key(&w[1]))
 }
 
-fn mapped_of<'a>(levels: &[Level], walls: &HashSet<&str>, index: usize, obj: &'a Map<String, Value>) -> Option<Mapped<'a>> {
+fn mapped_of<'a>(
+    levels: &[Level],
+    walls: &HashSet<&str>,
+    index: usize,
+    obj: &'a Map<String, Value>,
+) -> Option<Mapped<'a>> {
     let kind = str_of(obj, "kind")?;
     let spec = ANNO_SPECS.iter().find(|s| s.kind == kind)?;
     let id = str_of(obj, "id")?;
     let level = str_of(obj, "level")?;
     let page = levels.iter().position(|l| l.id == level)?;
-    ((spec.ok)(obj) && wall_exists(kind, obj, walls)).then_some(Mapped { index, page, spec, id, obj })
+    ((spec.ok)(obj) && wall_exists(kind, obj, walls)).then_some(Mapped {
+        index,
+        page,
+        spec,
+        id,
+        obj,
+    })
 }
 
 // ------------------------------------------------------ layer field groups
 
 fn visible_fwd(_: &Ctx, obj: &Map<String, Value>) -> Map<String, Value> {
-    single("visible", obj.get("visible").filter(|v| v.is_boolean()).cloned())
+    single(
+        "visible",
+        obj.get("visible").filter(|v| v.is_boolean()).cloned(),
+    )
 }
 
 fn visible_back(_: &Ctx, obj: &mut Map<String, Value>, core: &Map<String, Value>) {
-    put(obj, "visible", Some(core.get("visible").cloned().unwrap_or(Value::Bool(true))));
+    put(
+        obj,
+        "visible",
+        Some(core.get("visible").cloned().unwrap_or(Value::Bool(true))),
+    );
 }
 
 fn locked_fwd(_: &Ctx, obj: &Map<String, Value>) -> Map<String, Value> {
-    single("locked", obj.get("locked").filter(|v| v.is_boolean()).cloned())
+    single(
+        "locked",
+        obj.get("locked").filter(|v| v.is_boolean()).cloned(),
+    )
 }
 
 fn locked_back(_: &Ctx, obj: &mut Map<String, Value>, core: &Map<String, Value>) {
-    put(obj, "locked", Some(core.get("locked").cloned().unwrap_or(Value::Bool(false))));
+    put(
+        obj,
+        "locked",
+        Some(core.get("locked").cloned().unwrap_or(Value::Bool(false))),
+    );
 }
 
 const LAYER_GROUPS: &[Group] = &[
-    Group { core_keys: &["name"], fwd: name_fwd, back: name_back },
-    Group { core_keys: &["visible"], fwd: visible_fwd, back: visible_back },
-    Group { core_keys: &["locked"], fwd: locked_fwd, back: locked_back },
+    Group {
+        core_keys: &["name"],
+        fwd: name_fwd,
+        back: name_back,
+    },
+    Group {
+        core_keys: &["visible"],
+        fwd: visible_fwd,
+        back: visible_back,
+    },
+    Group {
+        core_keys: &["locked"],
+        fwd: locked_fwd,
+        back: locked_back,
+    },
 ];
 const LAYER_OWNED: &[&str] = &["id", "name", "visible", "locked"];
 
@@ -1169,7 +1547,13 @@ fn derive_use(obj: &Map<String, Value>) -> Map<String, Value> {
 }
 
 fn code_use_back(_: &Ctx, obj: &mut Map<String, Value>, core: &Map<String, Value>) {
-    put(obj, "includeInGLA", core.get("use").and_then(Value::as_str).map(|u| Value::Bool(u == "living")));
+    put(
+        obj,
+        "includeInGLA",
+        core.get("use")
+            .and_then(Value::as_str)
+            .map(|u| Value::Bool(u == "living")),
+    );
 }
 
 fn code_label_fwd(_: &Ctx, obj: &Map<String, Value>) -> Map<String, Value> {
@@ -1181,7 +1565,10 @@ fn code_label_back(_: &Ctx, obj: &mut Map<String, Value>, core: &Map<String, Val
 }
 
 fn multiplier_fwd(_: &Ctx, obj: &Map<String, Value>) -> Map<String, Value> {
-    single("area_factor", f64_of(obj, "multiplier").filter(|f| *f != 1.0).map(num))
+    single(
+        "area_factor",
+        f64_of(obj, "multiplier").filter(|f| *f != 1.0).map(num),
+    )
 }
 
 fn multiplier_back(_: &Ctx, obj: &mut Map<String, Value>, core: &Map<String, Value>) {
@@ -1193,11 +1580,30 @@ fn multiplier_back(_: &Ctx, obj: &mut Map<String, Value>, core: &Map<String, Val
 }
 
 const CODE_GROUPS: &[Group] = &[
-    Group { core_keys: &["label"], fwd: code_label_fwd, back: code_label_back },
-    Group { core_keys: &["area_factor"], fwd: multiplier_fwd, back: multiplier_back },
-    Group { core_keys: &["use", "finished", "enclosure"], fwd: |_, o| derive_use(o), back: code_use_back },
+    Group {
+        core_keys: &["label"],
+        fwd: code_label_fwd,
+        back: code_label_back,
+    },
+    Group {
+        core_keys: &["area_factor"],
+        fwd: multiplier_fwd,
+        back: multiplier_back,
+    },
+    Group {
+        core_keys: &["use", "finished", "enclosure"],
+        fwd: |_, o| derive_use(o),
+        back: code_use_back,
+    },
 ];
-const CODE_OWNED: &[&str] = &["code", "label", "use", "finished", "enclosure", "area_factor"];
+const CODE_OWNED: &[&str] = &[
+    "code",
+    "label",
+    "use",
+    "finished",
+    "enclosure",
+    "area_factor",
+];
 /// Default name of the area-code scheme.
 const CODE_SCHEME_NAME: &str = "Sketch Rust area codes";
 
@@ -1205,7 +1611,13 @@ const CODE_SCHEME_NAME: &str = "Sketch Rust area codes";
 
 /// A Sketchy object from an app object: `core` (identity fields) plus the
 /// groups' projection, with the app object kept as residual.
-fn view_of(ctx: &Ctx, obj: &Map<String, Value>, mut core: Map<String, Value>, groups: &[Group], exact: &[&str]) -> Value {
+fn view_of(
+    ctx: &Ctx,
+    obj: &Map<String, Value>,
+    mut core: Map<String, Value>,
+    groups: &[Group],
+    exact: &[&str],
+) -> Value {
     core.extend(project(ctx, obj, groups));
     let (residual, other) = take_residual(obj, exact);
     finish_element(core, residual, other)
@@ -1213,7 +1625,12 @@ fn view_of(ctx: &Ctx, obj: &Map<String, Value>, mut core: Map<String, Value>, gr
 
 /// An app object from a Sketchy object (without its ids): the residual with the
 /// core fields layered on top, and unowned Sketchy fields parked.
-fn back_object(ctx: &Ctx, view: &Map<String, Value>, groups: &[Group], owned: &[&str]) -> Map<String, Value> {
+fn back_object(
+    ctx: &Ctx,
+    view: &Map<String, Value>,
+    groups: &[Group],
+    owned: &[&str],
+) -> Map<String, Value> {
     let mut obj = residual_of(view);
     apply_groups(ctx, &mut obj, view, groups);
     let mut rest = sketchy_rest(view, owned);
@@ -1239,7 +1656,12 @@ fn apply_layer(ctx: &Ctx, obj: &mut Map<String, Value>, sid: &str) {
     }
 }
 
-fn annotation_from_object(ctx: &Ctx, spec: &AnnoSpec, level_id: &str, v: &Value) -> Result<Value, SketchyError> {
+fn annotation_from_object(
+    ctx: &Ctx,
+    spec: &AnnoSpec,
+    level_id: &str,
+    v: &Value,
+) -> Result<Value, SketchyError> {
     let obj = as_object(v, "annotation")?;
     let mut core = Map::new();
     core.insert("id".into(), Ctx::element_id(spec.prefix, obj)?.into());
@@ -1262,13 +1684,19 @@ fn annotation_to_object(ctx: &Ctx, m: &Mapped) -> Value {
 /// An app layer is mapped only when every layer has a string id.
 fn app_layers(root: &Map<String, Value>) -> Option<&[Value]> {
     let layers = root.get("layers")?.as_array()?;
-    layers.iter().all(|l| l.get("id").is_some_and(Value::is_string)).then_some(layers.as_slice())
+    layers
+        .iter()
+        .all(|l| l.get("id").is_some_and(Value::is_string))
+        .then_some(layers.as_slice())
 }
 
 /// The area-code table is mapped only when every row has a string `code`.
 fn app_codes(root: &Map<String, Value>) -> Option<&[Value]> {
     let codes = root.get("areaCodes")?.as_array()?;
-    codes.iter().all(|c| c.get("code").is_some_and(Value::is_string)).then_some(codes.as_slice())
+    codes
+        .iter()
+        .all(|c| c.get("code").is_some_and(Value::is_string))
+        .then_some(codes.as_slice())
 }
 
 fn layer_to_view(ctx: &Ctx, v: &Value) -> Result<Value, SketchyError> {
@@ -1293,24 +1721,40 @@ fn code_from_view(ctx: &Ctx, view: &Map<String, Value>) -> Value {
 /// Sketchy layers the app maps (every layer has a string id), as objects.
 fn sketchy_layers(pres: Option<&Map<String, Value>>) -> Option<Vec<&Map<String, Value>>> {
     let layers = pres?.get("layers")?.as_array()?;
-    layers.iter().map(|l| l.as_object().filter(|o| o.get("id").is_some_and(Value::is_string))).collect()
+    layers
+        .iter()
+        .map(|l| {
+            l.as_object()
+                .filter(|o| o.get("id").is_some_and(Value::is_string))
+        })
+        .collect()
 }
 
 /// The area-code scheme the app maps: its position and its rows.
 fn sketchy_code_scheme(doc: &Document) -> Option<usize> {
     doc.classification_schemes.iter().position(|s| {
-        s.scheme == code_scheme() && s.codes.iter().all(|c| c.get("code").is_some_and(Value::is_string))
+        s.scheme == code_scheme()
+            && s.codes
+                .iter()
+                .all(|c| c.get("code").is_some_and(Value::is_string))
     })
 }
 
 fn layer_sid_of(obj: &Map<String, Value>) -> String {
-    str_of(obj, SKETCHY_ID).map_or_else(|| format!("layer:{}", str_of(obj, "id").unwrap_or_default()), str::to_string)
+    str_of(obj, SKETCHY_ID).map_or_else(
+        || format!("layer:{}", str_of(obj, "id").unwrap_or_default()),
+        str::to_string,
+    )
 }
 
 impl Ctx {
     /// To direction: area-code defaults, wall ends and layer ids of the save model.
     fn prepare_to(&mut self, root: &Map<String, Value>) {
-        for code in app_codes(root).into_iter().flatten().filter_map(Value::as_object) {
+        for code in app_codes(root)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_object)
+        {
             if let Some(c) = str_of(code, "code") {
                 self.code_defaults.insert(c.to_string(), derive_use(code));
             }
@@ -1324,10 +1768,20 @@ impl Ctx {
                 }
             }
         }
-        for line in root.get("pages").and_then(Value::as_array).into_iter().flatten().flat_map(|p| array_of_lenient(p, "lines")) {
-            let ends = ["start", "end"].map(|k| line.get(k).and_then(|p| self.point_to_sketchy(p).ok()));
+        for line in root
+            .get("pages")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .flat_map(|p| array_of_lenient(p, "lines"))
+        {
+            let ends =
+                ["start", "end"].map(|k| line.get(k).and_then(|p| self.point_to_sketchy(p).ok()));
             if let (Some(id), [Some(a), Some(b)]) = (line.get("id"), ends) {
-                self.wall_pts.insert(id.to_string(), json!([[num(a[0]), num(a[1])], [num(b[0]), num(b[1])]]));
+                self.wall_pts.insert(
+                    id.to_string(),
+                    json!([[num(a[0]), num(a[1])], [num(b[0]), num(b[1])]]),
+                );
             }
         }
     }
@@ -1335,9 +1789,15 @@ impl Ctx {
     /// From direction: area-code defaults, wall ends, layer ids and assignments.
     fn prepare_from(&mut self, doc: &Document, levels: &[Level]) {
         if let Some(i) = sketchy_code_scheme(doc) {
-            for row in doc.classification_schemes[i].codes.iter().filter_map(Value::as_object) {
-                let defaults: Map<String, Value> =
-                    ["use", "finished", "enclosure"].iter().filter_map(|k| row.get(*k).map(|v| (k.to_string(), v.clone()))).collect();
+            for row in doc.classification_schemes[i]
+                .codes
+                .iter()
+                .filter_map(Value::as_object)
+            {
+                let defaults: Map<String, Value> = ["use", "finished", "enclosure"]
+                    .iter()
+                    .filter_map(|k| row.get(*k).map(|v| (k.to_string(), v.clone())))
+                    .collect();
                 if let Some(c) = str_of(row, "code") {
                     self.code_defaults.insert(c.to_string(), defaults);
                 }
@@ -1345,18 +1805,28 @@ impl Ctx {
         }
         for w in levels.iter().flat_map(|l| &l.walls) {
             if let Some(app) = self.to_app.get(&('w', w.id.clone())) {
-                let pts = json!([[num(w.start[0]), num(w.start[1])], [num(w.end[0]), num(w.end[1])]]);
+                let pts = json!([
+                    [num(w.start[0]), num(w.start[1])],
+                    [num(w.end[0]), num(w.end[1])]
+                ]);
                 self.wall_pts.insert(app.to_string(), pts);
             }
         }
         let pres = doc.presentation.as_ref().map(|p| &p.other);
-        let Some(layers) = sketchy_layers(pres) else { return };
+        let Some(layers) = sketchy_layers(pres) else {
+            return;
+        };
         self.layers_mapped = true;
         let mut used: HashSet<String> = HashSet::new();
         for layer in layers {
             let sid = str_of(layer, "id").unwrap_or_default().to_string();
-            let stored = ns_of(layer).filter(|r| str_of(r, SKETCHY_ID) == Some(&sid)).and_then(|r| str_of(r, "id"));
-            let mut app = stored.map_or_else(|| sid.strip_prefix("layer:").unwrap_or(&sid).to_string(), str::to_string);
+            let stored = ns_of(layer)
+                .filter(|r| str_of(r, SKETCHY_ID) == Some(&sid))
+                .and_then(|r| str_of(r, "id"));
+            let mut app = stored.map_or_else(
+                || sid.strip_prefix("layer:").unwrap_or(&sid).to_string(),
+                str::to_string,
+            );
             while !used.insert(app.clone()) {
                 app.push('_');
             }
@@ -1364,9 +1834,19 @@ impl Ctx {
             // Two layers may share a Sketchy id; the first keeps it, so reopening never renames.
             self.layer_app.entry(sid).or_insert(app);
         }
-        let assigned = pres.and_then(|p| p.get("element_layers")).and_then(Value::as_object);
-        for (el, layer) in assigned.into_iter().flatten().filter_map(|(k, v)| Some((k, v.as_str()?))) {
-            let app = self.layer_app.get(layer).cloned().unwrap_or_else(|| layer.strip_prefix("layer:").unwrap_or(layer).to_string());
+        let assigned = pres
+            .and_then(|p| p.get("element_layers"))
+            .and_then(Value::as_object);
+        for (el, layer) in assigned
+            .into_iter()
+            .flatten()
+            .filter_map(|(k, v)| Some((k, v.as_str()?)))
+        {
+            let app = self
+                .layer_app
+                .get(layer)
+                .cloned()
+                .unwrap_or_else(|| layer.strip_prefix("layer:").unwrap_or(layer).to_string());
             self.element_layer.insert(el.clone(), app);
         }
     }
@@ -1382,7 +1862,10 @@ fn element_layers_of(ctx: &Ctx, pages: &[Value]) -> Map<String, Value> {
     for page in pages {
         for (key, prefix) in &kinds {
             let hosts = page.as_object().map(referenced_lines).unwrap_or_default();
-            for obj in array_of_lenient(page, key).iter().filter_map(Value::as_object) {
+            for obj in array_of_lenient(page, key)
+                .iter()
+                .filter_map(Value::as_object)
+            {
                 if *key == "lines" && is_unused_display_line(&Value::Object(obj.clone()), &hosts) {
                     continue;
                 }
@@ -1400,7 +1883,10 @@ fn element_layers_of(ctx: &Ctx, pages: &[Value]) -> Map<String, Value> {
 
 /// Pulls the residual and Sketchy-side unknowns out of a save-model object.
 /// `id` stays in the residual when a `sketchy_id` is stored, so the app id is stable.
-fn take_residual(obj: &Map<String, Value>, exact: &[&str]) -> (Map<String, Value>, Option<Map<String, Value>>) {
+fn take_residual(
+    obj: &Map<String, Value>,
+    exact: &[&str],
+) -> (Map<String, Value>, Option<Map<String, Value>>) {
     let (_, mut residual) = split_object(obj, exact);
     if obj.contains_key(SKETCHY_ID) {
         if let Some(id) = obj.get("id") {
@@ -1415,9 +1901,16 @@ fn take_residual(obj: &Map<String, Value>, exact: &[&str]) -> (Map<String, Value
 }
 
 /// Adds `extras[NS] = residual` and restores Sketchy-side unknowns onto `core`.
-fn finish_element(mut core: Map<String, Value>, residual: Map<String, Value>, other: Option<Map<String, Value>>) -> Value {
+fn finish_element(
+    mut core: Map<String, Value>,
+    residual: Map<String, Value>,
+    other: Option<Map<String, Value>>,
+) -> Value {
     let mut other = other.unwrap_or_default();
-    let parked: Vec<String> = other.get(LOSSY).and_then(Value::as_object).map_or_else(Vec::new, |l| l.keys().cloned().collect());
+    let parked: Vec<String> = other
+        .get(LOSSY)
+        .and_then(Value::as_object)
+        .map_or_else(Vec::new, |l| l.keys().cloned().collect());
     restore_lossy(&core, &mut other);
     // A parked leftover is a whole core value: it replaces (never merges into) the projection.
     for key in parked {
@@ -1450,7 +1943,10 @@ fn sketchy_rest(view: &Map<String, Value>, owned: &[&str]) -> Map<String, Value>
 
 /// Puts `ours` into `theirs` at `at` (clamped; `None` appends).
 fn splice_at(mut theirs: Vec<Value>, at: Option<&Value>, ours: Vec<Value>) -> Vec<Value> {
-    let at = at.and_then(Value::as_u64).map_or(theirs.len(), |i| usize::try_from(i).unwrap_or(usize::MAX)).min(theirs.len());
+    let at = at
+        .and_then(Value::as_u64)
+        .map_or(theirs.len(), |i| usize::try_from(i).unwrap_or(usize::MAX))
+        .min(theirs.len());
     theirs.splice(at..at, ours);
     theirs
 }
@@ -1458,12 +1954,17 @@ fn splice_at(mut theirs: Vec<Value>, at: Option<&Value>, ours: Vec<Value>) -> Ve
 /// Foreign classifications parked on an element, with the area-code one put back where it was.
 fn restore_classifications(core: &mut Map<String, Value>, other: &mut Map<String, Value>) {
     let at = other.remove(CLASS_INDEX);
-    let Some(Value::Array(foreign)) = other.remove("classifications") else { return };
+    let Some(Value::Array(foreign)) = other.remove("classifications") else {
+        return;
+    };
     let ours = match core.remove("classifications") {
         Some(Value::Array(ours)) => ours,
         _ => Vec::new(),
     };
-    core.insert("classifications".into(), Value::Array(splice_at(foreign, at.as_ref(), ours)));
+    core.insert(
+        "classifications".into(),
+        Value::Array(splice_at(foreign, at.as_ref(), ours)),
+    );
 }
 
 fn strip_ns_extras(rest: &mut Map<String, Value>) {
@@ -1491,15 +1992,30 @@ fn park(obj: &mut Map<String, Value>, rest: Map<String, Value>) {
 }
 
 const WALL_OWNED: &[&str] = &["id", "start", "end", "bulge", "thickness", "kind"];
-const SPACE_OWNED: &[&str] =
-    &["id", "shape", "name", "area_factor", "measured_to", "within", "subtract", "attributes", "bulges", "use", "finished", "enclosure"];
+const SPACE_OWNED: &[&str] = &[
+    "id",
+    "shape",
+    "name",
+    "area_factor",
+    "measured_to",
+    "within",
+    "subtract",
+    "attributes",
+    "bulges",
+    "use",
+    "finished",
+    "enclosure",
+];
 
 fn wall_from_line(ctx: &Ctx, line: &Value) -> Result<Wall, SketchyError> {
     let obj = as_object(line, "line")?;
     let mut core = project(ctx, obj, WALL_GROUPS);
     core.insert("id".into(), Ctx::element_id("w-", obj)?.into());
     for key in ["start", "end"] {
-        let p = ctx.point_to_sketchy(obj.get(key).ok_or_else(|| err(format!("line missing {key}")))?)?;
+        let p = ctx.point_to_sketchy(
+            obj.get(key)
+                .ok_or_else(|| err(format!("line missing {key}")))?,
+        )?;
         core.insert(key.into(), json!([num(p[0]), num(p[1])]));
     }
     let (residual, other) = take_residual(obj, &["id", "start", "end"]);
@@ -1525,7 +2041,9 @@ fn line_from_wall(ctx: &Ctx, wall: &Wall) -> Result<Value, SketchyError> {
 fn set_ids(obj: &mut Map<String, Value>, prefix: &str, app_id: &Value, sketchy_id: &str) {
     obj.insert("id".into(), app_id.clone());
     obj.remove(SKETCHY_ID);
-    let plain = app_id.as_str().map_or_else(|| app_id.to_string(), str::to_string);
+    let plain = app_id
+        .as_str()
+        .map_or_else(|| app_id.to_string(), str::to_string);
     if format!("{prefix}{plain}") != sketchy_id {
         obj.insert(SKETCHY_ID.into(), sketchy_id.into());
     }
@@ -1545,7 +2063,10 @@ fn ellipse_points(center: [f64; 2], rx: f64, ry: f64, rotation_deg: f64) -> Vec<
         .map(|i| {
             let (s, c) = (i as f64 / CIRCLE_SEGMENTS as f64 * 2.0 * PI).sin_cos();
             let (x, y) = (rx * c, ry * s);
-            [center[0] + x * cos_r - y * sin_r, center[1] + x * sin_r + y * cos_r]
+            [
+                center[0] + x * cos_r - y * sin_r,
+                center[1] + x * sin_r + y * cos_r,
+            ]
         })
         .collect()
 }
@@ -1564,15 +2085,23 @@ fn circle_points(center: [f64; 2], radius: f64) -> Vec<[f64; 2]> {
 
 fn outline_of(shape: &Shape, shape_value: &Value) -> Option<Outline> {
     match shape {
-        Shape::Polygon { points, bulges, .. } => {
-            Some(Outline { points: points.clone(), bulges: bulges.clone(), original: None })
-        }
+        Shape::Polygon { points, bulges, .. } => Some(Outline {
+            points: points.clone(),
+            bulges: bulges.clone(),
+            original: None,
+        }),
         Shape::Circle { center, radius, .. } => Some(Outline {
             points: circle_points(*center, *radius),
             bulges: Some(vec![quarter_arc_bulge(); 4]),
             original: Some(shape_value.clone()),
         }),
-        Shape::Ellipse { center, radius_x, radius_y, rotation, .. } => Some(Outline {
+        Shape::Ellipse {
+            center,
+            radius_x,
+            radius_y,
+            rotation,
+            ..
+        } => Some(Outline {
             points: ellipse_points(*center, *radius_x, *radius_y, rotation.unwrap_or(0.0)),
             bulges: None,
             original: Some(shape_value.clone()),
@@ -1589,14 +2118,20 @@ fn space_from_polygon(ctx: &Ctx, poly: &Value) -> Result<Space, SketchyError> {
         .and_then(Value::as_array)
         .ok_or_else(|| err("polygon missing points"))?
         .iter()
-        .map(|p| ctx.point_to_sketchy(p).map(|p| json!([num(p[0]), num(p[1])])))
+        .map(|p| {
+            ctx.point_to_sketchy(p)
+                .map(|p| json!([num(p[0]), num(p[1])]))
+        })
         .collect::<Result<Vec<_>, _>>()?;
     let (residual, mut other) = take_residual(obj, &["id"]);
     let original = other.as_mut().and_then(|o| o.remove(SHAPE_ORIG));
     let parked_bulges = other.as_mut().and_then(|o| o.remove(SHAPE_BULGES));
     let unchanged_original = original
         .as_ref()
-        .filter(|o| approx_eq(o.get("points"), obj.get("points")) && approx_eq(o.get("bulges"), core.get("bulges")))
+        .filter(|o| {
+            approx_eq(o.get("points"), obj.get("points"))
+                && approx_eq(o.get("bulges"), core.get("bulges"))
+        })
         .and_then(|o| o.get("shape"))
         .and_then(Value::as_object);
     let mut shape = Map::new();
@@ -1624,10 +2159,14 @@ fn space_from_polygon(ctx: &Ctx, poly: &Value) -> Result<Space, SketchyError> {
 /// Whether two bulge lists are the same arcs (a missing value is a straight edge).
 fn bulges_equiv(a: Option<&Value>, b: Option<&Value>) -> bool {
     let list = |v: Option<&Value>| -> Vec<f64> {
-        v.and_then(Value::as_array).map_or_else(Vec::new, |a| a.iter().map(|x| x.as_f64().unwrap_or(0.0)).collect())
+        v.and_then(Value::as_array).map_or_else(Vec::new, |a| {
+            a.iter().map(|x| x.as_f64().unwrap_or(0.0)).collect()
+        })
     };
     let (a, b) = (list(a), list(b));
-    (0..a.len().max(b.len())).all(|i| (a.get(i).copied().unwrap_or(0.0) - b.get(i).copied().unwrap_or(0.0)).abs() <= BULGE_EPS)
+    (0..a.len().max(b.len())).all(|i| {
+        (a.get(i).copied().unwrap_or(0.0) - b.get(i).copied().unwrap_or(0.0)).abs() <= BULGE_EPS
+    })
 }
 
 /// The polygon's bulges: the parked originals while the app still shows what it showed for
@@ -1655,7 +2194,11 @@ fn restored_bulges(parked: Option<&Value>, now: Option<Value>, points: usize) ->
 /// Arrays are kept whenever the count is unchanged: the app moves vertices but never reorders them.
 fn drop_misaligned(shape: &mut Map<String, Value>, points: usize) {
     for key in ["edges", "edge_measured_to"] {
-        if shape.get(key).and_then(Value::as_array).is_some_and(|a| a.len() != points) {
+        if shape
+            .get(key)
+            .and_then(Value::as_array)
+            .is_some_and(|a| a.len() != points)
+        {
             shape.remove(key);
         }
     }
@@ -1663,7 +2206,11 @@ fn drop_misaligned(shape: &mut Map<String, Value>, points: usize) {
 
 /// Points the polygon's edges at its display walls.
 fn link_display_edges(obj: &mut Map<String, Value>, count: usize, links: &[(usize, i64)]) {
-    let mut edges: Vec<Value> = obj.get("edges").and_then(Value::as_array).cloned().unwrap_or_default();
+    let mut edges: Vec<Value> = obj
+        .get("edges")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     while edges.len() < count {
         edges.push(json!({"lineId": null, "bowAngle": num(0.0)}));
     }
@@ -1682,12 +2229,24 @@ fn polygon_from_space(ctx: &Ctx, level: usize, space: &Space) -> Result<Value, S
     let outline = outline_of(&space.shape, &shape_value)
         .ok_or_else(|| err(format!("space {} has no polygon outline", space.id)))?;
     if let Some(b) = &outline.bulges {
-        view.insert("bulges".into(), Value::Array(b.iter().map(|b| num(*b)).collect()));
+        view.insert(
+            "bulges".into(),
+            Value::Array(b.iter().map(|b| num(*b)).collect()),
+        );
     }
     let mut obj = residual_of(&view);
     let old_points = obj.get("points").cloned();
-    let points = Value::Array(outline.points.iter().map(|p| ctx.point_to_app(*p)).collect());
-    if old_points.as_ref().is_some_and(|old| !approx_eq(Some(old), Some(&points))) {
+    let points = Value::Array(
+        outline
+            .points
+            .iter()
+            .map(|p| ctx.point_to_app(*p))
+            .collect(),
+    );
+    if old_points
+        .as_ref()
+        .is_some_and(|old| !approx_eq(Some(old), Some(&points)))
+    {
         // Geometry changed: derived data and edge links are stale.
         obj.remove("area");
         obj.remove("gross");
@@ -1706,11 +2265,17 @@ fn polygon_from_space(ctx: &Ctx, level: usize, space: &Space) -> Result<Value, S
     let applied = bulges_fwd(ctx, &obj).remove("bulges");
     match outline.original {
         Some(shape) => {
-            rest.insert(SHAPE_ORIG.into(), json!({"shape": shape, "points": points, "bulges": applied}));
+            rest.insert(
+                SHAPE_ORIG.into(),
+                json!({"shape": shape, "points": points, "bulges": applied}),
+            );
         }
         None => {
             if !bulges_equiv(view.get("bulges"), applied.as_ref()) {
-                rest.insert(SHAPE_BULGES.into(), json!({"orig": view.get("bulges"), "applied": applied}));
+                rest.insert(
+                    SHAPE_BULGES.into(),
+                    json!({"orig": view.get("bulges"), "applied": applied}),
+                );
             }
             let shape = shape_value.as_object().cloned().unwrap_or_default();
             let (_, shape_rest) = split_object(&shape, &["type", "points", "bulges"]);
@@ -1741,7 +2306,10 @@ fn level_defaults(i: usize) -> Map<String, Value> {
 
 /// Id of the Sketchy level a page becomes (a foreign id is parked in `sketchy_other`).
 fn level_id_of_page(i: usize, obj: &Map<String, Value>) -> String {
-    let parked = obj.get(SKETCHY_OTHER).and_then(|o| o.get("id")).and_then(Value::as_str);
+    let parked = obj
+        .get(SKETCHY_OTHER)
+        .and_then(|o| o.get("id"))
+        .and_then(Value::as_str);
     parked.map_or_else(|| format!("page-{}", i + 1), str::to_string)
 }
 
@@ -1750,7 +2318,11 @@ type Indexed = (Option<u64>, Value);
 
 /// A page's level and the annotations (labels, symbols, chains) it holds, each with
 /// its recorded drawing index.
-fn level_from_page(ctx: &Ctx, i: usize, page: &Value) -> Result<(Level, Vec<Indexed>), SketchyError> {
+fn level_from_page(
+    ctx: &Ctx,
+    i: usize,
+    page: &Value,
+) -> Result<(Level, Vec<Indexed>), SketchyError> {
     let obj = as_object(page, "page")?;
     let level_id = level_id_of_page(i, obj);
     let mut annotations = Vec::new();
@@ -1766,10 +2338,16 @@ fn level_from_page(ctx: &Ctx, i: usize, page: &Value) -> Result<(Level, Vec<Inde
         .filter(|l| !is_unused_display_line(l, &hosts))
         .map(|l| wall_from_line(ctx, l))
         .collect::<Result<Vec<_>, _>>()?;
-    let spaces = array_of(obj, "polygons")?.iter().map(|p| space_from_polygon(ctx, p)).collect::<Result<Vec<_>, _>>()?;
+    let spaces = array_of(obj, "polygons")?
+        .iter()
+        .map(|p| space_from_polygon(ctx, p))
+        .collect::<Result<Vec<_>, _>>()?;
     // Mapped arrays stay in the residual as empty placeholders so absence round-trips.
     let mut residual = obj.clone();
-    for key in ["lines", "polygons"].into_iter().chain(ANNO_SPECS.iter().map(|s| s.key)) {
+    for key in ["lines", "polygons"]
+        .into_iter()
+        .chain(ANNO_SPECS.iter().map(|s| s.key))
+    {
         if residual.contains_key(key) {
             residual.insert(key.into(), json!([]));
         }
@@ -1778,7 +2356,10 @@ fn level_from_page(ctx: &Ctx, i: usize, page: &Value) -> Result<(Level, Vec<Inde
         Some(Value::Object(m)) => m,
         _ => Map::new(),
     };
-    let mut spaces: Vec<Value> = spaces.iter().map(|s| to_map(s).map(Value::Object)).collect::<Result<_, _>>()?;
+    let mut spaces: Vec<Value> = spaces
+        .iter()
+        .map(|s| to_map(s).map(Value::Object))
+        .collect::<Result<_, _>>()?;
     if let Some(Value::Array(parked)) = other.remove(PARKED_SPACES) {
         for entry in parked {
             if let Some(space) = entry.get("space") {
@@ -1790,7 +2371,8 @@ fn level_from_page(ctx: &Ctx, i: usize, page: &Value) -> Result<(Level, Vec<Inde
     level.insert("walls".into(), json!(walls));
     level.insert("spaces".into(), Value::Array(spaces));
     level.insert("extras".into(), json!({ NS: residual }));
-    let level = serde_json::from_value(Value::Object(merge_objects(level, other))).map_err(|e| err(e.to_string()))?;
+    let level = serde_json::from_value(Value::Object(merge_objects(level, other)))
+        .map_err(|e| err(e.to_string()))?;
     Ok((level, annotations))
 }
 
@@ -1801,20 +2383,38 @@ fn referenced_lines(page: &Map<String, Value>) -> HashSet<String> {
     chains.chain(symbols).map(Value::to_string).collect()
 }
 
-fn array_of_lenient_obj<'a>(page: &'a Map<String, Value>, key: &str) -> impl Iterator<Item = &'a Value> {
-    page.get(key).and_then(Value::as_array).into_iter().flatten()
+fn array_of_lenient_obj<'a>(
+    page: &'a Map<String, Value>,
+    key: &str,
+) -> impl Iterator<Item = &'a Value> {
+    page.get(key)
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
 }
 
 /// A display wall nothing is attached to: the space's shape already carries it, so it
 /// is not written as a Sketchy wall. One that a chain or symbol uses stays a wall.
 fn is_unused_display_line(line: &Value, hosts: &HashSet<String>) -> bool {
-    line.get(DISPLAY) == Some(&Value::Bool(true)) && !line.get("id").is_some_and(|id| hosts.contains(&id.to_string()))
+    line.get(DISPLAY) == Some(&Value::Bool(true))
+        && !line
+            .get("id")
+            .is_some_and(|id| hosts.contains(&id.to_string()))
 }
 
-fn page_from_level(ctx: &Ctx, i: usize, level: &Level, annos: &[Mapped]) -> Result<Value, SketchyError> {
+fn page_from_level(
+    ctx: &Ctx,
+    i: usize,
+    level: &Level,
+    annos: &[Mapped],
+) -> Result<Value, SketchyError> {
     let view = to_map(level)?;
     let mut page = residual_of(&view);
-    let mut lines = level.walls.iter().map(|w| line_from_wall(ctx, w)).collect::<Result<Vec<_>, _>>()?;
+    let mut lines = level
+        .walls
+        .iter()
+        .map(|w| line_from_wall(ctx, w))
+        .collect::<Result<Vec<_>, _>>()?;
     lines.extend(ctx.display_lines.get(i).into_iter().flatten().cloned());
     let mut polygons = Vec::new();
     let mut verbatim = Vec::new();
@@ -1832,8 +2432,11 @@ fn page_from_level(ctx: &Ctx, i: usize, level: &Level, annos: &[Mapped]) -> Resu
         }
     }
     for spec in ANNO_SPECS {
-        let items: Vec<Value> =
-            annos.iter().filter(|m| m.page == i && m.spec.ch == spec.ch).map(|m| annotation_to_object(ctx, m)).collect();
+        let items: Vec<Value> = annos
+            .iter()
+            .filter(|m| m.page == i && m.spec.ch == spec.ch)
+            .map(|m| annotation_to_object(ctx, m))
+            .collect();
         if !items.is_empty() || page.contains_key(spec.key) {
             page.insert(spec.key.into(), Value::Array(items));
         }
@@ -1856,8 +2459,17 @@ fn page_from_level(ctx: &Ctx, i: usize, level: &Level, annos: &[Mapped]) -> Resu
 /// (including `$schema`) is parked as-is. `revision`, `history` and `generator` are not
 /// written back: the store stamps a new revision whose parent is [`parent_revision`].
 const ROOT_OWNED: &[&str] = &[
-    "format", "format_version", "id", "title", "length_unit", "structures", "extensions_used",
-    "extensions_required", "revision", "history", "generator",
+    "format",
+    "format_version",
+    "id",
+    "title",
+    "length_unit",
+    "structures",
+    "extensions_used",
+    "extensions_required",
+    "revision",
+    "history",
+    "generator",
 ];
 
 /// Converts a save model (the app's JSON) to a Sketchy document.
@@ -1878,7 +2490,11 @@ pub fn to_sketchy(model: &Value, document_id: Option<&str>) -> Result<Document, 
 /// the parent of the next revision a store writes.
 #[must_use]
 pub fn parent_revision(model: &Value) -> Option<String> {
-    model.get(SKETCHY_OTHER)?.get(PARENT_REVISION)?.as_str().map(str::to_string)
+    model
+        .get(SKETCHY_OTHER)?
+        .get(PARENT_REVISION)?
+        .as_str()
+        .map(str::to_string)
 }
 
 fn to_sketchy_inner(model: &Value, document_id: Option<&str>) -> Result<Document, SketchyError> {
@@ -1902,11 +2518,23 @@ fn to_sketchy_inner(model: &Value, document_id: Option<&str>) -> Result<Document
     other.remove(PARENT_REVISION);
     let document_id = document_id
         .map(str::to_string)
-        .or_else(|| parked_id.as_ref().and_then(Value::as_str).map(str::to_string))
+        .or_else(|| {
+            parked_id
+                .as_ref()
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
         .ok_or_else(|| err("document id required"))?;
-    let unit = other.get("length_unit").and_then(Value::as_str).unwrap_or("ft").to_string();
+    let unit = other
+        .get("length_unit")
+        .and_then(Value::as_str)
+        .unwrap_or("ft")
+        .to_string();
     let mut ctx = Ctx::new(unit_scale(&unit)?);
-    let pages = root.get("pages").and_then(Value::as_array).map_or(&[][..], Vec::as_slice);
+    let pages = root
+        .get("pages")
+        .and_then(Value::as_array)
+        .map_or(&[][..], Vec::as_slice);
     for (key, ids) in [("polygons", &mut ctx.to_sk), ("lines", &mut ctx.wall_sk)] {
         for item in pages.iter().flat_map(|p| array_of_lenient(p, key)) {
             if let (Some(id), Some(Value::String(sid))) = (item.get("id"), item.get(SKETCHY_ID)) {
@@ -1927,7 +2555,10 @@ fn to_sketchy_inner(model: &Value, document_id: Option<&str>) -> Result<Document
         .map(|(i, p)| level_from_page(&ctx, i, p))
         .collect::<Result<Vec<_>, _>>()?;
     let (levels, annotations): (Vec<Level>, Vec<Vec<Indexed>>) = converted.into_iter().unzip();
-    let mut structure = json!({"id": "building", "kind": "other", "levels": levels}).as_object().cloned().unwrap_or_default();
+    let mut structure = json!({"id": "building", "kind": "other", "levels": levels})
+        .as_object()
+        .cloned()
+        .unwrap_or_default();
     if let Some(n) = file_name {
         structure.insert("name".into(), n.into());
     }
@@ -1945,7 +2576,10 @@ fn to_sketchy_inner(model: &Value, document_id: Option<&str>) -> Result<Document
     if let Some(n) = file_name {
         doc.insert("title".into(), n.into());
     }
-    let address = root.get("subjectInfo").and_then(|s| s.get("propertyAddress")).and_then(Value::as_str);
+    let address = root
+        .get("subjectInfo")
+        .and_then(|s| s.get("propertyAddress"))
+        .and_then(Value::as_str);
     if let Some(a) = address {
         doc.insert("property".into(), json!({"address": a}));
     }
@@ -1966,7 +2600,10 @@ fn to_sketchy_inner(model: &Value, document_id: Option<&str>) -> Result<Document
         presentation.insert("annotations".into(), Value::Array(annotations));
     }
     if let Some(layers) = layers {
-        let views = layers.iter().map(|l| layer_to_view(&ctx, l)).collect::<Result<Vec<_>, _>>()?;
+        let views = layers
+            .iter()
+            .map(|l| layer_to_view(&ctx, l))
+            .collect::<Result<Vec<_>, _>>()?;
         presentation.insert("layers".into(), Value::Array(views));
         let assigned = element_layers_of(&ctx, pages);
         if !assigned.is_empty() {
@@ -1977,7 +2614,10 @@ fn to_sketchy_inner(model: &Value, document_id: Option<&str>) -> Result<Document
         doc.insert("presentation".into(), Value::Object(presentation));
     }
     if let Some(codes) = codes {
-        let rows = codes.iter().map(|c| code_to_view(&ctx, c)).collect::<Result<Vec<_>, _>>()?;
+        let rows = codes
+            .iter()
+            .map(|c| code_to_view(&ctx, c))
+            .collect::<Result<Vec<_>, _>>()?;
         let mut scheme = json!({"scheme": code_scheme(), "name": CODE_SCHEME_NAME, "codes": rows})
             .as_object()
             .cloned()
@@ -1991,7 +2631,10 @@ fn to_sketchy_inner(model: &Value, document_id: Option<&str>) -> Result<Document
             _ => Vec::new(),
         };
         let at = at.unwrap_or_else(|| json!(0));
-        doc.insert("classification_schemes".into(), Value::Array(splice_at(others, Some(&at), vec![Value::Object(scheme)])));
+        doc.insert(
+            "classification_schemes".into(),
+            Value::Array(splice_at(others, Some(&at), vec![Value::Object(scheme)])),
+        );
     }
     other.remove(SCHEME_INDEX);
     if other.get("$schema").and_then(Value::as_str) == Some(SCHEMA_URL_0_1) {
@@ -2013,7 +2656,9 @@ fn extensions_of(parked: Option<Value>) -> Value {
 }
 
 fn array_of_lenient<'a>(page: &'a Value, key: &str) -> &'a [Value] {
-    page.get(key).and_then(Value::as_array).map_or(&[], Vec::as_slice)
+    page.get(key)
+        .and_then(Value::as_array)
+        .map_or(&[], Vec::as_slice)
 }
 
 /// Converts a Sketchy document back to a save model.
@@ -2053,7 +2698,9 @@ fn check_unique_ids(doc: &Document) -> Result<(), SketchyError> {
 /// `-n` for a number, keeping integers integers and zero as it is.
 fn negated(n: &Value) -> Value {
     match (n.as_i64(), n.as_f64()) {
-        (Some(i), _) => i.checked_neg().map_or_else(|| Value::from(-(i as f64)), Value::from),
+        (Some(i), _) => i
+            .checked_neg()
+            .map_or_else(|| Value::from(-(i as f64)), Value::from),
         (None, Some(f)) if f != 0.0 => Value::from(-f),
         _ => n.clone(),
     }
@@ -2081,8 +2728,14 @@ fn negate_bulges(v: &mut Value) {
 /// Keeps what 0.2 dropped from a 0.1 element in its `extras[NS]` residual.
 fn stash_dropped(obj: &mut Map<String, Value>, key: &str, value: Value) {
     let extras = obj.entry("extras").or_insert_with(|| json!({}));
-    if let Some(ns) = extras.as_object_mut().map(|e| e.entry(NS).or_insert_with(|| json!({}))) {
-        if let Some(dropped) = ns.as_object_mut().map(|n| n.entry(DROPPED_0_1).or_insert_with(|| json!({}))) {
+    if let Some(ns) = extras
+        .as_object_mut()
+        .map(|e| e.entry(NS).or_insert_with(|| json!({})))
+    {
+        if let Some(dropped) = ns
+            .as_object_mut()
+            .map(|n| n.entry(DROPPED_0_1).or_insert_with(|| json!({})))
+        {
             dropped[key] = value;
         }
     }
@@ -2131,8 +2784,14 @@ fn migrate_0_1(doc: &Document) -> Result<Document, SketchyError> {
         if let Some(l) = level.as_object_mut() {
             upgrade_element(l);
             for key in ["spaces", "features"] {
-                let items = l.get_mut(key).and_then(Value::as_array_mut).into_iter().flatten();
-                items.filter_map(Value::as_object_mut).for_each(upgrade_element);
+                let items = l
+                    .get_mut(key)
+                    .and_then(Value::as_array_mut)
+                    .into_iter()
+                    .flatten();
+                items
+                    .filter_map(Value::as_object_mut)
+                    .for_each(upgrade_element);
             }
         }
     }
@@ -2161,26 +2820,60 @@ fn from_sketchy_inner(doc: &Document) -> Result<Value, SketchyError> {
         return Err(err(format!("requires unsupported extension {bad}")));
     }
     let mut ctx = Ctx::new(unit_scale(&doc.length_unit)?);
-    let mut root = doc.extras.as_ref().and_then(|e| e.get(NS)).and_then(Value::as_object).cloned().unwrap_or_default();
+    let mut root = doc
+        .extras
+        .as_ref()
+        .and_then(|e| e.get(NS))
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
     let levels: &[Level] = doc.structures.first().map_or(&[], |s| s.levels.as_slice());
-    let annotations: &[Value] = doc.presentation.as_ref().map_or(&[], |p| p.annotations.as_slice());
+    let annotations: &[Value] = doc
+        .presentation
+        .as_ref()
+        .map_or(&[], |p| p.annotations.as_slice());
     let (annos, parked_annotations) = split_annotations(levels, annotations);
     let parked_values: Vec<Value> = parked_annotations.iter().map(|(_, a)| a.clone()).collect();
     ctx.stamp_order = !parked_annotations.is_empty() || !in_default_order(&annos);
-    let stored_next = root.get("nextId").and_then(Value::as_i64).filter(|n| (1..=MAX_ID).contains(n));
+    let stored_next = root
+        .get("nextId")
+        .and_then(Value::as_i64)
+        .filter(|n| (1..=MAX_ID).contains(n));
     let assigned = ctx.assign_ids(levels, &annos, &parked_values, stored_next)?;
     ctx.prepare_from(doc, levels);
     let grew = ctx.plan_display(levels)?;
-    let pages = levels.iter().enumerate().map(|(i, l)| page_from_level(&ctx, i, l, &annos)).collect::<Result<Vec<_>, _>>()?;
+    let pages = levels
+        .iter()
+        .enumerate()
+        .map(|(i, l)| page_from_level(&ctx, i, l, &annos))
+        .collect::<Result<Vec<_>, _>>()?;
     root.insert("pages".into(), Value::Array(pages));
     if ctx.layers_mapped {
-        let layers = doc.presentation.as_ref().and_then(|p| sketchy_layers(Some(&p.other))).unwrap_or_default();
-        root.insert("layers".into(), Value::Array(layers.into_iter().map(|l| layer_from_view(&ctx, l)).collect()));
+        let layers = doc
+            .presentation
+            .as_ref()
+            .and_then(|p| sketchy_layers(Some(&p.other)))
+            .unwrap_or_default();
+        root.insert(
+            "layers".into(),
+            Value::Array(
+                layers
+                    .into_iter()
+                    .map(|l| layer_from_view(&ctx, l))
+                    .collect(),
+            ),
+        );
     }
     let scheme = sketchy_code_scheme(doc);
     if let Some(i) = scheme {
-        let rows = doc.classification_schemes[i].codes.iter().filter_map(Value::as_object);
-        root.insert("areaCodes".into(), Value::Array(rows.map(|c| code_from_view(&ctx, c)).collect()));
+        let rows = doc.classification_schemes[i]
+            .codes
+            .iter()
+            .filter_map(Value::as_object);
+        root.insert(
+            "areaCodes".into(),
+            Value::Array(rows.map(|c| code_from_view(&ctx, c)).collect()),
+        );
     }
     if let Some(title) = &doc.title {
         root.insert("fileName".into(), title.clone().into());
@@ -2189,19 +2882,32 @@ fn from_sketchy_inner(doc: &Document) -> Result<Value, SketchyError> {
     if invalid_next || ((assigned || grew) && ctx.next_free > stored_next.unwrap_or(0)) {
         root.insert("nextId".into(), ctx.next_free.into());
     }
-    let address = doc.property.as_ref().and_then(|p| p.get("address")).and_then(Value::as_str);
+    let address = doc
+        .property
+        .as_ref()
+        .and_then(|p| p.get("address"))
+        .and_then(Value::as_str);
     if let Some(a) = address {
         set_property_address(&mut root, a);
     }
     let consumed: HashSet<String> = levels
         .iter()
         .flat_map(|l| {
-            let areas = l.spaces.iter().filter(|s| is_area(&s.shape)).map(|s| s.id.clone());
+            let areas = l
+                .spaces
+                .iter()
+                .filter(|s| is_area(&s.shape))
+                .map(|s| s.id.clone());
             l.walls.iter().map(|w| w.id.clone()).chain(areas)
         })
         .chain(annos.iter().map(|m| m.id.to_string()))
         .collect();
-    let parts = Parked { annotations: parked_annotations, consumed, layers_mapped: ctx.layers_mapped, scheme };
+    let parts = Parked {
+        annotations: parked_annotations,
+        consumed,
+        layers_mapped: ctx.layers_mapped,
+        scheme,
+    };
     park(&mut root, root_rest(doc, parts)?);
     Ok(Value::Object(root))
 }
@@ -2214,15 +2920,30 @@ fn from_sketchy_inner(doc: &Document) -> Result<Value, SketchyError> {
 #[must_use]
 pub fn unshown_summary(doc: &Document) -> Vec<(String, usize)> {
     let levels: &[Level] = doc.structures.first().map_or(&[], |s| s.levels.as_slice());
-    let annotations: &[Value] = doc.presentation.as_ref().map_or(&[], |p| p.annotations.as_slice());
+    let annotations: &[Value] = doc
+        .presentation
+        .as_ref()
+        .map_or(&[], |p| p.annotations.as_slice());
     let count = |f: fn(&Level) -> usize| levels.iter().map(f).sum::<usize>();
     let rows = [
-        ("structure", "structures", doc.structures.len().saturating_sub(1)),
+        (
+            "structure",
+            "structures",
+            doc.structures.len().saturating_sub(1),
+        ),
         ("opening", "openings", count(|l| l.openings.len())),
         ("feature", "features", count(|l| l.features.len())),
         ("void", "voids", count(|l| l.voids.len())),
-        ("non-area space", "non-area spaces", count(|l| l.spaces.iter().filter(|s| !is_area(&s.shape)).count())),
-        ("annotation", "annotations", split_annotations(levels, annotations).1.len()),
+        (
+            "non-area space",
+            "non-area spaces",
+            count(|l| l.spaces.iter().filter(|s| !is_area(&s.shape)).count()),
+        ),
+        (
+            "annotation",
+            "annotations",
+            split_annotations(levels, annotations).1.len(),
+        ),
     ];
     rows.into_iter()
         .filter(|(_, _, n)| *n > 0)
@@ -2252,7 +2973,9 @@ fn layer_from_view(ctx: &Ctx, view: &Map<String, Value>) -> Value {
 /// Presentation content outside what the save model holds: unmapped annotations,
 /// styles, pages, underlays, foreign layers and assignments of unconverted elements.
 fn presentation_rest(doc: &Document, parts: &Parked) -> Result<Option<Value>, SketchyError> {
-    let Some(pres) = &doc.presentation else { return Ok(None) };
+    let Some(pres) = &doc.presentation else {
+        return Ok(None);
+    };
     let mut rest = to_map(pres)?;
     rest.remove("annotations");
     if parts.layers_mapped {
@@ -2268,7 +2991,11 @@ fn presentation_rest(doc: &Document, parts: &Parked) -> Result<Option<Value>, Sk
 }
 
 /// Schemes other than the mapped one, and that one's own fields (`scheme0`).
-fn schemes_rest(doc: &Document, mapped: Option<usize>, rest: &mut Map<String, Value>) -> Result<(), SketchyError> {
+fn schemes_rest(
+    doc: &Document,
+    mapped: Option<usize>,
+    rest: &mut Map<String, Value>,
+) -> Result<(), SketchyError> {
     let others: Vec<Value> = doc
         .classification_schemes
         .iter()
@@ -2315,7 +3042,10 @@ fn root_rest(doc: &Document, parts: Parked) -> Result<Map<String, Value>, Sketch
         rest.insert(PARENT_REVISION.into(), r.id.clone().into());
     }
     if !parts.annotations.is_empty() {
-        let entries = parts.annotations.iter().map(|(i, a)| json!({"index": i, "annotation": a}));
+        let entries = parts
+            .annotations
+            .iter()
+            .map(|(i, a)| json!({"index": i, "annotation": a}));
         rest.insert(PARKED_ANNOS.into(), Value::Array(entries.collect()));
     }
     if let Some(Value::Object(prop)) = rest.get_mut("property") {
@@ -2327,7 +3057,11 @@ fn root_rest(doc: &Document, parts: Parked) -> Result<Map<String, Value>, Sketch
         }
     }
     // Kept whole (with `NS` in its place) when it names any other extension, so the order survives.
-    if let Some(used) = doc.extensions_used.as_ref().filter(|u| u.iter().any(|e| e != NS)) {
+    if let Some(used) = doc
+        .extensions_used
+        .as_ref()
+        .filter(|u| u.iter().any(|e| e != NS))
+    {
         rest.insert("extensions_used".into(), json!(used));
     }
     if doc.length_unit != "ft" {
@@ -2337,7 +3071,11 @@ fn root_rest(doc: &Document, parts: Parked) -> Result<Map<String, Value>, Sketch
         let mut s = to_map(first)?;
         s.remove("levels");
         strip_ns_extras(&mut s);
-        for (k, default) in [("id", json!("building")), ("kind", json!("other")), ("name", json!(doc.title))] {
+        for (k, default) in [
+            ("id", json!("building")),
+            ("kind", json!("other")),
+            ("name", json!(doc.title)),
+        ] {
             if s.get(k) == Some(&default) {
                 s.remove(k);
             }
@@ -2346,7 +3084,12 @@ fn root_rest(doc: &Document, parts: Parked) -> Result<Map<String, Value>, Sketch
             rest.insert("structure0".into(), Value::Object(s));
         }
     }
-    let more: Vec<Value> = doc.structures.iter().skip(1).map(|s| to_map(s).map(Value::Object)).collect::<Result<_, _>>()?;
+    let more: Vec<Value> = doc
+        .structures
+        .iter()
+        .skip(1)
+        .map(|s| to_map(s).map(Value::Object))
+        .collect::<Result<_, _>>()?;
     if !more.is_empty() {
         rest.insert("structures".into(), Value::Array(more));
     }
@@ -2374,7 +3117,13 @@ mod tests {
         ctx.to_app.insert(('w', "w-5".into()), json!(5));
         ctx.to_sk.insert("6".into(), "a-6".into());
         ctx.wall_pts.insert("5".into(), json!([[0, 0], [10, 0]]));
-        ctx.code_defaults.insert("GLA1".into(), json!({"use": "living", "finished": true}).as_object().cloned().unwrap_or_default());
+        ctx.code_defaults.insert(
+            "GLA1".into(),
+            json!({"use": "living", "finished": true})
+                .as_object()
+                .cloned()
+                .unwrap_or_default(),
+        );
         ctx
     }
 
@@ -2390,50 +3139,242 @@ mod tests {
             ("wall", "bulge", json!({}), json!({"bulge": -0.25}), true),
             // A sweep beyond the app's limit is clamped, so it is parked (SHAPE_BULGES for polygons).
             ("wall", "bulge", json!({}), json!({"bulge": -1000.0}), false),
-            ("wall", "thickness", json!({}), json!({"thickness": 0.5}), true),
+            (
+                "wall",
+                "thickness",
+                json!({}),
+                json!({"thickness": 0.5}),
+                true,
+            ),
             ("wall", "kind", json!({}), json!({"kind": "exterior"}), true),
             ("wall", "kind", json!({}), json!({"kind": "interior"}), true),
             ("wall", "kind", json!({}), json!({"kind": "party"}), false),
-            ("polygon", "name", json!({}), json!({"name": "Living"}), true),
-            ("polygon", "classifications", json!({}), json!({"classifications": [{"scheme": area, "code": "LIV"}]}), true),
-            ("polygon", "classifications", json!({}), json!({"classifications": [{"scheme": "org.x", "code": "A"}]}), false),
-            ("polygon", "area_factor", json!({}), json!({"area_factor": 1.5}), true),
-            ("polygon", "area_factor", json!({}), json!({"area_factor": 1.0}), false),
-            ("polygon", "measured_to", json!({}), json!({"measured_to": "interior_face"}), true),
-            ("polygon", "measured_to", json!({}), json!({"measured_to": "exterior_face"}), true),
-            ("polygon", "measured_to", json!({}), json!({"measured_to": "centerline"}), true),
-            ("polygon", "measured_to", json!({}), json!({"measured_to": "unspecified"}), false),
-            ("polygon", "within", json!({}), json!({"within": "a-6", "subtract": true}), true),
-            ("polygon", "within", json!({}), json!({"within": "a-6"}), false),
-            ("polygon", "within", json!({}), json!({"within": "ghost", "subtract": true}), false),
-            ("polygon", "attributes", json!({}), json!({"attributes": {"k": 1}}), true),
-            ("polygon", "bulges", json!({"points": [{}, {}, {}]}), json!({"bulges": [0.5, 0, -0.25]}), true),
-            ("polygon", "bulges", json!({"points": [{}, {}, {}]}), json!({"bulges": [1000.0, 0, 0]}), false),
+            (
+                "polygon",
+                "name",
+                json!({}),
+                json!({"name": "Living"}),
+                true,
+            ),
+            (
+                "polygon",
+                "classifications",
+                json!({}),
+                json!({"classifications": [{"scheme": area, "code": "LIV"}]}),
+                true,
+            ),
+            (
+                "polygon",
+                "classifications",
+                json!({}),
+                json!({"classifications": [{"scheme": "org.x", "code": "A"}]}),
+                false,
+            ),
+            (
+                "polygon",
+                "area_factor",
+                json!({}),
+                json!({"area_factor": 1.5}),
+                true,
+            ),
+            (
+                "polygon",
+                "area_factor",
+                json!({}),
+                json!({"area_factor": 1.0}),
+                false,
+            ),
+            (
+                "polygon",
+                "measured_to",
+                json!({}),
+                json!({"measured_to": "interior_face"}),
+                true,
+            ),
+            (
+                "polygon",
+                "measured_to",
+                json!({}),
+                json!({"measured_to": "exterior_face"}),
+                true,
+            ),
+            (
+                "polygon",
+                "measured_to",
+                json!({}),
+                json!({"measured_to": "centerline"}),
+                true,
+            ),
+            (
+                "polygon",
+                "measured_to",
+                json!({}),
+                json!({"measured_to": "unspecified"}),
+                false,
+            ),
+            (
+                "polygon",
+                "within",
+                json!({}),
+                json!({"within": "a-6", "subtract": true}),
+                true,
+            ),
+            (
+                "polygon",
+                "within",
+                json!({}),
+                json!({"within": "a-6"}),
+                false,
+            ),
+            (
+                "polygon",
+                "within",
+                json!({}),
+                json!({"within": "ghost", "subtract": true}),
+                false,
+            ),
+            (
+                "polygon",
+                "attributes",
+                json!({}),
+                json!({"attributes": {"k": 1}}),
+                true,
+            ),
+            (
+                "polygon",
+                "bulges",
+                json!({"points": [{}, {}, {}]}),
+                json!({"bulges": [0.5, 0, -0.25]}),
+                true,
+            ),
+            (
+                "polygon",
+                "bulges",
+                json!({"points": [{}, {}, {}]}),
+                json!({"bulges": [1000.0, 0, 0]}),
+                false,
+            ),
             ("polygon", "use", json!({}), json!({"use": "garage"}), false),
-            ("label", "position", json!({}), json!({"position": [3, 4]}), true),
+            (
+                "label",
+                "position",
+                json!({}),
+                json!({"position": [3, 4]}),
+                true,
+            ),
             ("label", "text", json!({}), json!({"text": "Hi"}), true),
-            ("label", "rotation", json!({}), json!({"rotation": 30}), true),
-            ("symbol", "position", json!({}), json!({"position": [3, 4]}), true),
-            ("symbol", "rotation", json!({}), json!({"rotation": -90}), true),
-            ("symbol", "ref", json!({}), json!({"ref": {"scheme": syms, "name": "door"}}), true),
-            ("symbol", "ref", json!({}), json!({"ref": {"scheme": "org.x", "name": "chair"}}), false),
+            (
+                "label",
+                "rotation",
+                json!({}),
+                json!({"rotation": 30}),
+                true,
+            ),
+            (
+                "symbol",
+                "position",
+                json!({}),
+                json!({"position": [3, 4]}),
+                true,
+            ),
+            (
+                "symbol",
+                "rotation",
+                json!({}),
+                json!({"rotation": -90}),
+                true,
+            ),
+            (
+                "symbol",
+                "ref",
+                json!({}),
+                json!({"ref": {"scheme": syms, "name": "door"}}),
+                true,
+            ),
+            (
+                "symbol",
+                "ref",
+                json!({}),
+                json!({"ref": {"scheme": "org.x", "name": "chair"}}),
+                false,
+            ),
             ("symbol", "scale", json!({}), json!({"scale": [2, 2]}), true),
-            ("symbol", "scale", json!({}), json!({"scale": [2, 3]}), false),
+            (
+                "symbol",
+                "scale",
+                json!({}),
+                json!({"scale": [2, 3]}),
+                false,
+            ),
             ("symbol", "mirror", json!({}), json!({"mirror": "x"}), true),
-            ("symbol", "mirror", json!({}), json!({"mirror": "none"}), true),
+            (
+                "symbol",
+                "mirror",
+                json!({}),
+                json!({"mirror": "none"}),
+                true,
+            ),
             ("symbol", "mirror", json!({}), json!({"mirror": "y"}), false),
-            ("symbol", "host", json!({}), json!({"host": {"wall": "w-5"}}), true),
-            ("symbol", "host", json!({}), json!({"host": {"wall": "ghost"}}), false),
+            (
+                "symbol",
+                "host",
+                json!({}),
+                json!({"host": {"wall": "w-5"}}),
+                true,
+            ),
+            (
+                "symbol",
+                "host",
+                json!({}),
+                json!({"host": {"wall": "ghost"}}),
+                false,
+            ),
             ("chain", "offset", json!({}), json!({"offset": -3}), true),
             ("chain", "offset", json!({}), json!({"offset": 2}), true),
-            ("chain", "target", json!({}), json!({"target": {"wall": "w-5"}}), true),
-            ("chain", "points", json!({"seedLineId": 5}), json!({"points": [[0, 0], [2, 0], [5, 0]]}), false),
+            (
+                "chain",
+                "target",
+                json!({}),
+                json!({"target": {"wall": "w-5"}}),
+                true,
+            ),
+            (
+                "chain",
+                "points",
+                json!({"seedLineId": 5}),
+                json!({"points": [[0, 0], [2, 0], [5, 0]]}),
+                false,
+            ),
             ("layer", "name", json!({}), json!({"name": "Dims"}), true),
-            ("layer", "visible", json!({}), json!({"visible": false}), true),
+            (
+                "layer",
+                "visible",
+                json!({}),
+                json!({"visible": false}),
+                true,
+            ),
             ("layer", "locked", json!({}), json!({"locked": true}), true),
-            ("code", "label", json!({}), json!({"label": "First Floor"}), true),
-            ("code", "area_factor", json!({}), json!({"area_factor": 0.5}), true),
-            ("code", "use", json!({}), json!({"use": "living", "finished": true}), true),
+            (
+                "code",
+                "label",
+                json!({}),
+                json!({"label": "First Floor"}),
+                true,
+            ),
+            (
+                "code",
+                "area_factor",
+                json!({}),
+                json!({"area_factor": 0.5}),
+                true,
+            ),
+            (
+                "code",
+                "use",
+                json!({}),
+                json!({"use": "living", "finished": true}),
+                true,
+            ),
             ("code", "use", json!({}), json!({"use": "garage"}), false),
         ]
     }
@@ -2461,13 +3402,29 @@ mod tests {
             }
         }
         for (table, key, seed, core, lossless) in rows {
-            let groups = tables().into_iter().find(|t| t.0 == table).map(|t| t.1).unwrap_or_default();
-            let g = groups.iter().find(|g| g.core_keys[0] == key).unwrap_or_else(|| panic!("{table}.{key}"));
-            let (mut obj, core) = (seed.as_object().cloned().unwrap_or_default(), core.as_object().cloned().unwrap_or_default());
+            let groups = tables()
+                .into_iter()
+                .find(|t| t.0 == table)
+                .map(|t| t.1)
+                .unwrap_or_default();
+            let g = groups
+                .iter()
+                .find(|g| g.core_keys[0] == key)
+                .unwrap_or_else(|| panic!("{table}.{key}"));
+            let (mut obj, core) = (
+                seed.as_object().cloned().unwrap_or_default(),
+                core.as_object().cloned().unwrap_or_default(),
+            );
             (g.back)(&ctx, &mut obj, &core);
             let again = (g.fwd)(&ctx, &obj);
-            let same = g.core_keys.iter().all(|k| approx_eq(again.get(*k), core.get(*k)));
-            assert_eq!(same, lossless, "{table}.{key}: {core:?} -> {obj:?} -> {again:?}");
+            let same = g
+                .core_keys
+                .iter()
+                .all(|k| approx_eq(again.get(*k), core.get(*k)));
+            assert_eq!(
+                same, lossless,
+                "{table}.{key}: {core:?} -> {obj:?} -> {again:?}"
+            );
         }
     }
 }

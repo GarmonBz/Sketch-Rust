@@ -83,5 +83,8 @@ fn control_and_separator_escapes() {
 fn empty_containers() {
     assert_eq!(canonical_json(&json!({})), "{}");
     assert_eq!(canonical_json(&json!([])), "[]");
-    assert_eq!(canonical_json(&json!({"a": [], "b": {}})), r#"{"a":[],"b":{}}"#);
+    assert_eq!(
+        canonical_json(&json!({"a": [], "b": {}})),
+        r#"{"a":[],"b":{}}"#
+    );
 }

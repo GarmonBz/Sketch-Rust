@@ -60,14 +60,26 @@ pub fn parse_utc(iso: &str) -> Option<i64> {
         }
     };
     let clock = clock.split_once('.').map_or(clock, |(whole, fraction)| {
-        if digits(fraction).is_some() { whole } else { "" }
+        if digits(fraction).is_some() {
+            whole
+        } else {
+            ""
+        }
     });
     let mut t = clock.split(':');
     let (h, min, s) = (digits(t.next()?)?, digits(t.next()?)?, digits(t.next()?)?);
-    if t.next().is_some() || !(1..=12).contains(&m) || !(1..=31).contains(&day) || h > 23 || min > 59 || s > 60 {
+    if t.next().is_some()
+        || !(1..=12).contains(&m)
+        || !(1..=31).contains(&day)
+        || h > 23
+        || min > 59
+        || s > 60
+    {
         return None;
     }
-    let seconds = days_from_civil_checked(y, m, day)?.checked_mul(86_400)?.checked_add(h * 3600 + min * 60 + s)?;
+    let seconds = days_from_civil_checked(y, m, day)?
+        .checked_mul(86_400)?
+        .checked_add(h * 3600 + min * 60 + s)?;
     seconds.checked_sub(offset)
 }
 
@@ -189,14 +201,29 @@ mod tests {
     #[test]
     fn parses_and_formats_with_an_offset() {
         let unix = parse_utc("2026-11-12T15:04:05.123Z").unwrap();
-        assert_eq!(format_shifted(unix, 0).as_deref(), Some("2026-11-12 3:04 PM"));
-        assert_eq!(format_shifted(unix, -5 * 3600).as_deref(), Some("2026-11-12 10:04 AM"));
-        assert_eq!(format_shifted(unix, 10 * 3600).as_deref(), Some("2026-11-13 1:04 AM"));
+        assert_eq!(
+            format_shifted(unix, 0).as_deref(),
+            Some("2026-11-12 3:04 PM")
+        );
+        assert_eq!(
+            format_shifted(unix, -5 * 3600).as_deref(),
+            Some("2026-11-12 10:04 AM")
+        );
+        assert_eq!(
+            format_shifted(unix, 10 * 3600).as_deref(),
+            Some("2026-11-13 1:04 AM")
+        );
         assert_eq!(parse_utc("1970-01-01T00:00:00Z"), Some(0));
         assert_eq!(format_shifted(0, 0).as_deref(), Some("1970-01-01 12:00 AM"));
         // Offsets convert to UTC; a missing or malformed zone or seconds field is None.
-        assert_eq!(parse_utc("2026-11-12T20:34:05+05:30"), parse_utc("2026-11-12T15:04:05Z"));
-        assert_eq!(parse_utc("2026-11-12T10:04:05-05:00"), parse_utc("2026-11-12T15:04:05Z"));
+        assert_eq!(
+            parse_utc("2026-11-12T20:34:05+05:30"),
+            parse_utc("2026-11-12T15:04:05Z")
+        );
+        assert_eq!(
+            parse_utc("2026-11-12T10:04:05-05:00"),
+            parse_utc("2026-11-12T15:04:05Z")
+        );
         assert!(parse_utc("2026-11-12T15:04:05").is_none(), "no zone");
         assert!(parse_utc("2026-11-12T15:04Z").is_none(), "no seconds");
         assert!(parse_utc("2026-11-12T15:04:xxZ").is_none());
@@ -215,7 +242,10 @@ mod tests {
         assert!(parse_utc("2026-11-12T15:04:05+99999999999999999:00").is_none());
         assert!(parse_utc("9223372036854775807-01-01T00:00:00Z").is_none());
         assert!(parse_utc("2026-11-12T99999999999999999:04:05Z").is_none());
-        assert_eq!(parse_utc("9999-12-31T23:59:59Z").map(|u| format_shifted(u, 0)), Some(Some("9999-12-31 11:59 PM".into())));
+        assert_eq!(
+            parse_utc("9999-12-31T23:59:59Z").map(|u| format_shifted(u, 0)),
+            Some(Some("9999-12-31 11:59 PM".into()))
+        );
         assert_eq!(display("99999-01-01T00:00:00Z"), "99999-01-01T00:00:00Z");
         // Shifting never overflows or leaves the four-digit year range.
         assert_eq!(format_shifted(i64::MAX, 0), None);

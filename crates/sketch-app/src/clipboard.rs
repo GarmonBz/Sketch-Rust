@@ -415,10 +415,13 @@ mod tests {
     fn pasted_copies_do_not_reuse_sketchy_ids() {
         let (mut d, poly_id) = square();
         for line in &mut d.lines {
-            line.extra.insert("sketchy_id".into(), format!("wall-{}", line.id).into());
+            line.extra
+                .insert("sketchy_id".into(), format!("wall-{}", line.id).into());
             line.extra.insert("sketchy_display".into(), true.into());
         }
-        d.polygons[0].extra.insert("sketchy_id".into(), "space-a".into());
+        d.polygons[0]
+            .extra
+            .insert("sketchy_id".into(), "space-a".into());
         d.polygons[0].extra.insert("sketchy_index".into(), 3.into());
         let sel = Selection {
             polys: [poly_id].into_iter().collect(),
@@ -429,13 +432,23 @@ mod tests {
         let copies = d.lines.iter().filter(|l| pasted.lines.contains(&l.id));
         for line in copies {
             assert!(!line.extra.contains_key("sketchy_id"), "line {}", line.id);
-            assert!(line.extra.contains_key("sketchy_display"), "other residue stays");
+            assert!(
+                line.extra.contains_key("sketchy_display"),
+                "other residue stays"
+            );
         }
         let copy = d.polygons.iter().find(|p| p.id != poly_id).expect("copy");
         assert!(!copy.extra.contains_key("sketchy_id"));
         assert!(copy.extra.contains_key("sketchy_index"));
-        let original = d.polygons.iter().find(|p| p.id == poly_id).expect("original");
-        assert_eq!(original.extra["sketchy_id"], "space-a", "the original keeps its id");
+        let original = d
+            .polygons
+            .iter()
+            .find(|p| p.id == poly_id)
+            .expect("original");
+        assert_eq!(
+            original.extra["sketchy_id"], "space-a",
+            "the original keeps its id"
+        );
     }
 
     #[test]

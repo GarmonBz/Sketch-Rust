@@ -200,7 +200,11 @@ pub struct Ring {
     #[serde(serialize_with = "num::ser")]
     pub points: Vec<Point>,
     /// One bulge per edge.
-    #[serde(default, skip_serializing_if = "Option::is_none", serialize_with = "num::ser")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "num::ser"
+    )]
     pub bulges: Option<Vec<f64>>,
     /// Unknown keys, preserved.
     #[serde(flatten)]
@@ -222,7 +226,11 @@ pub enum Shape {
         #[serde(serialize_with = "num::ser")]
         points: Vec<Point>,
         /// One bulge per edge.
-        #[serde(default, skip_serializing_if = "Option::is_none", serialize_with = "num::ser")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            serialize_with = "num::ser"
+        )]
         bulges: Option<Vec<f64>>,
         /// Rings cut out of the polygon.
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -255,7 +263,11 @@ pub enum Shape {
         #[serde(serialize_with = "num::ser")]
         radius_y: f64,
         /// Rotation of the x radius, degrees.
-        #[serde(default, skip_serializing_if = "Option::is_none", serialize_with = "num::ser")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            serialize_with = "num::ser"
+        )]
         rotation: Option<f64>,
         /// Unknown keys, preserved.
         #[serde(flatten)]
@@ -267,7 +279,11 @@ pub enum Shape {
         #[serde(serialize_with = "num::ser")]
         points: Vec<Point>,
         /// One bulge per segment.
-        #[serde(default, skip_serializing_if = "Option::is_none", serialize_with = "num::ser")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            serialize_with = "num::ser"
+        )]
         bulges: Option<Vec<f64>>,
         /// Unknown keys, preserved.
         #[serde(flatten)]
@@ -639,7 +655,8 @@ impl Document {
     /// [`SUPPORTED_VERSIONS`]. Draft `0.x` minors may break each other, so a newer minor is
     /// rejected rather than guessed at.
     pub fn from_json(text: &str) -> Result<Self, SketchyError> {
-        let value: Value = serde_json::from_str(text).map_err(|e| SketchyError::Json(e.to_string()))?;
+        let value: Value =
+            serde_json::from_str(text).map_err(|e| SketchyError::Json(e.to_string()))?;
         Self::from_value(value)
     }
 
@@ -647,7 +664,9 @@ impl Document {
     /// versions and nesting deeper than [`MAX_DEPTH`].
     pub fn from_value(value: Value) -> Result<Self, SketchyError> {
         if too_deep(&value) {
-            return Err(SketchyError::Json(format!("document is nested deeper than {MAX_DEPTH} levels")));
+            return Err(SketchyError::Json(format!(
+                "document is nested deeper than {MAX_DEPTH} levels"
+            )));
         }
         if value.get("format").and_then(Value::as_str) != Some(FORMAT) {
             return Err(SketchyError::NotSketchy);

@@ -8,7 +8,9 @@
 use iced::widget::{button, column, container, row, scrollable, text, Space};
 use iced::{alignment, Border, Color, Element, Length, Task};
 use sketch_core::sketchy::convert::upgrade;
-use sketch_core::sketchy::store::{CommitInfo, CommitOutcome, RevisionStatus, RevisionSummary, Store};
+use sketch_core::sketchy::store::{
+    CommitInfo, CommitOutcome, RevisionStatus, RevisionSummary, Store,
+};
 
 use crate::theme::*;
 use crate::{dialog, localtime, App, Message, SketchFileFormat};
@@ -325,7 +327,9 @@ impl App {
             return "New document".into();
         };
         match self.head_version() {
-            Some((sequence, true)) if !unsaved && !untouched_read_only => format!("Final \u{b7} v{sequence}"),
+            Some((sequence, true)) if !unsaved && !untouched_read_only => {
+                format!("Final \u{b7} v{sequence}")
+            }
             Some((sequence, _)) => format!("{base} \u{b7} v{sequence}"),
             None => base.into(),
         }
@@ -379,7 +383,10 @@ impl App {
             return None;
         }
         let reload = self.view_revision_unchecked(&viewing.id);
-        Some(Task::batch([reload, self.toasts.show(READ_ONLY_TOAST.into())]))
+        Some(Task::batch([
+            reload,
+            self.toasts.show(READ_ONLY_TOAST.into()),
+        ]))
     }
 
     pub(crate) fn versions_update(&mut self, msg: VersionsMsg) -> Task<Message> {
@@ -409,17 +416,22 @@ impl App {
                 "Version history is kept in .sketchy files. Save this sketch as a .sketchy file first.".into(),
             );
         }
-        self.dock.update(crate::dock::DockMsg::Show(crate::dock::DockTab::Versions));
+        self.dock
+            .update(crate::dock::DockMsg::Show(crate::dock::DockTab::Versions));
         Task::none()
     }
 
     /// Mark as Final...: the optional note comes from a prompt.
     fn ask_final_note(&mut self) -> Task<Message> {
         let Some(file) = self.store_file() else {
-            return self.toasts.show("Marking a version as final needs a .sketchy file.".into());
+            return self
+                .toasts
+                .show("Marking a version as final needs a .sketchy file.".into());
         };
         if self.viewing_revision.is_some() {
-            return self.toasts.show("Go back to the latest version to mark it as final.".into());
+            return self
+                .toasts
+                .show("Go back to the latest version to mark it as final.".into());
         }
         if file.read_only {
             return self.toasts.show(READ_ONLY_FILE_TOAST.into());
@@ -444,14 +456,20 @@ impl App {
         let info = info(note, RevisionStatus::Final);
         let written = match crate::write_store_with(&model, &file.path, Some(&file.path), &info) {
             Ok(written) => written,
-            Err(e) => return self.toasts.show(crate::toast_error(&format!("Could not mark as final: {e}"))),
+            Err(e) => {
+                return self
+                    .toasts
+                    .show(crate::toast_error(&format!("Could not mark as final: {e}")))
+            }
         };
         self.autosave_clean();
         self.refresh_versions();
         if written == crate::StoreWrite::HistoryLost {
             return self.toasts.show(crate::HISTORY_LOST_TOAST.into());
         }
-        let version = self.head_version().map_or(String::new(), |(s, _)| format!(" v{s}"));
+        let version = self
+            .head_version()
+            .map_or(String::new(), |(s, _)| format!(" v{s}"));
         self.toasts.show(format!("Marked{version} as final."))
     }
 
@@ -459,12 +477,16 @@ impl App {
     /// document, so they must be saved first.
     fn view_revision(&mut self, id: &str) -> Task<Message> {
         if self.store_file().is_none() {
-            return self.toasts.show("Version history needs a .sketchy file.".into());
+            return self
+                .toasts
+                .show("Version history needs a .sketchy file.".into());
         }
         if self.viewing_revision.is_none() {
             self.refresh_dirty();
             if self.dirty {
-                return self.toasts.show("Save your changes before viewing another version.".into());
+                return self
+                    .toasts
+                    .show("Save your changes before viewing another version.".into());
             }
         }
         self.view_revision_unchecked(id)
@@ -481,7 +503,11 @@ impl App {
         });
         let (history, doc) = match loaded {
             Ok(pair) => pair,
-            Err(e) => return self.toasts.show(crate::toast_error(&format!("Could not open that version: {e}"))),
+            Err(e) => {
+                return self.toasts.show(crate::toast_error(&format!(
+                    "Could not open that version: {e}"
+                )))
+            }
         };
         let Some(summary) = history.iter().find(|r| r.id == id) else {
             return self.toasts.show("That version no longer exists.".into());
@@ -498,7 +524,11 @@ impl App {
         };
         let model = match sketch_core::sketchy::convert::from_sketchy(&doc) {
             Ok(model) => model,
-            Err(e) => return self.toasts.show(crate::toast_error(&format!("Could not open that version: {e}"))),
+            Err(e) => {
+                return self.toasts.show(crate::toast_error(&format!(
+                    "Could not open that version: {e}"
+                )))
+            }
         };
         let task = self.load_revision_model(&model, file);
         self.viewing_revision = Some(viewing);
@@ -508,7 +538,11 @@ impl App {
 
     /// Replace the document with a revision's model, keeping the file binding
     /// and the dock layout (a revision's saved settings must not move panels).
-    fn load_revision_model(&mut self, model: &serde_json::Value, file: crate::CurrentFile) -> Task<Message> {
+    fn load_revision_model(
+        &mut self,
+        model: &serde_json::Value,
+        file: crate::CurrentFile,
+    ) -> Task<Message> {
         let stem = file
             .path
             .file_stem()
@@ -533,10 +567,16 @@ impl App {
         let head = Store::open(&file.path)
             .and_then(|store| store.head())
             .map_err(|e| e.to_string())
-            .and_then(|doc| sketch_core::sketchy::convert::from_sketchy(&doc).map_err(|e| e.to_string()));
+            .and_then(|doc| {
+                sketch_core::sketchy::convert::from_sketchy(&doc).map_err(|e| e.to_string())
+            });
         let model = match head {
             Ok(model) => model,
-            Err(e) => return self.toasts.show(crate::toast_error(&format!("Could not open the latest version: {e}"))),
+            Err(e) => {
+                return self.toasts.show(crate::toast_error(&format!(
+                    "Could not open the latest version: {e}"
+                )))
+            }
         };
         let task = self.load_revision_model(&model, file);
         self.refresh_versions();
@@ -559,12 +599,20 @@ impl App {
         });
         let outcome = match committed {
             Ok(outcome) => outcome,
-            Err(e) => return self.toasts.show(crate::toast_error(&format!("Could not restore: {e}"))),
+            Err(e) => {
+                return self
+                    .toasts
+                    .show(crate::toast_error(&format!("Could not restore: {e}")))
+            }
         };
         let task = self.back_to_latest();
         let said = match outcome {
-            CommitOutcome::Created(_) => format!("Restored v{} as the latest version.", viewing.sequence),
-            CommitOutcome::Unchanged(_) => format!("v{} is already the latest version.", viewing.sequence),
+            CommitOutcome::Created(_) => {
+                format!("Restored v{} as the latest version.", viewing.sequence)
+            }
+            CommitOutcome::Unchanged(_) => {
+                format!("v{} is already the latest version.", viewing.sequence)
+            }
         };
         Task::batch([task, self.toasts.show(said)])
     }
@@ -575,10 +623,15 @@ impl App {
         if self.store_file().is_none() {
             return Task::none();
         }
-        let base = self.file_name.strip_suffix(".sketchy").unwrap_or(&self.file_name).to_owned();
+        let base = self
+            .file_name
+            .strip_suffix(".sketchy")
+            .unwrap_or(&self.file_name)
+            .to_owned();
         #[cfg(test)]
         {
-            let Some(chosen) = crate::file_dialogs::take_test_save_path(format!("{base}.sketchy")) else {
+            let Some(chosen) = crate::file_dialogs::take_test_save_path(format!("{base}.sketchy"))
+            else {
                 return Task::none();
             };
             self.finish_save_copy(id, chosen)
@@ -599,21 +652,35 @@ impl App {
         };
         let chosen = match std::path::absolute(chosen) {
             Ok(p) => p,
-            Err(e) => return self.toasts.show(crate::toast_error(&format!("Could not save the copy: {e}"))),
+            Err(e) => {
+                return self
+                    .toasts
+                    .show(crate::toast_error(&format!("Could not save the copy: {e}")))
+            }
         };
         let (target_path, target_format) = crate::sketch_destination(chosen, "sketchy");
         if target_format != SketchFileFormat::Sketchy {
-            return self.toasts.show("A copy of a version is saved as a .sketchy file.".into());
+            return self
+                .toasts
+                .show("A copy of a version is saved as a .sketchy file.".into());
         }
         if crate::same_file(&target_path, &file.path) {
-            return self.toasts.show("Choose a different file for the copy.".into());
+            return self
+                .toasts
+                .show("Choose a different file for the copy.".into());
         }
         match write_copy(&file.path, id, &target_path) {
             Ok(()) => {
-                let name = target_path.file_name().and_then(|n| n.to_str()).unwrap_or("copy").to_owned();
+                let name = target_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("copy")
+                    .to_owned();
                 self.toasts.show(format!("Saved a copy: {name}"))
             }
-            Err(e) => self.toasts.show(crate::toast_error(&format!("Could not save the copy: {e}"))),
+            Err(e) => self
+                .toasts
+                .show(crate::toast_error(&format!("Could not save the copy: {e}"))),
         }
     }
 }
@@ -640,12 +707,22 @@ fn write_copy(source: &std::path::Path, id: &str, target: &std::path::Path) -> R
     doc.derived_from = Some(serde_json::json!({ "document": store.document_id(), "revision": id }));
     doc.revision = None;
     doc.history = None;
-    let name = target.file_name().and_then(|n| n.to_str()).unwrap_or("copy");
+    let name = target
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("copy");
     let temp = target.with_file_name(format!(".{name}.{}.tmp", new_id()));
-    let made = Store::create(&temp, doc, &info(Some(format!("Copied from v{sequence}")), RevisionStatus::Draft))
-        .map(drop)
-        .map_err(es)
-        .and_then(|()| std::fs::rename(&temp, target).map_err(|e| e.to_string()));
+    let made = Store::create(
+        &temp,
+        doc,
+        &info(
+            Some(format!("Copied from v{sequence}")),
+            RevisionStatus::Draft,
+        ),
+    )
+    .map(drop)
+    .map_err(es)
+    .and_then(|()| std::fs::rename(&temp, target).map_err(|e| e.to_string()));
     if made.is_err() {
         let _ = std::fs::remove_file(&temp);
     }
@@ -658,16 +735,26 @@ fn final_badge<'a>() -> Element<'a, Message> {
     container(label("FINAL", 10.0, SEGOE_BOLD, green, 12.0))
         .padding([1, 6])
         .style(move |_| container::Style {
-            border: Border { color: green, width: 1.0, radius: 3.0.into() },
+            border: Border {
+                color: green,
+                width: 1.0,
+                radius: 3.0.into(),
+            },
             ..container::Style::default()
         })
         .into()
 }
 
 fn version_row<'a>(r: &'a VersionRow, on_screen: bool) -> Element<'a, Message> {
-    let mut title = row![label(format!("v{}", r.sequence), 13.0, SEGOE_BOLD, text_main(), 15.0)]
-        .spacing(6)
-        .align_y(alignment::Vertical::Center);
+    let mut title = row![label(
+        format!("v{}", r.sequence),
+        13.0,
+        SEGOE_BOLD,
+        text_main(),
+        15.0
+    )]
+    .spacing(6)
+    .align_y(alignment::Vertical::Center);
     if r.is_final {
         title = title.push(final_badge());
     }
@@ -680,11 +767,20 @@ fn version_row<'a>(r: &'a VersionRow, on_screen: bool) -> Element<'a, Message> {
     };
     let mut body = column![title, label(who, 11.0, ARIAL, muted(), 13.0)].spacing(3);
     if let Some(message) = &r.message {
-        body = body.push(text(message.as_str()).size(12).font(ARIAL).color(text_main()));
+        body = body.push(
+            text(message.as_str())
+                .size(12)
+                .font(ARIAL)
+                .color(text_main()),
+        );
     }
     let mut actions = row![].spacing(6);
     if !r.is_head {
-        actions = actions.push(msg_action_btn("Open", Length::Fill, Message::Versions(VersionsMsg::View(r.id.clone()))));
+        actions = actions.push(msg_action_btn(
+            "Open",
+            Length::Fill,
+            Message::Versions(VersionsMsg::View(r.id.clone())),
+        ));
     }
     actions = actions.push(msg_action_btn(
         "Save a copy...",
@@ -697,7 +793,11 @@ fn version_row<'a>(r: &'a VersionRow, on_screen: bool) -> Element<'a, Message> {
         .width(Length::Fill)
         .style(move |_| container::Style {
             background: Some(bg_app().into()),
-            border: Border { color: border_color, width: 1.0, radius: 3.0.into() },
+            border: Border {
+                color: border_color,
+                width: 1.0,
+                radius: 3.0.into(),
+            },
             ..container::Style::default()
         })
         .into()
@@ -705,11 +805,21 @@ fn version_row<'a>(r: &'a VersionRow, on_screen: bool) -> Element<'a, Message> {
 
 /// The Versions dock panel: Mark as Final... above the list, newest first.
 pub fn panel<'a>(rows: &'a [VersionRow], viewing: Option<&str>) -> Element<'a, Message> {
-    let list = column(rows.iter().map(|r| version_row(r, viewing == Some(r.id.as_str()))))
-        .spacing(6)
-        .padding(iced::Padding { right: 12.0, ..iced::Padding::ZERO });
+    let list = column(
+        rows.iter()
+            .map(|r| version_row(r, viewing == Some(r.id.as_str()))),
+    )
+    .spacing(6)
+    .padding(iced::Padding {
+        right: 12.0,
+        ..iced::Padding::ZERO
+    });
     column![
-        msg_action_btn("Mark as Final...", Length::Fill, Message::Versions(VersionsMsg::MarkFinal)),
+        msg_action_btn(
+            "Mark as Final...",
+            Length::Fill,
+            Message::Versions(VersionsMsg::MarkFinal)
+        ),
         Space::new().height(8),
         scroll(list, bg_panel()),
     ]
@@ -720,23 +830,45 @@ pub fn panel<'a>(rows: &'a [VersionRow], viewing: Option<&str>) -> Element<'a, M
 pub fn banner<'a>(v: &ViewingRevision, read_only: bool) -> Element<'a, Message> {
     let status = if v.is_final { "Final" } else { "Draft" };
     let amber = hex(0xeba054);
-    let words = format!("Viewing v{} ({status}, {}) \u{2014} read-only", v.sequence, v.when);
-    let mut bar = row![label(words, 12.0, SEGOE, text_main(), 16.0), Space::new().width(Length::Fill)]
-        .spacing(8)
-        .align_y(alignment::Vertical::Center);
+    let words = format!(
+        "Viewing v{} ({status}, {}) \u{2014} read-only",
+        v.sequence, v.when
+    );
+    let mut bar = row![
+        label(words, 12.0, SEGOE, text_main(), 16.0),
+        Space::new().width(Length::Fill)
+    ]
+    .spacing(8)
+    .align_y(alignment::Vertical::Center);
     // A read-only file cannot take the restored revision.
     if !read_only {
-        bar = bar.push(msg_action_btn("Restore this version", 140, Message::Versions(VersionsMsg::RestoreViewed)));
+        bar = bar.push(msg_action_btn(
+            "Restore this version",
+            140,
+            Message::Versions(VersionsMsg::RestoreViewed),
+        ));
     }
     bar = bar
-        .push(msg_action_btn("Save a copy...", 104, Message::Versions(VersionsMsg::SaveCopyViewed)))
-        .push(msg_action_btn("Back to latest", 104, Message::Versions(VersionsMsg::BackToLatest)));
+        .push(msg_action_btn(
+            "Save a copy...",
+            104,
+            Message::Versions(VersionsMsg::SaveCopyViewed),
+        ))
+        .push(msg_action_btn(
+            "Back to latest",
+            104,
+            Message::Versions(VersionsMsg::BackToLatest),
+        ));
     container(bar)
         .padding([5, 10])
         .width(Length::Fill)
         .style(move |_| container::Style {
             background: Some(over(amber, 0.22, bg_panel()).into()),
-            border: Border { color: amber, width: 1.0, radius: 0.0.into() },
+            border: Border {
+                color: amber,
+                width: 1.0,
+                radius: 0.0.into(),
+            },
             ..container::Style::default()
         })
         .into()
@@ -767,8 +899,14 @@ mod tests {
             summary(3, RevisionStatus::Draft, Some(" ")),
         ];
         let rows = rows_from_history(&history);
-        assert_eq!(rows.iter().map(|r| r.sequence).collect::<Vec<_>>(), [3, 2, 1]);
-        assert_eq!(rows.iter().map(|r| r.is_head).collect::<Vec<_>>(), [true, false, false]);
+        assert_eq!(
+            rows.iter().map(|r| r.sequence).collect::<Vec<_>>(),
+            [3, 2, 1]
+        );
+        assert_eq!(
+            rows.iter().map(|r| r.is_head).collect::<Vec<_>>(),
+            [true, false, false]
+        );
         assert!(rows[1].is_final && !rows[0].is_final);
         assert_eq!(rows[1].message.as_deref(), Some("two"));
         assert_eq!(rows[2].author.as_deref(), Some("Ann"));
@@ -781,7 +919,13 @@ mod tests {
         assert!(edits_document(&Message::CanvasPress(1.0, 2.0)));
         assert!(edits_document(&Message::Key(crate::input::KeyCmd::Paste)));
         assert!(!edits_document(&Message::Noop));
-        assert!(!edits_document(&Message::Wheel { up: true, x: 0.0, y: 0.0, shift: false, ctrl: false }));
+        assert!(!edits_document(&Message::Wheel {
+            up: true,
+            x: 0.0,
+            y: 0.0,
+            shift: false,
+            ctrl: false
+        }));
         assert!(!edits_document(&Message::Key(crate::input::KeyCmd::Escape)));
     }
 }

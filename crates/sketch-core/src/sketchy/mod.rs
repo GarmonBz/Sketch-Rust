@@ -21,9 +21,11 @@ pub const FORMAT_VERSION: &str = "0.2";
 /// A `0.1` document is upgraded to `0.2` when it is converted for the app.
 pub const SUPPORTED_VERSIONS: [&str; 2] = ["0.1", "0.2"];
 /// The JSON Schema URL of [`FORMAT_VERSION`].
-pub const SCHEMA_URL: &str = "https://property-hackers.github.io/sketchy/schema/0.2/sketchy.schema.json";
+pub const SCHEMA_URL: &str =
+    "https://property-hackers.github.io/sketchy/schema/0.2/sketchy.schema.json";
 /// The JSON Schema URL of draft 0.1, rewritten to [`SCHEMA_URL`] when a 0.1 file is upgraded.
-pub const SCHEMA_URL_0_1: &str = "https://property-hackers.github.io/sketchy/schema/0.1/sketchy.schema.json";
+pub const SCHEMA_URL_0_1: &str =
+    "https://property-hackers.github.io/sketchy/schema/0.1/sketchy.schema.json";
 
 /// Largest input [`read`] accepts.
 pub const MAX_INPUT_BYTES: usize = 64 * 1024 * 1024;
@@ -66,10 +68,13 @@ impl std::error::Error for SketchyError {}
 /// otherwise validates it as [`Document::from_value`] does.
 pub fn read(bytes: &[u8]) -> Result<Option<Document>, SketchyError> {
     if bytes.len() > MAX_INPUT_BYTES {
-        return Err(SketchyError::Json("document is larger than 64 MiB".to_string()));
+        return Err(SketchyError::Json(
+            "document is larger than 64 MiB".to_string(),
+        ));
     }
     let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes);
-    let value: Value = serde_json::from_slice(bytes).map_err(|e| SketchyError::Json(e.to_string()))?;
+    let value: Value =
+        serde_json::from_slice(bytes).map_err(|e| SketchyError::Json(e.to_string()))?;
     if value.get("format").and_then(Value::as_str) != Some(FORMAT) {
         return Ok(None);
     }

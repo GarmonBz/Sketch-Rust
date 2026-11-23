@@ -1230,12 +1230,7 @@ mod tests {
     #[test]
     fn the_wall_pointer_jumps_to_the_grid_point_before_the_first_click() {
         let k = PIXELS_PER_FOOT;
-        let world_of = |p: Point| {
-            (
-                (f64::from(p.x) - 523.5) / k,
-                (351.5 - f64::from(p.y)) / k,
-            )
-        };
+        let world_of = |p: Point| ((f64::from(p.x) - 523.5) / k, (351.5 - f64::from(p.y)) / k);
         let mut c = canvas(Mode::DrawExterior);
         c.scene.ctx.kind = Some(sketch_core::model::WallType::Exterior);
         let over = at(400.0, 400.0);

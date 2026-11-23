@@ -25,7 +25,10 @@ pub fn content_hash(doc: &Value) -> String {
         ),
         other => other.clone(),
     };
-    format!("sha256:{}", sha256_hex(canonical_json(&stripped).as_bytes()))
+    format!(
+        "sha256:{}",
+        sha256_hex(canonical_json(&stripped).as_bytes())
+    )
 }
 
 fn write_value(v: &Value, out: &mut String) {

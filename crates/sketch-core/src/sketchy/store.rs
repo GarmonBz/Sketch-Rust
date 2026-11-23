@@ -9,7 +9,9 @@
 use std::fmt::Display;
 use std::path::Path;
 
-use rusqlite::{params, Connection, OpenFlags, OptionalExtension, Transaction, TransactionBehavior};
+use rusqlite::{
+    params, Connection, OpenFlags, OptionalExtension, Transaction, TransactionBehavior,
+};
 use serde_json::{json, Value};
 
 use super::canonical::content_hash;
@@ -150,21 +152,37 @@ impl Store {
     fn create_inner(path: &Path, doc: Document, info: &CommitInfo) -> Result<Store, SketchyError> {
         let mut conn = Connection::open_with_flags(
             path,
-            OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+            OpenFlags::SQLITE_OPEN_READ_WRITE
+                | OpenFlags::SQLITE_OPEN_CREATE
+                | OpenFlags::SQLITE_OPEN_NO_MUTEX,
         )
         .map_err(store_err)?;
-        conn.pragma_update(None, "foreign_keys", true).map_err(store_err)?;
+        conn.pragma_update(None, "foreign_keys", true)
+            .map_err(store_err)?;
         let document_id = doc.id.clone();
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate).map_err(store_err)?;
-        tx.pragma_update(None, "application_id", APPLICATION_ID).map_err(store_err)?;
-        tx.pragma_update(None, "user_version", USER_VERSION).map_err(store_err)?;
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(store_err)?;
+        tx.pragma_update(None, "application_id", APPLICATION_ID)
+            .map_err(store_err)?;
+        tx.pragma_update(None, "user_version", USER_VERSION)
+            .map_err(store_err)?;
         tx.execute_batch(SCHEMA).map_err(store_err)?;
         let format_version = doc.format_version.clone();
-        for (key, value) in [("format", FORMAT), ("format_version", format_version.as_str()), ("document_id", &document_id)] {
-            tx.execute("INSERT INTO meta (key, value) VALUES (?1, ?2)", params![key, value]).map_err(store_err)?;
+        for (key, value) in [
+            ("format", FORMAT),
+            ("format_version", format_version.as_str()),
+            ("document_id", &document_id),
+        ] {
+            tx.execute(
+                "INSERT INTO meta (key, value) VALUES (?1, ?2)",
+                params![key, value],
+            )
+            .map_err(store_err)?;
         }
         let id = insert_revision(&tx, doc, &document_id, None, info)?;
-        tx.execute("INSERT INTO meta (key, value) VALUES ('head', ?1)", [&id]).map_err(store_err)?;
+        tx.execute("INSERT INTO meta (key, value) VALUES ('head', ?1)", [&id])
+            .map_err(store_err)?;
         tx.commit().map_err(store_err)?;
         Ok(Store { conn, document_id })
     }
@@ -176,21 +194,36 @@ impl Store {
     /// [`SketchyError::NotSketchy`], an unreadable or corrupt one is
     /// [`SketchyError::Store`]. Never creates the file.
     pub fn open(path: &Path) -> Result<Store, SketchyError> {
-        let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX)
+        let conn = Connection::open_with_flags(
+            path,
+            OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )
+        .map_err(store_err)?;
+        conn.pragma_update(None, "foreign_keys", true)
             .map_err(store_err)?;
-        conn.pragma_update(None, "foreign_keys", true).map_err(store_err)?;
-        conn.pragma_update(None, "trusted_schema", false).map_err(store_err)?;
-        let check: String = conn.query_row("PRAGMA quick_check", [], |r| r.get(0)).map_err(store_err)?;
+        conn.pragma_update(None, "trusted_schema", false)
+            .map_err(store_err)?;
+        let check: String = conn
+            .query_row("PRAGMA quick_check", [], |r| r.get(0))
+            .map_err(store_err)?;
         if check != "ok" {
             return Err(store_err(format!("integrity check failed: {check}")));
         }
-        let app_id: i64 = conn.query_row("PRAGMA application_id", [], |r| r.get(0)).map_err(store_err)?;
-        let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).map_err(store_err)?;
+        let app_id: i64 = conn
+            .query_row("PRAGMA application_id", [], |r| r.get(0))
+            .map_err(store_err)?;
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .map_err(store_err)?;
         if app_id != APPLICATION_ID || version != USER_VERSION {
             return Err(SketchyError::NotSketchy);
         }
         let active: i64 = conn
-            .query_row("SELECT count(*) FROM sqlite_schema WHERE type IN ('trigger', 'view')", [], |r| r.get(0))
+            .query_row(
+                "SELECT count(*) FROM sqlite_schema WHERE type IN ('trigger', 'view')",
+                [],
+                |r| r.get(0),
+            )
             .map_err(store_err)?;
         if active > 0 {
             return Err(SketchyError::NotSketchy);
@@ -199,7 +232,9 @@ impl Store {
         if format.as_deref() != Some(FORMAT) {
             return Err(SketchyError::NotSketchy);
         }
-        let document_id = meta_value(&conn, "document_id").map_err(store_err)?.ok_or_else(|| store_err("missing document_id"))?;
+        let document_id = meta_value(&conn, "document_id")
+            .map_err(store_err)?
+            .ok_or_else(|| store_err("missing document_id"))?;
         let store = Store { conn, document_id };
         store.head()?;
         Ok(store)
@@ -227,7 +262,8 @@ impl Store {
                 |r| r.get(0),
             )
             .map_err(store_err)?;
-        let value: Value = serde_json::from_str(&text).map_err(|e| store_err(format!("stored document: {e}")))?;
+        let value: Value =
+            serde_json::from_str(&text).map_err(|e| store_err(format!("stored document: {e}")))?;
         Document::from_value(value)
     }
 
@@ -235,9 +271,12 @@ impl Store {
     pub fn revision(&self, id: &str) -> Result<Document, SketchyError> {
         let text: String = self
             .conn
-            .query_row("SELECT document FROM revisions WHERE id = ?1", [id], |r| r.get(0))
+            .query_row("SELECT document FROM revisions WHERE id = ?1", [id], |r| {
+                r.get(0)
+            })
             .map_err(|e| store_err(format!("revision {id}: {e}")))?;
-        let value: Value = serde_json::from_str(&text).map_err(|e| store_err(format!("stored document: {e}")))?;
+        let value: Value =
+            serde_json::from_str(&text).map_err(|e| store_err(format!("stored document: {e}")))?;
         Document::from_value(value)
     }
 
@@ -248,19 +287,33 @@ impl Store {
     /// final is a no-op); a final over an identical draft is still written. Otherwise appends a revision whose parent is the
     /// head. The document's `id` is forced to the store's and its `revision` block
     /// is filled in. All of it happens in one transaction.
-    pub fn commit(&mut self, doc: Document, info: &CommitInfo) -> Result<CommitOutcome, SketchyError> {
+    pub fn commit(
+        &mut self,
+        doc: Document,
+        info: &CommitInfo,
+    ) -> Result<CommitOutcome, SketchyError> {
         let document_id = self.document_id.clone();
-        let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate).map_err(store_err)?;
+        let tx = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(store_err)?;
         let head = read_head(&tx)?;
         let mut doc = doc;
         doc.id.clone_from(&document_id);
-        if info.status == RevisionStatus::Draft && content_hash(&doc.to_value()) == head.content_hash {
+        if info.status == RevisionStatus::Draft
+            && content_hash(&doc.to_value()) == head.content_hash
+        {
             return Ok(CommitOutcome::Unchanged(head.id));
         }
         let id = insert_revision(&tx, doc, &document_id, Some(&head), info)?;
-        tx.execute("UPDATE meta SET value = ?1 WHERE key = 'head'", [&id]).map_err(store_err)?;
+        tx.execute("UPDATE meta SET value = ?1 WHERE key = 'head'", [&id])
+            .map_err(store_err)?;
         // A revision written by this build is FORMAT_VERSION, so the store now is too.
-        tx.execute("UPDATE meta SET value = ?1 WHERE key = 'format_version'", [FORMAT_VERSION]).map_err(store_err)?;
+        tx.execute(
+            "UPDATE meta SET value = ?1 WHERE key = 'format_version'",
+            [FORMAT_VERSION],
+        )
+        .map_err(store_err)?;
         tx.commit().map_err(store_err)?;
         Ok(CommitOutcome::Created(id))
     }
@@ -290,10 +343,12 @@ impl Store {
             .map_err(store_err)?;
         let mut out = Vec::new();
         for row in rows {
-            let (id, parents, sequence, created_at, message, status, content_hash, author) = row.map_err(store_err)?;
+            let (id, parents, sequence, created_at, message, status, content_hash, author) =
+                row.map_err(store_err)?;
             out.push(RevisionSummary {
                 id,
-                parents: serde_json::from_str(&parents).map_err(|e| store_err(format!("parents: {e}")))?,
+                parents: serde_json::from_str(&parents)
+                    .map_err(|e| store_err(format!("parents: {e}")))?,
                 sequence: u64::try_from(sequence).map_err(|_| store_err("negative sequence"))?,
                 created_at,
                 author,
@@ -308,7 +363,9 @@ impl Store {
     /// Writes a complete copy of the store (all revisions) to `path` with
     /// `VACUUM INTO` and opens it. Fails if `path` already exists.
     pub fn copy_to(&self, path: &Path) -> Result<Store, SketchyError> {
-        let target = path.to_str().ok_or_else(|| store_err("path is not valid UTF-8"))?;
+        let target = path
+            .to_str()
+            .ok_or_else(|| store_err("path is not valid UTF-8"))?;
         claim_path(path)?;
         let copied = self
             .conn
@@ -334,7 +391,8 @@ fn claim_path(path: &Path) -> Result<(), SketchyError> {
 }
 
 fn meta_value(conn: &Connection, key: &str) -> rusqlite::Result<Option<String>> {
-    conn.query_row("SELECT value FROM meta WHERE key = ?1", [key], |r| r.get(0)).optional()
+    conn.query_row("SELECT value FROM meta WHERE key = ?1", [key], |r| r.get(0))
+        .optional()
 }
 
 fn read_head(tx: &Transaction<'_>) -> Result<Head, SketchyError> {
@@ -342,11 +400,21 @@ fn read_head(tx: &Transaction<'_>) -> Result<Head, SketchyError> {
         "SELECT r.id, r.sequence, r.content_hash FROM revisions r \
          JOIN meta m ON m.key = 'head' AND m.value = r.id",
         [],
-        |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, String>(2)?)),
+        |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, String>(2)?,
+            ))
+        },
     )
     .map_err(store_err)
     .and_then(|(id, sequence, content_hash)| {
-        Ok(Head { id, sequence: u64::try_from(sequence).map_err(|_| store_err("negative sequence"))?, content_hash })
+        Ok(Head {
+            id,
+            sequence: u64::try_from(sequence).map_err(|_| store_err("negative sequence"))?,
+            content_hash,
+        })
     })
 }
 

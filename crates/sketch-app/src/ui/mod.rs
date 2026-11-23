@@ -297,7 +297,9 @@ fn drawing_overlays<'a>(app: &'a App) -> Vec<Element<'a, Message>> {
             out.push(
                 iced::widget::row![
                     iced::widget::Space::new().width(iced::Length::Fill),
-                    iced::widget::container(panel).padding(12).height(iced::Length::Fill),
+                    iced::widget::container(panel)
+                        .padding(12)
+                        .height(iced::Length::Fill),
                 ]
                 .width(iced::Length::Fill)
                 .height(iced::Length::Fill)

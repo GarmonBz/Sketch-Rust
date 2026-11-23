@@ -1,6 +1,8 @@
 use serde_json::{json, Value};
 use sketch_core::geometry::{Edge, GeometryEngine, Line, Pt};
-use sketch_core::sketchy::convert::{from_sketchy, parent_revision, to_sketchy, unshown_summary, upgrade};
+use sketch_core::sketchy::convert::{
+    from_sketchy, parent_revision, to_sketchy, unshown_summary, upgrade,
+};
 use sketch_core::sketchy::model::{Document, Shape, Space};
 
 const RICH: &str = include_str!("data/save-models/rich.json");
@@ -60,7 +62,11 @@ fn walls_map_to_core() {
     assert_eq!(doc.title.as_deref(), Some("Rodney"));
     assert_eq!(doc.structures[0].id, "building");
     assert_eq!(level_of(&doc).id, "page-1");
-    let wall = level_of(&doc).walls.iter().find(|w| w.id == "w-5").expect("w-5");
+    let wall = level_of(&doc)
+        .walls
+        .iter()
+        .find(|w| w.id == "w-5")
+        .expect("w-5");
     assert_eq!(wall.start, [0.0, 0.0]);
     assert_eq!(wall.end, [10.0, 0.0]);
     assert_eq!(wall.kind.as_deref(), Some("exterior"));
@@ -75,7 +81,9 @@ fn y_axis_is_not_flipped() {
     let doc = to_sketchy(&rich(), Some("doc-1")).expect("to");
     let space = &level_of(&doc).spaces[0];
     assert_eq!(space.id, "a-6");
-    let Shape::Polygon { points, .. } = &space.shape else { panic!("polygon") };
+    let Shape::Polygon { points, .. } = &space.shape else {
+        panic!("polygon")
+    };
     assert_eq!(points, &vec![[0.0, 0.0], [10.0, 0.0], [10.0, 8.0]]);
 }
 
@@ -86,8 +94,12 @@ fn sketchy_y_up_is_app_y_up() {
         json!([])
     )]));
     let saved = from_sketchy(&doc).expect("from");
-    let ys: Vec<f64> =
-        saved["pages"][0]["polygons"][0]["points"].as_array().expect("pts").iter().map(|p| p["y"].as_f64().expect("y")).collect();
+    let ys: Vec<f64> = saved["pages"][0]["polygons"][0]["points"]
+        .as_array()
+        .expect("pts")
+        .iter()
+        .map(|p| p["y"].as_f64().expect("y"))
+        .collect();
     assert_eq!(ys, [0.0, 0.0, 30.0, 30.0]);
 }
 
@@ -95,10 +107,18 @@ fn sketchy_y_up_is_app_y_up() {
 /// (0,0)->(10,0) with `bow` degrees.
 fn app_arc_apex_y(bow: f64) -> f64 {
     let points = [Pt::new(0.0, 0.0), Pt::new(10.0, 0.0)];
-    let edges = [Edge { line_id: None, bow_angle: bow }, Edge::default()];
+    let edges = [
+        Edge {
+            line_id: None,
+            bow_angle: bow,
+        },
+        Edge::default(),
+    ];
     let flat = GeometryEngine::new().flatten_ring(&points, &edges, 0.05);
     assert!(flat.len() > 2, "arc was sampled");
-    flat.iter().map(|p| p.y).fold(0.0, |m, y| if y.abs() > m.abs() { y } else { m })
+    flat.iter()
+        .map(|p| p.y)
+        .fold(0.0, |m, y| if y.abs() > m.abs() { y } else { m })
 }
 
 #[test]
@@ -122,27 +142,52 @@ fn spec_apex_y(bulge: f64) -> f64 {
 
 #[test]
 fn bulge_sign_follows_dxf_in_0_2() {
-    assert_eq!(spec_apex_y(1.0), -5.0, "SPEC 0.2 4.2: bulge 1 passes through [5,-5]");
-    assert_eq!(spec_apex_y(-1.0), 5.0, "SPEC 0.2 4.2: bulge -1 passes through [5,5]");
+    assert_eq!(
+        spec_apex_y(1.0),
+        -5.0,
+        "SPEC 0.2 4.2: bulge 1 passes through [5,-5]"
+    );
+    assert_eq!(
+        spec_apex_y(-1.0),
+        5.0,
+        "SPEC 0.2 4.2: bulge -1 passes through [5,5]"
+    );
     // The app's positive bow bows toward +y (pinned against `flatten_ring`), so its 0.2 bulge is negative.
     let line = json!({"id": 9, "start": {"x": 0.0, "y": 0.0}, "end": {"x": 10.0, "y": 0.0}, "bowAngle": 90.0});
     let doc = to_sketchy(&model_with(json!([line]), json!([])), Some("d")).expect("to");
     let bulge = level_of(&doc).walls[0].bulge.expect("bulge");
     assert!(bulge < 0.0, "positive app bow is a negative bulge");
-    assert!(spec_apex_y(bulge) > 1.0 && app_arc_apex_y(90.0) > 1.0, "both put the apex at +y");
-    assert!((spec_apex_y(bulge) - app_arc_apex_y(90.0)).abs() < 0.06, "the same arc");
+    assert!(
+        spec_apex_y(bulge) > 1.0 && app_arc_apex_y(90.0) > 1.0,
+        "both put the apex at +y"
+    );
+    assert!(
+        (spec_apex_y(bulge) - app_arc_apex_y(90.0)).abs() < 0.06,
+        "the same arc"
+    );
     assert!(spec_apex_y(-bulge) < -1.0 && app_arc_apex_y(-90.0) < -1.0);
     // The same holds for polygon edges.
     let mut m = rich();
-    m["pages"][0]["polygons"][0]["edges"] =
-        json!([{"lineId": null, "bowAngle": 90.0}, {"lineId": null, "bowAngle": 0.0}, {"lineId": null, "bowAngle": 0.0}]);
+    m["pages"][0]["polygons"][0]["edges"] = json!([{"lineId": null, "bowAngle": 90.0}, {"lineId": null, "bowAngle": 0.0}, {"lineId": null, "bowAngle": 0.0}]);
     let doc = to_sketchy(&m, Some("d")).expect("to");
-    let Shape::Polygon { bulges, .. } = &level_of(&doc).spaces[0].shape else { panic!("polygon") };
+    let Shape::Polygon { bulges, .. } = &level_of(&doc).spaces[0].shape else {
+        panic!("polygon")
+    };
     assert!(bulges.as_ref().expect("bulges")[0] < 0.0);
     // And Sketchy 0.2 -> app: bulge -1 bows left (+y) so the bow is +180.
-    let foreign_doc = foreign(json!([level(json!([]), json!([{"id": "w", "start": [0, 0], "end": [10, 0], "bulge": -1}]))]));
+    let foreign_doc = foreign(json!([level(
+        json!([]),
+        json!([{"id": "w", "start": [0, 0], "end": [10, 0], "bulge": -1}])
+    )]));
     let saved = from_sketchy(&foreign_doc).expect("from");
-    assert!((saved["pages"][0]["lines"][0]["bowAngle"].as_f64().expect("bow") - 180.0).abs() < 1e-9);
+    assert!(
+        (saved["pages"][0]["lines"][0]["bowAngle"]
+            .as_f64()
+            .expect("bow")
+            - 180.0)
+            .abs()
+            < 1e-9
+    );
 }
 
 #[test]
@@ -153,8 +198,15 @@ fn core_wins_over_stale_residual() {
     let mut doc = to_sketchy(&m, Some("d")).expect("to");
     assert_eq!(from_sketchy(&doc).expect("from"), opened(&m, "d"));
     let level = &mut doc.structures[0].levels[0];
-    level.walls.iter_mut().find(|w| w.id == "w-5").expect("w-5").bulge = Some(0.5);
-    let Shape::Polygon { points, .. } = &mut level.spaces[0].shape else { panic!("polygon") };
+    level
+        .walls
+        .iter_mut()
+        .find(|w| w.id == "w-5")
+        .expect("w-5")
+        .bulge = Some(0.5);
+    let Shape::Polygon { points, .. } = &mut level.spaces[0].shape else {
+        panic!("polygon")
+    };
     points[2] = [12.0, 8.0];
     let back = from_sketchy(&doc).expect("from");
     let line = &back["pages"][0]["lines"][0];
@@ -163,7 +215,10 @@ fn core_wins_over_stale_residual() {
     // The Height-mode rise of the new arc (chord 10, bulge 0.5 is a rise of 2.5, bowing right of
     // travel in 0.2, so the app's negative bow): consistent, not the stale 1.25.
     assert!((line["arcHeight"].as_f64().expect("arcHeight") + 2.5).abs() < 1e-9);
-    assert_eq!(back["pages"][0]["polygons"][0]["points"][2], json!({"x": 12.0, "y": 8.0}));
+    assert_eq!(
+        back["pages"][0]["polygons"][0]["points"][2],
+        json!({"x": 12.0, "y": 8.0})
+    );
 }
 
 #[test]
@@ -174,7 +229,10 @@ fn unknown_sketchy_fields_survive_save() {
     let edited: Document = serde_json::from_value(value).expect("doc");
     let saved = from_sketchy(&edited).expect("from");
     let again = to_sketchy(&saved, Some("d")).expect("to").to_value();
-    assert_eq!(again["structures"][0]["levels"][0]["spaces"][0]["future_field"], json!({"a": 1}));
+    assert_eq!(
+        again["structures"][0]["levels"][0]["spaces"][0]["future_field"],
+        json!({"a": 1})
+    );
 }
 
 #[test]
@@ -198,16 +256,20 @@ fn polygon_fields_map_to_core() {
     assert_eq!(space.measured_to.as_deref(), Some("interior_face"));
     assert_eq!(space.classifications[0].code, "LIV");
     assert!(space.classifications[0].scheme.ends_with(".area-codes"));
-    assert_eq!(doc.property.expect("property")["address"], json!("123 Main St"));
+    assert_eq!(
+        doc.property.expect("property")["address"],
+        json!("123 Main St")
+    );
 }
 
 #[test]
 fn bowed_polygon_edges_round_trip() {
     let mut m = rich();
-    m["pages"][0]["polygons"][0]["edges"] =
-        json!([{"lineId": null, "bowAngle": 45.0}, {"lineId": null, "bowAngle": 0.0}, {"lineId": null, "bowAngle": -20.0}]);
+    m["pages"][0]["polygons"][0]["edges"] = json!([{"lineId": null, "bowAngle": 45.0}, {"lineId": null, "bowAngle": 0.0}, {"lineId": null, "bowAngle": -20.0}]);
     let doc = to_sketchy(&m, Some("d")).expect("to");
-    let Shape::Polygon { bulges, .. } = &level_of(&doc).spaces[0].shape else { panic!("polygon") };
+    let Shape::Polygon { bulges, .. } = &level_of(&doc).spaces[0].shape else {
+        panic!("polygon")
+    };
     let bulges = bulges.as_ref().expect("bulges");
     assert!((bulges[0] + (45.0_f64 * std::f64::consts::PI / 720.0).tan()).abs() < 1e-12);
     assert_eq!(bulges[1], 0.0);
@@ -243,7 +305,10 @@ fn level(spaces: Value, walls: Value) -> Value {
 #[test]
 fn within_alone_is_not_subtract() {
     let doc = foreign(json!([level(
-        json!([square("outline", json!({})), square("room", json!({"within": "outline"}))]),
+        json!([
+            square("outline", json!({})),
+            square("room", json!({"within": "outline"}))
+        ]),
         json!([])
     )]));
     let saved = from_sketchy(&doc).expect("from");
@@ -252,7 +317,12 @@ fn within_alone_is_not_subtract() {
     }
     let again = to_sketchy(&saved, None).expect("to").to_value();
     let spaces = &again["structures"][0]["levels"][0]["spaces"];
-    let room = spaces.as_array().expect("spaces").iter().find(|s| s["id"] == "room").expect("room");
+    let room = spaces
+        .as_array()
+        .expect("spaces")
+        .iter()
+        .find(|s| s["id"] == "room")
+        .expect("room");
     assert_eq!(room["within"], json!("outline"));
     assert!(room.get("subtract").is_none());
 }
@@ -265,7 +335,10 @@ fn subtract_false_from_foreign_edit_wins() {
     let mut doc = to_sketchy(&m, Some("d")).expect("to");
     doc.structures[0].levels[0].spaces[0].subtract = Some(false);
     let saved = from_sketchy(&doc).expect("from");
-    assert_ne!(saved["pages"][0]["polygons"][0]["subtractMode"], json!("always"));
+    assert_ne!(
+        saved["pages"][0]["polygons"][0]["subtractMode"],
+        json!("always")
+    );
     let again = to_sketchy(&saved, Some("d")).expect("to");
     let space = &again.structures[0].levels[0].spaces[0];
     assert_eq!(space.within.as_deref(), Some("a-6"));
@@ -274,7 +347,8 @@ fn subtract_false_from_foreign_edit_wins() {
 
 #[test]
 fn foreign_content_survives_open_and_save() {
-    let mut value = serde_json::to_value(foreign(json!([level(json!([]), json!([]))]))).expect("value");
+    let mut value =
+        serde_json::to_value(foreign(json!([level(json!([]), json!([]))]))).expect("value");
     value["units"] = json!([{"id": "u1", "kind": "primary_dwelling"}]);
     value["site"] = json!({"x": 1});
     value["notes"] = json!([{"text": "hi"}]);
@@ -287,14 +361,29 @@ fn foreign_content_survives_open_and_save() {
     value["structures"][0]["levels"][0]["openings"] = json!([{"id": "o1", "kind": "door"}]);
     value["structures"][0]["levels"][0]["future_level"] = json!("keep");
     value["structures"][0]["attachment"] = json!("detached");
-    value["structures"].as_array_mut().expect("arr").push(json!({"id": "garage", "levels": []}));
+    value["structures"]
+        .as_array_mut()
+        .expect("arr")
+        .push(json!({"id": "garage", "levels": []}));
     let doc: Document = serde_json::from_value(value.clone()).expect("doc");
-    let again = to_sketchy(&from_sketchy(&doc).expect("from"), None).expect("to").to_value();
-    for path in ["/units", "/site", "/notes", "/property", "/future_field", "/structures/1"] {
+    let again = to_sketchy(&from_sketchy(&doc).expect("from"), None)
+        .expect("to")
+        .to_value();
+    for path in [
+        "/units",
+        "/site",
+        "/notes",
+        "/property",
+        "/future_field",
+        "/structures/1",
+    ] {
         assert_eq!(again.pointer(path), value.pointer(path), "{path}");
     }
     assert_eq!(again["extras"]["org.example.x"], json!({"k": 1}));
-    assert_eq!(again["extensions_used"], json!(["org.example.x", sketch_core::sketchy::convert::NS]));
+    assert_eq!(
+        again["extensions_used"],
+        json!(["org.example.x", sketch_core::sketchy::convert::NS])
+    );
     let (a, v) = (&again["structures"][0], &value["structures"][0]);
     assert_eq!(a["attachment"], v["attachment"]);
     assert_eq!(a["id"], json!("main"));
@@ -322,21 +411,43 @@ fn foreign_ids_round_trip_and_do_not_collide() {
     let page = &saved["pages"][0];
     let mut ids: Vec<i64> = ["lines", "polygons"]
         .iter()
-        .flat_map(|k| page[*k].as_array().expect("arr").iter().filter(|e| e.get("sketchy_display").is_none() || *k == "polygons"))
+        .flat_map(|k| {
+            page[*k]
+                .as_array()
+                .expect("arr")
+                .iter()
+                .filter(|e| e.get("sketchy_display").is_none() || *k == "polygons")
+        })
         .map(|e| e["id"].as_i64().expect("int id"))
         .collect();
     ids.sort_unstable();
     ids.dedup();
     assert_eq!(ids.len(), 5, "ids collide: {ids:?}");
     // Display walls draw from the same id space: every id on the page is distinct.
-    let all: Vec<i64> =
-        ["lines", "polygons"].iter().flat_map(|k| page[*k].as_array().expect("arr").iter().map(|e| e["id"].as_i64().expect("id"))).collect();
-    assert_eq!(all.len(), all.iter().collect::<std::collections::HashSet<_>>().len(), "ids collide: {all:?}");
+    let all: Vec<i64> = ["lines", "polygons"]
+        .iter()
+        .flat_map(|k| {
+            page[*k]
+                .as_array()
+                .expect("arr")
+                .iter()
+                .map(|e| e["id"].as_i64().expect("id"))
+        })
+        .collect();
+    assert_eq!(
+        all.len(),
+        all.iter().collect::<std::collections::HashSet<_>>().len(),
+        "ids collide: {all:?}"
+    );
     let again = to_sketchy(&saved, None).expect("to").to_value();
     let lvl = &again["structures"][0]["levels"][0];
     let names = |k: &str| -> Vec<String> {
-        let mut v: Vec<String> =
-            lvl[k].as_array().expect("arr").iter().map(|e| e["id"].as_str().expect("id").to_string()).collect();
+        let mut v: Vec<String> = lvl[k]
+            .as_array()
+            .expect("arr")
+            .iter()
+            .map(|e| e["id"].as_str().expect("id").to_string())
+            .collect();
         v.sort();
         v
     };
@@ -350,17 +461,29 @@ fn foreign_ids_round_trip_and_do_not_collide() {
 #[test]
 fn within_target_follows_fresh_ids() {
     let doc = foreign(json!([level(
-        json!([square("outer", json!({})), square("hole", json!({"within": "outer", "subtract": true}))]),
+        json!([
+            square("outer", json!({})),
+            square("hole", json!({"within": "outer", "subtract": true}))
+        ]),
         json!([])
     )]));
     let saved = from_sketchy(&doc).expect("from");
     let polys = saved["pages"][0]["polygons"].as_array().expect("arr");
-    let outer = polys.iter().find(|p| p["sketchy_id"] == "outer").expect("outer");
-    let hole = polys.iter().find(|p| p["sketchy_id"] == "hole").expect("hole");
+    let outer = polys
+        .iter()
+        .find(|p| p["sketchy_id"] == "outer")
+        .expect("outer");
+    let hole = polys
+        .iter()
+        .find(|p| p["sketchy_id"] == "hole")
+        .expect("hole");
     assert_eq!(hole["subtractMode"], json!("always"));
     assert_eq!(hole["subtractTargetId"], outer["id"]);
     let again = to_sketchy(&saved, None).expect("to").to_value();
-    let spaces = again["structures"][0]["levels"][0]["spaces"].as_array().expect("arr").clone();
+    let spaces = again["structures"][0]["levels"][0]["spaces"]
+        .as_array()
+        .expect("arr")
+        .clone();
     let hole = spaces.iter().find(|s| s["id"] == "hole").expect("hole");
     assert_eq!(hole["within"], json!("outer"));
     assert_eq!(hole["subtract"], json!(true));
@@ -390,7 +513,9 @@ fn changed_points_drop_stale_derived_data() {
     m["pages"][0]["polygons"][0]["edges"] = json!([{"lineId": 5, "arcHeight": 1.0, "bowAngle": 0.0}, {"lineId": 6, "bowAngle": 0.0}, {"lineId": 7, "bowAngle": 0.0}]);
     let mut doc = to_sketchy(&m, Some("d")).expect("to");
     assert_eq!(from_sketchy(&doc).expect("from"), opened(&m, "d"));
-    let Shape::Polygon { points, .. } = &mut doc.structures[0].levels[0].spaces[0].shape else { panic!("polygon") };
+    let Shape::Polygon { points, .. } = &mut doc.structures[0].levels[0].spaces[0].shape else {
+        panic!("polygon")
+    };
     points.insert(1, [5.0, 0.0]);
     let saved = from_sketchy(&doc).expect("from");
     let poly = &saved["pages"][0]["polygons"][0];
@@ -403,11 +528,19 @@ fn changed_points_drop_stale_derived_data() {
 fn open_shape_spaces_are_kept_verbatim() {
     let poly = json!({"id": "p", "shape": {"type": "polyline", "points": [[0, 0], [5, 0]]}});
     let arc = json!({"id": "r", "shape": {"type": "arc", "center": [0, 0], "radius": 4, "start_angle": 0, "end_angle": 90}});
-    let doc = foreign(json!([level(json!([poly.clone(), arc.clone()]), json!([]))]));
+    let doc = foreign(json!([level(
+        json!([poly.clone(), arc.clone()]),
+        json!([])
+    )]));
     let saved = from_sketchy(&doc).expect("from");
-    assert!(saved["pages"][0].get("polygons").is_none() || saved["pages"][0]["polygons"] == json!([]));
+    assert!(
+        saved["pages"][0].get("polygons").is_none() || saved["pages"][0]["polygons"] == json!([])
+    );
     let again = to_sketchy(&saved, None).expect("to").to_value();
-    assert_eq!(again["structures"][0]["levels"][0]["spaces"], json!([poly, arc]));
+    assert_eq!(
+        again["structures"][0]["levels"][0]["spaces"],
+        json!([poly, arc])
+    );
 }
 
 #[test]
@@ -424,7 +557,10 @@ fn other_wall_kinds_and_unspecified_measure_survive() {
     let mut edited = saved.clone();
     edited["pages"][0]["lines"][0]["type"] = json!("exterior");
     let again = to_sketchy(&edited, None).expect("to").to_value();
-    assert_eq!(again["structures"][0]["levels"][0]["walls"][0]["kind"], json!("exterior"));
+    assert_eq!(
+        again["structures"][0]["levels"][0]["walls"][0]["kind"],
+        json!("exterior")
+    );
 }
 
 // ---- task 4: annotations, layers, area codes ----
@@ -433,13 +569,21 @@ const NS_SYMBOLS: &str = "io.github.garmonbz.sketchrust.symbols";
 
 fn annotation<'a>(doc: &'a Document, id: &str) -> &'a Value {
     let pres = doc.presentation.as_ref().expect("presentation");
-    pres.annotations.iter().find(|a| a["id"] == json!(id)).unwrap_or_else(|| panic!("annotation {id}"))
+    pres.annotations
+        .iter()
+        .find(|a| a["id"] == json!(id))
+        .unwrap_or_else(|| panic!("annotation {id}"))
 }
 
 /// Drops `extras` and tells ints from floats no more, so foreign JSON compares with ours.
 fn norm(v: &Value) -> Value {
     match v {
-        Value::Object(m) => Value::Object(m.iter().filter(|(k, _)| *k != "extras").map(|(k, v)| (k.clone(), norm(v))).collect()),
+        Value::Object(m) => Value::Object(
+            m.iter()
+                .filter(|(k, _)| *k != "extras")
+                .map(|(k, v)| (k.clone(), norm(v)))
+                .collect(),
+        ),
         Value::Array(a) => Value::Array(a.iter().map(norm).collect()),
         Value::Number(n) => json!(n.as_f64()),
         other => other.clone(),
@@ -460,7 +604,9 @@ fn labels_become_text_annotations() {
     assert_eq!(t["text"], json!("Label"));
     assert_eq!(t["rotation"], json!(-15.0));
     assert_eq!(from_sketchy(&doc).expect("from"), opened(&m, "d"));
-    assert!(from_sketchy(&doc).expect("from")["pages"][0].get("sketchy_other").is_none());
+    assert!(from_sketchy(&doc).expect("from")["pages"][0]
+        .get("sketchy_other")
+        .is_none());
 }
 
 #[test]
@@ -477,8 +623,13 @@ fn symbols_become_symbol_annotations() {
     assert_eq!(y["host"], json!({"wall": "w-5"}));
     // Editing the Sketchy side wins over the residual.
     let mut value = doc.to_value();
-    let annos = value["presentation"]["annotations"].as_array_mut().expect("annos");
-    let y = annos.iter_mut().find(|a| a["id"] == json!("y-8")).expect("y-8");
+    let annos = value["presentation"]["annotations"]
+        .as_array_mut()
+        .expect("annos");
+    let y = annos
+        .iter_mut()
+        .find(|a| a["id"] == json!("y-8"))
+        .expect("y-8");
     y["mirror"] = json!("none");
     y["scale"] = json!([2.0, 2.0]);
     y["ref"]["name"] = json!("window");
@@ -489,7 +640,10 @@ fn symbols_become_symbol_annotations() {
     assert_eq!(sym["flipH"], json!(false));
     assert_eq!(sym["scale"], json!(2.0));
     assert_eq!(sym["symbolType"], json!("window"));
-    assert_eq!((sym["x"].as_f64(), sym["y"].as_f64()), (Some(6.0), Some(1.0)));
+    assert_eq!(
+        (sym["x"].as_f64(), sym["y"].as_f64()),
+        (Some(6.0), Some(1.0))
+    );
     assert_eq!(sym["wallId"], json!(5));
 }
 
@@ -509,18 +663,26 @@ fn chains_become_dimensions() {
 fn layers_map_and_assign() {
     let doc = to_sketchy(&rich(), Some("d")).expect("to");
     let pres = doc.presentation.as_ref().expect("presentation");
-    assert_eq!(pres.other["layers"], json!([{
-        "id": "layer:layer-1", "name": "Layer 1", "visible": true, "locked": false,
-        "extras": {"io.github.garmonbz.sketchrust": {"collapsed": false, "isGroup": false,
-                                                      "locked": false, "name": "Layer 1", "visible": true}}
-    }]));
+    assert_eq!(
+        pres.other["layers"],
+        json!([{
+            "id": "layer:layer-1", "name": "Layer 1", "visible": true, "locked": false,
+            "extras": {"io.github.garmonbz.sketchrust": {"collapsed": false, "isGroup": false,
+                                                          "locked": false, "name": "Layer 1", "visible": true}}
+        }])
+    );
     for id in ["w-5", "a-6", "y-8"] {
-        assert_eq!(pres.other["element_layers"][id], json!("layer:layer-1"), "{id}");
+        assert_eq!(
+            pres.other["element_layers"][id],
+            json!("layer:layer-1"),
+            "{id}"
+        );
     }
     // A foreign layer and assignment open as an app layer id; removing the assignment wins.
     let mut value = doc.to_value();
     value["presentation"]["layers"] = json!([{"id": "lay-dims", "name": "Dims", "visible": false, "locked": true, "parent": "x"}]);
-    value["presentation"]["element_layers"] = json!({"w-5": "lay-dims", "a-6": "lay-dims", "y-8": "lay-dims", "o-1": "lay-dims"});
+    value["presentation"]["element_layers"] =
+        json!({"w-5": "lay-dims", "a-6": "lay-dims", "y-8": "lay-dims", "o-1": "lay-dims"});
     value["structures"][0]["levels"][0]["openings"] = json!([{"id": "o-1", "kind": "door"}]);
     let foreign_doc: Document = serde_json::from_value(value.clone()).expect("doc");
     let saved = from_sketchy(&foreign_doc).expect("from");
@@ -528,32 +690,60 @@ fn layers_map_and_assign() {
     assert_eq!(saved["layers"][0]["visible"], json!(false));
     assert_eq!(saved["layers"][0]["locked"], json!(true));
     assert_eq!(saved["pages"][0]["lines"][0]["layerId"], json!("lay-dims"));
-    assert_eq!(saved["pages"][0]["symbols"][0]["layerId"], json!("lay-dims"));
+    assert_eq!(
+        saved["pages"][0]["symbols"][0]["layerId"],
+        json!("lay-dims")
+    );
     let again = to_sketchy(&saved, Some("d")).expect("to").to_value();
     assert_eq!(again["presentation"]["layers"][0]["id"], json!("lay-dims"));
     assert_eq!(again["presentation"]["layers"][0]["parent"], json!("x"));
-    assert_eq!(again["presentation"]["element_layers"], value["presentation"]["element_layers"]);
+    assert_eq!(
+        again["presentation"]["element_layers"],
+        value["presentation"]["element_layers"]
+    );
     let mut value = doc.to_value();
     value["presentation"]["element_layers"] = json!({"a-6": "layer:layer-1"});
     let unassigned: Document = serde_json::from_value(value).expect("doc");
     let saved = from_sketchy(&unassigned).expect("from");
     assert!(saved["pages"][0]["lines"][0].get("layerId").is_none());
-    assert_eq!(saved["pages"][0]["polygons"][0]["layerId"], json!("layer-1"));
+    assert_eq!(
+        saved["pages"][0]["polygons"][0]["layerId"],
+        json!("layer-1")
+    );
     assert!(saved["pages"][0]["symbols"][0].get("layerId").is_none());
 }
 
 #[test]
 fn area_codes_become_scheme() {
     let doc = to_sketchy(&rich(), Some("d")).expect("to");
-    let scheme = doc.classification_schemes.iter().find(|s| s.scheme.ends_with(".area-codes")).expect("scheme");
+    let scheme = doc
+        .classification_schemes
+        .iter()
+        .find(|s| s.scheme.ends_with(".area-codes"))
+        .expect("scheme");
     assert_eq!(scheme.name.as_deref(), Some("Sketch Rust area codes"));
     assert_eq!(scheme.codes.len(), 32);
-    let code = |c: &str| scheme.codes.iter().find(|e| e["code"] == json!(c)).unwrap_or_else(|| panic!("{c}"));
+    let code = |c: &str| {
+        scheme
+            .codes
+            .iter()
+            .find(|e| e["code"] == json!(c))
+            .unwrap_or_else(|| panic!("{c}"))
+    };
     let gla = code("GLA1");
-    assert_eq!((&gla["label"], &gla["use"], &gla["finished"]), (&json!("First Floor"), &json!("living"), &json!(true)));
+    assert_eq!(
+        (&gla["label"], &gla["use"], &gla["finished"]),
+        (&json!("First Floor"), &json!("living"), &json!(true))
+    );
     assert!(gla.get("area_factor").is_none());
-    assert_eq!((&code("GAR")["use"], code("GAR").get("finished")), (&json!("garage"), None));
-    assert_eq!((&code("BSMT")["use"], &code("BSMT")["finished"]), (&json!("storage"), &json!(false)));
+    assert_eq!(
+        (&code("GAR")["use"], code("GAR").get("finished")),
+        (&json!("garage"), None)
+    );
+    assert_eq!(
+        (&code("BSMT")["use"], &code("BSMT")["finished"]),
+        (&json!("storage"), &json!(false))
+    );
     assert_eq!(code("PORCH")["use"], json!("porch"));
     assert_eq!(code("POOL")["use"], json!("other"));
     assert_eq!(code("NCA")["area_factor"], json!(0.0));
@@ -562,7 +752,10 @@ fn area_codes_become_scheme() {
     m["pages"][0]["polygons"][0]["type"] = json!("GLA1");
     let doc = to_sketchy(&m, Some("d")).expect("to");
     let space = &level_of(&doc).spaces[0];
-    assert_eq!((space.r#use.as_deref(), space.finished), (Some("living"), Some(true)));
+    assert_eq!(
+        (space.r#use.as_deref(), space.finished),
+        (Some("living"), Some(true))
+    );
     assert_eq!(from_sketchy(&doc).expect("from"), opened(&m, "d"));
 }
 
@@ -598,28 +791,58 @@ fn foreign_annotations_layers_and_schemes_survive() {
     let page = &saved["pages"][0];
     let ids: Vec<i64> = ["lines", "labels", "symbols", "dimensionChains"]
         .iter()
-        .flat_map(|k| page[*k].as_array().expect("arr").iter().map(|e| e["id"].as_i64().expect("int id")))
+        .flat_map(|k| {
+            page[*k]
+                .as_array()
+                .expect("arr")
+                .iter()
+                .map(|e| e["id"].as_i64().expect("int id"))
+        })
         .collect();
     let mut sorted = ids.clone();
     sorted.sort_unstable();
     sorted.dedup();
     assert_eq!(sorted.len(), 5, "ids collide: {ids:?}");
     assert_eq!(page["labels"].as_array().expect("labels").len(), 2);
-    assert_eq!(page["labels"][1]["id"], json!(3), "canonical t-3 keeps its number");
+    assert_eq!(
+        page["labels"][1]["id"],
+        json!(3),
+        "canonical t-3 keeps its number"
+    );
     assert_eq!(saved["areaCodes"][0]["code"], json!("GLA1"));
     let again = to_sketchy(&saved, None).expect("to").to_value();
     let pres = &again["presentation"];
-    let find = |id: &str| pres["annotations"].as_array().expect("annos").iter().find(|a| a["id"] == json!(id)).cloned();
-    for id in ["note-1", "t-3", "shape-1", "north", "sym-x", "dim-1", "sym-r"] {
-        let want = value["presentation"]["annotations"].as_array().expect("a").iter().find(|a| a["id"] == json!(id)).cloned();
+    let find = |id: &str| {
+        pres["annotations"]
+            .as_array()
+            .expect("annos")
+            .iter()
+            .find(|a| a["id"] == json!(id))
+            .cloned()
+    };
+    for id in [
+        "note-1", "t-3", "shape-1", "north", "sym-x", "dim-1", "sym-r",
+    ] {
+        let want = value["presentation"]["annotations"]
+            .as_array()
+            .expect("a")
+            .iter()
+            .find(|a| a["id"] == json!(id))
+            .cloned();
         assert_eq!(find(id).map(|a| norm(&a)), want.map(|a| norm(&a)), "{id}");
     }
-    assert_eq!(norm(&pres["layers"]), norm(&value["presentation"]["layers"]));
+    assert_eq!(
+        norm(&pres["layers"]),
+        norm(&value["presentation"]["layers"])
+    );
     assert_eq!(pres["styles"], value["presentation"]["styles"]);
     assert_eq!(again["definitions"], value["definitions"]);
     let schemes = again["classification_schemes"].as_array().expect("schemes");
     for want in value["classification_schemes"].as_array().expect("schemes") {
-        assert!(schemes.iter().any(|s| norm(s) == norm(want)), "scheme {want}");
+        assert!(
+            schemes.iter().any(|s| norm(s) == norm(want)),
+            "scheme {want}"
+        );
     }
 }
 
@@ -656,7 +879,10 @@ fn rotation_is_clockwise_in_app_counter_clockwise_in_sketchy() {
     let mut value = doc.to_value();
     value["presentation"]["annotations"][0]["rotation"] = json!(45.0);
     let edited: Document = serde_json::from_value(value).expect("doc");
-    assert_eq!(from_sketchy(&edited).expect("from")["pages"][0]["labels"][0]["rotation"], json!(-45.0));
+    assert_eq!(
+        from_sketchy(&edited).expect("from")["pages"][0]["labels"][0]["rotation"],
+        json!(-45.0)
+    );
 }
 
 #[test]
@@ -665,23 +891,37 @@ fn dimension_offset_follows_side() {
     // wall running +x it is +y, the left of travel with +y up. `ChainTiers::solve` draws the
     // chain at `offset * side` along it, and Sketchy's positive offset is also left.
     let seed = Line::new(1, Pt::new(0.0, 0.0), Pt::new(10.0, 0.0));
-    let chain = GeometryEngine::new().compute_dimension_chain(&[seed], &[], 1, 0.1, false, None).expect("chain");
-    assert!(chain.normal.y > 0.99 && chain.normal.x.abs() < 1e-9, "normal is left of travel");
+    let chain = GeometryEngine::new()
+        .compute_dimension_chain(&[seed], &[], 1, 0.1, false, None)
+        .expect("chain");
+    assert!(
+        chain.normal.y > 0.99 && chain.normal.x.abs() < 1e-9,
+        "normal is left of travel"
+    );
     let mut m = rich();
     m["pages"][0]["dimensionChains"][0]["side"] = json!(1);
     let doc = to_sketchy(&m, Some("d")).expect("to");
     assert_eq!(annotation(&doc, "d-3")["offset"], json!(3.0)); // drawn at +3 * normal = left
     assert_eq!(from_sketchy(&doc).expect("from"), opened(&m, "d"));
-    assert_eq!(annotation(&to_sketchy(&rich(), Some("d")).expect("to"), "d-3")["offset"], json!(-3.0));
+    assert_eq!(
+        annotation(&to_sketchy(&rich(), Some("d")).expect("to"), "d-3")["offset"],
+        json!(-3.0)
+    );
     let foreign_doc = foreign_with(
         json!([{"id": "dim", "kind": "dimension", "level": "L1", "target": {"wall": "wall-a"}, "offset": -2}]),
         WALL_A(),
     );
     let saved = from_sketchy(&foreign_doc).expect("from");
     let chain = &saved["pages"][0]["dimensionChains"][0];
-    assert_eq!((&chain["offset"], &chain["side"]), (&json!(2.0), &json!(-1)));
+    assert_eq!(
+        (&chain["offset"], &chain["side"]),
+        (&json!(2.0), &json!(-1))
+    );
     let again = to_sketchy(&saved, None).expect("to").to_value();
-    assert_eq!(again["presentation"]["annotations"][0]["offset"], json!(-2.0));
+    assert_eq!(
+        again["presentation"]["annotations"][0]["offset"],
+        json!(-2.0)
+    );
 }
 
 #[test]
@@ -705,8 +945,19 @@ fn parked_annotation_ids_are_reserved() {
 #[test]
 fn porch_deck_codes_set_use_and_enclosure() {
     let doc = to_sketchy(&rich(), Some("d")).expect("to");
-    let scheme = doc.classification_schemes.iter().find(|s| s.scheme.ends_with(".area-codes")).expect("scheme");
-    let row = |c: &str| scheme.codes.iter().find(|e| e["code"] == json!(c)).unwrap_or_else(|| panic!("{c}")).clone();
+    let scheme = doc
+        .classification_schemes
+        .iter()
+        .find(|s| s.scheme.ends_with(".area-codes"))
+        .expect("scheme");
+    let row = |c: &str| {
+        scheme
+            .codes
+            .iter()
+            .find(|e| e["code"] == json!(c))
+            .unwrap_or_else(|| panic!("{c}"))
+            .clone()
+    };
     for (code, usage, enclosure) in [
         ("PORCH", "porch", "covered"),
         ("OFP", "porch", "covered"),
@@ -717,14 +968,21 @@ fn porch_deck_codes_set_use_and_enclosure() {
         ("BAL", "balcony", "open"),
     ] {
         let r = row(code);
-        assert_eq!((&r["use"], &r["enclosure"]), (&json!(usage), &json!(enclosure)), "{code}");
+        assert_eq!(
+            (&r["use"], &r["enclosure"]),
+            (&json!(usage), &json!(enclosure)),
+            "{code}"
+        );
     }
     assert!(row("GLA1").get("enclosure").is_none());
     let mut m = rich();
     m["pages"][0]["polygons"][0]["type"] = json!("SFP");
     let doc = to_sketchy(&m, Some("d")).expect("to");
     let space = &level_of(&doc).spaces[0];
-    assert_eq!((space.r#use.as_deref(), space.enclosure.as_deref()), (Some("porch"), Some("screened")));
+    assert_eq!(
+        (space.r#use.as_deref(), space.enclosure.as_deref()),
+        (Some("porch"), Some("screened"))
+    );
     assert_eq!(from_sketchy(&doc).expect("from"), opened(&m, "d"));
 }
 
@@ -741,9 +999,19 @@ fn foreign_annotation_order_survives() {
     let doc = foreign_with(annos, WALL_A());
     let saved = from_sketchy(&doc).expect("from");
     let again = to_sketchy(&saved, None).expect("to").to_value();
-    assert_eq!(anno_ids(&again), ["n1", "shape", "dim", "north", "sym", "n2"]);
-    let twice = to_sketchy(&from_sketchy(&serde_json::from_value(again.clone()).expect("doc")).expect("from"), None).expect("to");
-    assert_eq!(anno_ids(&twice.to_value()), ["n1", "shape", "dim", "north", "sym", "n2"]);
+    assert_eq!(
+        anno_ids(&again),
+        ["n1", "shape", "dim", "north", "sym", "n2"]
+    );
+    let twice = to_sketchy(
+        &from_sketchy(&serde_json::from_value(again.clone()).expect("doc")).expect("from"),
+        None,
+    )
+    .expect("to");
+    assert_eq!(
+        anno_ids(&twice.to_value()),
+        ["n1", "shape", "dim", "north", "sym", "n2"]
+    );
 }
 
 #[test]
@@ -759,7 +1027,10 @@ fn annotations_naming_missing_walls_are_parked() {
     assert!(page.get("symbols").is_none_or(|c| c == &json!([])));
     let again = to_sketchy(&saved, None).expect("to").to_value();
     assert_eq!(anno_ids(&again), ["dim", "sym"]);
-    assert_eq!(again["presentation"]["annotations"][0]["target"], json!({"wall": "nowall"}));
+    assert_eq!(
+        again["presentation"]["annotations"][0]["target"],
+        json!({"wall": "nowall"})
+    );
 }
 
 // ---- task 4c: display walls for outline-only spaces ----
@@ -783,7 +1054,12 @@ fn rounded(v: &Value) -> Value {
 }
 
 fn point_pair(line: &Value) -> [[f64; 2]; 2] {
-    let p = |k: &str| [line[k]["x"].as_f64().expect("x"), line[k]["y"].as_f64().expect("y")];
+    let p = |k: &str| {
+        [
+            line[k]["x"].as_f64().expect("x"),
+            line[k]["y"].as_f64().expect("y"),
+        ]
+    };
     [p("start"), p("end")]
 }
 
@@ -808,17 +1084,33 @@ fn outline_only_spaces_get_display_walls() {
         assert_eq!(edges.len(), n);
         for edge in edges {
             let id = &edge["lineId"];
-            assert!(lines.iter().any(|l| &l["id"] == id), "edge line {id} resolves in {}", poly["id"]);
+            assert!(
+                lines.iter().any(|l| &l["id"] == id),
+                "edge line {id} resolves in {}",
+                poly["id"]
+            );
         }
     }
     // The garage's west edge (44,24)-(44,2) is one line; the living room's longer
     // east edge (44,0)-(44,28) is a different segment and is its own line.
     let west = [[44.0, 2.0], [44.0, 24.0]];
-    assert_eq!(lines.iter().filter(|l| same_segment(point_pair(l), west)).count(), 1);
+    assert_eq!(
+        lines
+            .iter()
+            .filter(|l| same_segment(point_pair(l), west))
+            .count(),
+        1
+    );
     // All ids are distinct across lines and polygons.
-    let ids: Vec<i64> =
-        lines.iter().chain(page["polygons"].as_array().expect("polys")).map(|e| e["id"].as_i64().expect("id")).collect();
-    assert_eq!(ids.len(), ids.iter().collect::<std::collections::HashSet<_>>().len());
+    let ids: Vec<i64> = lines
+        .iter()
+        .chain(page["polygons"].as_array().expect("polys"))
+        .map(|e| e["id"].as_i64().expect("id"))
+        .collect();
+    assert_eq!(
+        ids.len(),
+        ids.iter().collect::<std::collections::HashSet<_>>().len()
+    );
     assert!(saved["nextId"].as_i64().expect("nextId") > *ids.iter().max().expect("ids"));
 }
 
@@ -828,12 +1120,23 @@ fn shared_segment_gets_one_display_wall() {
     let right = json!({"id": "r", "shape": {"type": "polygon", "points": [[10, 10], [10, 0], [20, 0], [20, 10]]}});
     let saved = open_doc(&foreign(json!([level(json!([left, right]), json!([]))])));
     let lines = saved["pages"][0]["lines"].as_array().expect("lines");
-    assert_eq!(lines.len(), 7, "4 + 4 edges, one segment shared (either direction)");
+    assert_eq!(
+        lines.len(),
+        7,
+        "4 + 4 edges, one segment shared (either direction)"
+    );
     let shared = [[10.0, 0.0], [10.0, 10.0]];
-    let hits: Vec<&Value> = lines.iter().filter(|l| same_segment(point_pair(l), shared)).collect();
+    let hits: Vec<&Value> = lines
+        .iter()
+        .filter(|l| same_segment(point_pair(l), shared))
+        .collect();
     assert_eq!(hits.len(), 1);
     let polys = saved["pages"][0]["polygons"].as_array().expect("polys");
-    assert!(polys.iter().all(|p| p["edges"].as_array().expect("edges").iter().any(|e| e["lineId"] == hits[0]["id"])));
+    assert!(polys.iter().all(|p| p["edges"]
+        .as_array()
+        .expect("edges")
+        .iter()
+        .any(|e| e["lineId"] == hits[0]["id"])));
 }
 
 fn open_doc(doc: &Document) -> Value {
@@ -847,9 +1150,18 @@ fn subdivision_edges_are_interior() {
                       "shape": {"type": "polygon", "points": [[0, 0], [5, 0], [5, 10], [0, 10]]}});
     let saved = open_doc(&foreign(json!([level(json!([outline, room]), json!([]))])));
     let lines = saved["pages"][0]["lines"].as_array().expect("lines");
-    let kind = |seg: [[f64; 2]; 2]| lines.iter().find(|l| same_segment(point_pair(l), seg)).map(|l| l["type"].clone());
+    let kind = |seg: [[f64; 2]; 2]| {
+        lines
+            .iter()
+            .find(|l| same_segment(point_pair(l), seg))
+            .map(|l| l["type"].clone())
+    };
     assert_eq!(kind([[10.0, 0.0], [10.0, 10.0]]), Some(json!("exterior")));
-    assert_eq!(kind([[0.0, 0.0], [0.0, 10.0]]), Some(json!("exterior")), "shared with the outline: first wins");
+    assert_eq!(
+        kind([[0.0, 0.0], [0.0, 10.0]]),
+        Some(json!("exterior")),
+        "shared with the outline: first wins"
+    );
     assert_eq!(kind([[5.0, 0.0], [5.0, 10.0]]), Some(json!("interior")));
 }
 
@@ -858,8 +1170,13 @@ fn display_wall_bow_comes_from_the_bulge() {
     let s = json!({"id": "s", "shape": {"type": "polygon", "points": [[0, 0], [10, 0], [10, 10], [0, 10]],
                                         "bulges": [0.5, 0, 0, 0]}});
     let saved = open_doc(&foreign(json!([level(json!([s]), json!([]))])));
-    let line = saved["pages"][0]["lines"].as_array().expect("lines").iter()
-        .find(|l| same_segment(point_pair(l), [[0.0, 0.0], [10.0, 0.0]])).expect("bottom edge").clone();
+    let line = saved["pages"][0]["lines"]
+        .as_array()
+        .expect("lines")
+        .iter()
+        .find(|l| same_segment(point_pair(l), [[0.0, 0.0], [10.0, 0.0]]))
+        .expect("bottom edge")
+        .clone();
     let want = -(0.5_f64).atan() * 720.0 / std::f64::consts::PI;
     assert!((line["bowAngle"].as_f64().expect("bow") - want).abs() < 1e-9);
 }
@@ -869,7 +1186,11 @@ fn display_walls_are_not_written_back() {
     let doc: Document = serde_json::from_str(SINGLE_FAMILY).expect("doc");
     let saved = from_sketchy(&doc).expect("from");
     let again = to_sketchy(&saved, None).expect("to");
-    for (a, b) in doc.structures[0].levels.iter().zip(&again.structures[0].levels) {
+    for (a, b) in doc.structures[0]
+        .levels
+        .iter()
+        .zip(&again.structures[0].levels)
+    {
         assert!(b.walls.is_empty(), "level {} gained walls", b.id);
         assert_eq!(a.spaces.len(), b.spaces.len());
         for (sa, sb) in a.spaces.iter().zip(&b.spaces) {
@@ -880,9 +1201,13 @@ fn display_walls_are_not_written_back() {
     }
     // Opening and saving again keeps the display walls and their ids stable. The written
     // document has no `revision` (the store stamps one), so no parent revision is parked.
-    let second = from_sketchy(&Document::from_json(&again.to_value().to_string()).expect("doc")).expect("from");
+    let second = from_sketchy(&Document::from_json(&again.to_value().to_string()).expect("doc"))
+        .expect("from");
     let mut expected = saved.clone();
-    expected["sketchy_other"].as_object_mut().expect("other").remove("parent_revision");
+    expected["sketchy_other"]
+        .as_object_mut()
+        .expect("other")
+        .remove("parent_revision");
     assert_eq!(second, expected);
 }
 
@@ -890,11 +1215,18 @@ fn display_walls_are_not_written_back() {
 fn referenced_display_wall_is_kept_as_a_wall() {
     let mut saved = open(SINGLE_FAMILY);
     let wall_id = saved["pages"][0]["lines"][0]["id"].clone();
-    saved["pages"][0]["dimensionChains"] = json!([{"id": 9999, "seedLineId": wall_id, "offset": 2.0, "side": 1}]);
+    saved["pages"][0]["dimensionChains"] =
+        json!([{"id": 9999, "seedLineId": wall_id, "offset": 2.0, "side": 1}]);
     let again = to_sketchy(&saved, None).expect("to");
     assert_eq!(again.structures[0].levels[0].walls.len(), 1);
     let back = from_sketchy(&again).expect("from");
-    assert_eq!(back["pages"][0]["dimensionChains"].as_array().expect("chains").len(), 1);
+    assert_eq!(
+        back["pages"][0]["dimensionChains"]
+            .as_array()
+            .expect("chains")
+            .len(),
+        1
+    );
 }
 
 #[test]
@@ -902,14 +1234,24 @@ fn condo_walls_are_not_duplicated() {
     let doc: Document = serde_json::from_str(CONDO).expect("doc");
     let saved = from_sketchy(&doc).expect("from");
     let lines = saved["pages"][0]["lines"].as_array().expect("lines");
-    let (real, display): (Vec<&Value>, Vec<&Value>) = lines.iter().partition(|l| l.get("sketchy_display").is_none());
+    let (real, display): (Vec<&Value>, Vec<&Value>) = lines
+        .iter()
+        .partition(|l| l.get("sketchy_display").is_none());
     assert_eq!(real.len(), doc.structures[0].levels[0].walls.len());
     for d in &display {
-        assert!(!real.iter().any(|r| same_segment(point_pair(r), point_pair(d))), "duplicate of a wall: {d}");
+        assert!(
+            !real
+                .iter()
+                .any(|r| same_segment(point_pair(r), point_pair(d))),
+            "duplicate of a wall: {d}"
+        );
     }
     for (i, a) in display.iter().enumerate() {
         for b in &display[i + 1..] {
-            assert!(!same_segment(point_pair(a), point_pair(b)), "duplicate display wall: {a}");
+            assert!(
+                !same_segment(point_pair(a), point_pair(b)),
+                "duplicate display wall: {a}"
+            );
         }
     }
 }
@@ -918,7 +1260,10 @@ fn condo_walls_are_not_duplicated() {
 fn app_authored_polygons_get_no_display_walls() {
     // rich.json has a polygon with uncovered edges the user chose to leave wall-less.
     let saved = from_sketchy(&to_sketchy(&rich(), Some("d")).expect("to")).expect("from");
-    assert_eq!(saved["pages"][0]["lines"].as_array().expect("lines").len(), 1);
+    assert_eq!(
+        saved["pages"][0]["lines"].as_array().expect("lines").len(),
+        1
+    );
 }
 
 // ---- review fix wave A ----
@@ -935,7 +1280,12 @@ fn app_ids(saved: &Value) -> (Vec<i64>, Option<i64>) {
     let mut ids = Vec::new();
     for page in saved["pages"].as_array().expect("pages") {
         for key in ["lines", "polygons", "labels", "symbols", "dimensionChains"] {
-            for item in page.get(key).and_then(Value::as_array).into_iter().flatten() {
+            for item in page
+                .get(key)
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+            {
                 ids.push(item["id"].as_i64().expect("integer id"));
             }
         }
@@ -958,30 +1308,51 @@ fn assert_ids_sound(saved: &Value) {
 
 #[test]
 fn duplicate_element_ids_are_rejected() {
-    let doc = foreign(json!([level(json!([]), json!([wall_at("w-1", 0.0), wall_at("w-1", 5.0)]))]));
+    let doc = foreign(json!([level(
+        json!([]),
+        json!([wall_at("w-1", 0.0), wall_at("w-1", 5.0)])
+    )]));
     let e = from_sketchy(&doc).expect_err("duplicate id");
     assert!(e.to_string().contains("duplicate id"), "{e}");
-    let doc = foreign(json!([level(json!([square("x", json!({}))]), json!([wall_at("x", 0.0)]))]));
-    assert!(from_sketchy(&doc).expect_err("dup across kinds").to_string().contains("duplicate id"));
+    let doc = foreign(json!([level(
+        json!([square("x", json!({}))]),
+        json!([wall_at("x", 0.0)])
+    )]));
+    assert!(from_sketchy(&doc)
+        .expect_err("dup across kinds")
+        .to_string()
+        .contains("duplicate id"));
 }
 
 #[test]
 fn out_of_range_ids_get_fresh_in_range_ids() {
     let doc = foreign(json!([level(
         json!([]),
-        json!([wall_at("w-9007199254740993", 0.0), wall_at("w-9223372036854775807", 1.0), wall_at("w-0", 2.0)])
+        json!([
+            wall_at("w-9007199254740993", 0.0),
+            wall_at("w-9223372036854775807", 1.0),
+            wall_at("w-0", 2.0)
+        ])
     )]));
     let saved = from_sketchy(&doc).expect("from");
     assert_ids_sound(&saved);
     let again = to_sketchy(&saved, None).expect("to").to_value();
-    let ids: Vec<&str> = again["structures"][0]["levels"][0]["walls"].as_array().expect("walls")
-        .iter().map(|w| w["id"].as_str().expect("id")).collect();
+    let ids: Vec<&str> = again["structures"][0]["levels"][0]["walls"]
+        .as_array()
+        .expect("walls")
+        .iter()
+        .map(|w| w["id"].as_str().expect("id"))
+        .collect();
     assert_eq!(ids, ["w-9007199254740993", "w-9223372036854775807", "w-0"]);
 }
 
 #[test]
 fn huge_next_id_does_not_overflow() {
-    let mut value = serde_json::to_value(foreign(json!([level(json!([]), json!([wall_at("odd", 0.0)]))]))).expect("value");
+    let mut value = serde_json::to_value(foreign(json!([level(
+        json!([]),
+        json!([wall_at("odd", 0.0)])
+    )])))
+    .expect("value");
     value["extras"] = json!({ "io.github.garmonbz.sketchrust": {"nextId": i64::MAX} });
     let doc: Document = serde_json::from_value(value).expect("doc");
     let saved = from_sketchy(&doc).expect("from");
@@ -993,10 +1364,16 @@ fn huge_next_id_does_not_overflow() {
 fn display_ids_skip_taken_ids() {
     let residual = json!({"points": [], "sketchy_display": true,
                           "edges": [{"lineId": 4}, {"lineId": null}, {"lineId": null}, {"lineId": null}]});
-    let space = square("a-1", json!({"extras": {"io.github.garmonbz.sketchrust": residual}}));
+    let space = square(
+        "a-1",
+        json!({"extras": {"io.github.garmonbz.sketchrust": residual}}),
+    );
     let saved = from_sketchy(&foreign(json!([level(json!([space]), json!([]))]))).expect("from");
     let lines = saved["pages"][0]["lines"].as_array().expect("lines");
-    let mut ids: Vec<i64> = lines.iter().map(|l| l["id"].as_i64().expect("id")).collect();
+    let mut ids: Vec<i64> = lines
+        .iter()
+        .map(|l| l["id"].as_i64().expect("id"))
+        .collect();
     ids.sort_unstable();
     ids.dedup();
     assert_eq!(ids.len(), 4, "display ids collide: {lines:?}");
@@ -1010,7 +1387,10 @@ fn document_identity_round_trips() {
         let doc = Document::from_json(text).expect("doc");
         let saved = from_sketchy(&doc).expect("from");
         assert_eq!(to_sketchy(&saved, None).expect("to").id, doc.id);
-        assert_eq!(parent_revision(&saved), doc.revision.as_ref().map(|r| r.id.clone()));
+        assert_eq!(
+            parent_revision(&saved),
+            doc.revision.as_ref().map(|r| r.id.clone())
+        );
         assert_eq!(to_sketchy(&saved, Some("other")).expect("to").id, "other");
     }
     let e = to_sketchy(&rich(), None).expect_err("no id");
@@ -1063,10 +1443,14 @@ fn fixtures_round_trip_in_order() {
     for text in [SINGLE_FAMILY, CONDO, COMMERCIAL] {
         let input: Value = serde_json::from_str(text).expect("value");
         let doc = Document::from_json(text).expect("doc");
-        let once = to_sketchy(&from_sketchy(&doc).expect("from"), None).expect("to").to_value();
+        let once = to_sketchy(&from_sketchy(&doc).expect("from"), None)
+            .expect("to")
+            .to_value();
         assert_eq!(strip_ns(&once), strip_ns(&input), "{}", input["id"]);
         let doc2 = Document::from_json(&once.to_string()).expect("doc");
-        let twice = to_sketchy(&from_sketchy(&doc2).expect("from"), None).expect("to").to_value();
+        let twice = to_sketchy(&from_sketchy(&doc2).expect("from"), None)
+            .expect("to")
+            .to_value();
         assert_eq!(twice, once, "second open/save differs for {}", input["id"]);
     }
 }
@@ -1094,15 +1478,38 @@ fn order_sensitive_arrays_keep_their_order() {
         {"scheme": "org.y", "codes": []}
     ]);
     let doc: Document = serde_json::from_value(value.clone()).expect("doc");
-    let again = to_sketchy(&from_sketchy(&doc).expect("from"), None).expect("to").to_value();
+    let again = to_sketchy(&from_sketchy(&doc).expect("from"), None)
+        .expect("to")
+        .to_value();
     let spaces = &again["structures"][0]["levels"][0]["spaces"];
-    let ids: Vec<&str> = spaces.as_array().expect("spaces").iter().map(|s| s["id"].as_str().expect("id")).collect();
+    let ids: Vec<&str> = spaces
+        .as_array()
+        .expect("spaces")
+        .iter()
+        .map(|s| s["id"].as_str().expect("id"))
+        .collect();
     assert_eq!(ids, ["p", "a-2", "r", "a-3"]);
-    let schemes: Vec<&str> = spaces[1]["classifications"].as_array().expect("cls").iter().map(|c| c["scheme"].as_str().expect("s")).collect();
-    assert_eq!(schemes, ["org.x", "io.github.garmonbz.sketchrust.area-codes", "org.y"]);
+    let schemes: Vec<&str> = spaces[1]["classifications"]
+        .as_array()
+        .expect("cls")
+        .iter()
+        .map(|c| c["scheme"].as_str().expect("s"))
+        .collect();
+    assert_eq!(
+        schemes,
+        ["org.x", "io.github.garmonbz.sketchrust.area-codes", "org.y"]
+    );
     assert_eq!(again["extensions_used"], value["extensions_used"]);
-    let names: Vec<&str> = again["classification_schemes"].as_array().expect("schemes").iter().map(|s| s["scheme"].as_str().expect("s")).collect();
-    assert_eq!(names, ["org.x", "io.github.garmonbz.sketchrust.area-codes", "org.y"]);
+    let names: Vec<&str> = again["classification_schemes"]
+        .as_array()
+        .expect("schemes")
+        .iter()
+        .map(|s| s["scheme"].as_str().expect("s"))
+        .collect();
+    assert_eq!(
+        names,
+        ["org.x", "io.github.garmonbz.sketchrust.area-codes", "org.y"]
+    );
 }
 
 #[test]
@@ -1112,31 +1519,55 @@ fn dangling_references_do_not_alias_other_elements() {
         json!([wall_at("w-7", 0.0)]),
     );
     let mut value = doc.to_value();
-    value["structures"][0]["levels"][0]["spaces"] =
-        json!([square("a-1", json!({})), square("a-2", json!({"within": "a-7", "subtract": true}))]);
+    value["structures"][0]["levels"][0]["spaces"] = json!([
+        square("a-1", json!({})),
+        square("a-2", json!({"within": "a-7", "subtract": true}))
+    ]);
     let doc: Document = serde_json::from_value(value).expect("doc");
     let saved = from_sketchy(&doc).expect("from");
     let polys = saved["pages"][0]["polygons"].as_array().expect("polys");
     let hole = polys.iter().find(|p| p["id"] == json!(2)).expect("a-2");
-    assert_ne!(hole.get("subtractTargetId"), Some(&json!(7)), "dangling within aliased wall 7: {hole}");
+    assert_ne!(
+        hole.get("subtractTargetId"),
+        Some(&json!(7)),
+        "dangling within aliased wall 7: {hole}"
+    );
     assert_ne!(hole.get("subtractMode"), Some(&json!("always")));
     let again = to_sketchy(&saved, None).expect("to").to_value();
-    let space = again["structures"][0]["levels"][0]["spaces"].as_array().expect("spaces").iter()
-        .find(|s| s["id"] == "a-2").expect("a-2").clone();
-    assert_eq!((&space["within"], &space["subtract"]), (&json!("a-7"), &json!(true)));
+    let space = again["structures"][0]["levels"][0]["spaces"]
+        .as_array()
+        .expect("spaces")
+        .iter()
+        .find(|s| s["id"] == "a-2")
+        .expect("a-2")
+        .clone();
+    assert_eq!(
+        (&space["within"], &space["subtract"]),
+        (&json!("a-7"), &json!(true))
+    );
 }
 
 #[test]
 fn non_finite_results_are_errors() {
-    let mut value = serde_json::to_value(foreign(json!([level(json!([]), json!([{"id": "w-1", "start": [0, 0], "end": [1e308, 0]}]))]))).expect("value");
+    let mut value = serde_json::to_value(foreign(json!([level(
+        json!([]),
+        json!([{"id": "w-1", "start": [0, 0], "end": [1e308, 0]}])
+    )])))
+    .expect("value");
     value["length_unit"] = json!("m");
     let doc: Document = serde_json::from_value(value).expect("doc");
-    assert!(matches!(from_sketchy(&doc), Err(sketch_core::sketchy::SketchyError::Convert(_))));
+    assert!(matches!(
+        from_sketchy(&doc),
+        Err(sketch_core::sketchy::SketchyError::Convert(_))
+    ));
     let mut m = rich();
     m["sketchy_other"] = json!({"length_unit": "mm", "document_id": "d"});
     m["pages"][0]["lines"][0]["thickness"] = json!(1e308);
     // thickness / 12 / (ft per mm) overflows to infinity.
-    assert!(matches!(to_sketchy(&m, None), Err(sketch_core::sketchy::SketchyError::Convert(_))));
+    assert!(matches!(
+        to_sketchy(&m, None),
+        Err(sketch_core::sketchy::SketchyError::Convert(_))
+    ));
 }
 
 #[test]
@@ -1144,16 +1575,28 @@ fn unshown_content_is_summarised() {
     let commercial = Document::from_json(COMMERCIAL).expect("doc");
     assert_eq!(
         unshown_summary(&commercial),
-        [("openings".to_string(), 30), ("features".to_string(), 38), ("voids".to_string(), 2), ("annotations".to_string(), 9)]
+        [
+            ("openings".to_string(), 30),
+            ("features".to_string(), 38),
+            ("voids".to_string(), 2),
+            ("annotations".to_string(), 9)
+        ]
     );
     let condo = Document::from_json(CONDO).expect("doc");
     assert_eq!(
         unshown_summary(&condo),
-        [("openings".to_string(), 13), ("features".to_string(), 13), ("annotations".to_string(), 11)]
+        [
+            ("openings".to_string(), 13),
+            ("features".to_string(), 13),
+            ("annotations".to_string(), 11)
+        ]
     );
     let family = Document::from_json(SINGLE_FAMILY).expect("doc");
     assert_eq!(unshown_summary(&family)[0], ("structure".to_string(), 1));
-    let open = foreign(json!([level(json!([{"id": "p", "shape": {"type": "polyline", "points": [[0, 0], [5, 0]]}}]), json!([]))]));
+    let open = foreign(json!([level(
+        json!([{"id": "p", "shape": {"type": "polyline", "points": [[0, 0], [5, 0]]}}]),
+        json!([])
+    )]));
     assert_eq!(unshown_summary(&open), [("non-area space".to_string(), 1)]);
     assert!(unshown_summary(&to_sketchy(&rich(), Some("d")).expect("to")).is_empty());
 }
@@ -1162,17 +1605,36 @@ fn unshown_content_is_summarised() {
 fn malformed_input_errors_without_panicking() {
     use sketch_core::sketchy::SketchyError;
     let bad_models = [
-        ("string x", json!({"pages": [{"lines": [{"id": 1, "start": {"x": "0", "y": 0}, "end": {"x": 1, "y": 0}}]}]})),
-        ("line without id", json!({"pages": [{"lines": [{"start": {"x": 0, "y": 0}, "end": {"x": 1, "y": 0}}]}]})),
+        (
+            "string x",
+            json!({"pages": [{"lines": [{"id": 1, "start": {"x": "0", "y": 0}, "end": {"x": 1, "y": 0}}]}]}),
+        ),
+        (
+            "line without id",
+            json!({"pages": [{"lines": [{"start": {"x": 0, "y": 0}, "end": {"x": 1, "y": 0}}]}]}),
+        ),
         ("pages not an array", json!({"pages": {"a": 1}})),
-        ("page lines not an array", json!({"pages": [{"lines": "x"}]})),
+        (
+            "page lines not an array",
+            json!({"pages": [{"lines": "x"}]}),
+        ),
         ("model not an object", json!([1, 2])),
     ];
     for (what, model) in bad_models {
-        assert!(matches!(to_sketchy(&model, Some("d")), Err(SketchyError::Convert(_))), "{what}");
+        assert!(
+            matches!(to_sketchy(&model, Some("d")), Err(SketchyError::Convert(_))),
+            "{what}"
+        );
     }
     // A non-object extras[NS] is ignored, on the root and on an element.
-    let mut value = serde_json::to_value(foreign(json!([level(json!([square("a-1", json!({"extras": {"io.github.garmonbz.sketchrust": 5}}))]), json!([]))]))).expect("value");
+    let mut value = serde_json::to_value(foreign(json!([level(
+        json!([square(
+            "a-1",
+            json!({"extras": {"io.github.garmonbz.sketchrust": 5}})
+        )]),
+        json!([])
+    )])))
+    .expect("value");
     value["extras"] = json!({"io.github.garmonbz.sketchrust": "x"});
     let doc: Document = serde_json::from_value(value).expect("doc");
     let saved = from_sketchy(&doc).expect("from");
@@ -1218,14 +1680,19 @@ fn writes_format_version_0_2() {
     let saved = from_sketchy(&Document::from_json(SINGLE_FAMILY_0_1).expect("doc")).expect("from");
     let again = to_sketchy(&saved, None).expect("to").to_value();
     assert_eq!(again["format_version"], json!("0.2"));
-    assert_eq!(again["$schema"], json!("https://property-hackers.github.io/sketchy/schema/0.2/sketchy.schema.json"));
+    assert_eq!(
+        again["$schema"],
+        json!("https://property-hackers.github.io/sketchy/schema/0.2/sketchy.schema.json")
+    );
 }
 
 #[test]
 fn reads_0_1_and_0_2() {
     for text in [SINGLE_FAMILY_0_1, SINGLE_FAMILY, CONDO, COMMERCIAL] {
         let bytes = text.as_bytes();
-        let doc = sketch_core::sketchy::read(bytes).expect("read").expect("sketchy");
+        let doc = sketch_core::sketchy::read(bytes)
+            .expect("read")
+            .expect("sketchy");
         from_sketchy(&doc).expect("converts");
     }
 }
@@ -1237,8 +1704,20 @@ fn rejects_other_0x_versions() {
         let mut v: Value = serde_json::from_str(SINGLE_FAMILY).expect("value");
         v["format_version"] = json!(version);
         let text = v.to_string();
-        assert!(matches!(Document::from_json(&text), Err(SketchyError::UnsupportedVersion(_))), "{version}");
-        assert!(matches!(sketch_core::sketchy::read(text.as_bytes()), Err(SketchyError::UnsupportedVersion(_))), "{version}");
+        assert!(
+            matches!(
+                Document::from_json(&text),
+                Err(SketchyError::UnsupportedVersion(_))
+            ),
+            "{version}"
+        );
+        assert!(
+            matches!(
+                sketch_core::sketchy::read(text.as_bytes()),
+                Err(SketchyError::UnsupportedVersion(_))
+            ),
+            "{version}"
+        );
     }
     for version in ["0.1", "0.2"] {
         let mut v: Value = serde_json::from_str(SINGLE_FAMILY).expect("value");
@@ -1261,35 +1740,74 @@ fn reads_0_1_bulges_with_flipped_sign() {
     let saved = from_sketchy(&doc).expect("from");
     let want = |b: f64| b.atan() * 720.0 / std::f64::consts::PI;
     let page = &saved["pages"][0];
-    let wall = page["lines"].as_array().expect("lines").iter().find(|l| l["sketchy_display"].is_null()).expect("wall");
-    assert!((bow(wall) - want(0.25)).abs() < 1e-9, "wall bow {}", bow(wall));
+    let wall = page["lines"]
+        .as_array()
+        .expect("lines")
+        .iter()
+        .find(|l| l["sketchy_display"].is_null())
+        .expect("wall");
+    assert!(
+        (bow(wall) - want(0.25)).abs() < 1e-9,
+        "wall bow {}",
+        bow(wall)
+    );
     let edges = page["polygons"][0]["edges"].as_array().expect("edges");
     assert!((bow(&edges[0]) - want(0.5)).abs() < 1e-9);
     // Written back as 0.2 the same arc has the opposite sign.
     let again = to_sketchy(&saved, None).expect("to").to_value();
-    assert!((again["structures"][0]["levels"][0]["walls"][0]["bulge"].as_f64().expect("bulge") + 0.25).abs() < 1e-9);
-    let b0 = again["structures"][0]["levels"][0]["spaces"][0]["shape"]["bulges"][0].as_f64().expect("b0");
+    assert!(
+        (again["structures"][0]["levels"][0]["walls"][0]["bulge"]
+            .as_f64()
+            .expect("bulge")
+            + 0.25)
+            .abs()
+            < 1e-9
+    );
+    let b0 = again["structures"][0]["levels"][0]["spaces"][0]["shape"]["bulges"][0]
+        .as_f64()
+        .expect("b0");
     assert!((b0 + 0.5).abs() < 1e-9);
     // Hole rings and polylines flip too.
     let hole = json!({"type": "polygon", "points": [[0, 0], [10, 0], [10, 10], [0, 10]],
                       "holes": [{"points": [[2, 2], [4, 2], [4, 4], [2, 4]], "bulges": [0.3, 0, 0, 0]}]});
     let poly = json!({"type": "polyline", "points": [[0, 0], [5, 0]], "bulges": [0.7]});
-    let doc = foreign_v("0.1", json!([level(json!([{"id": "h", "shape": hole}, {"id": "p", "shape": poly}]), json!([]))]));
-    let again = to_sketchy(&from_sketchy(&doc).expect("from"), None).expect("to").to_value();
+    let doc = foreign_v(
+        "0.1",
+        json!([level(
+            json!([{"id": "h", "shape": hole}, {"id": "p", "shape": poly}]),
+            json!([])
+        )]),
+    );
+    let again = to_sketchy(&from_sketchy(&doc).expect("from"), None)
+        .expect("to")
+        .to_value();
     let spaces = &lvl(&again)["spaces"];
-    assert_eq!(spaces[0]["shape"]["holes"][0]["bulges"], json!([-0.3, 0, 0, 0]));
+    assert_eq!(
+        spaces[0]["shape"]["holes"][0]["bulges"],
+        json!([-0.3, 0, 0, 0])
+    );
     assert_eq!(spaces[1]["shape"]["bulges"], json!([-0.7]));
 }
 
 #[test]
 fn ceiling_height_0_1_becomes_ceiling_object() {
-    let mut value = serde_json::to_value(foreign_v("0.1", json!([level(json!([square("s", json!({"ceiling_height": 9, "ceiling_sloped": true}))]), json!([]))])))
-        .expect("value");
+    let mut value = serde_json::to_value(foreign_v(
+        "0.1",
+        json!([level(
+            json!([square(
+                "s",
+                json!({"ceiling_height": 9, "ceiling_sloped": true})
+            )]),
+            json!([])
+        )]),
+    ))
+    .expect("value");
     value["structures"][0]["levels"][0]["ceiling_height"] = json!(8);
-    value["structures"][0]["levels"][0]["features"] =
-        json!([{"id": "st", "kind": "stair", "connects_to": "L2", "counted_on": "L1", "finished": true}]);
+    value["structures"][0]["levels"][0]["features"] = json!([{"id": "st", "kind": "stair", "connects_to": "L2", "counted_on": "L1", "finished": true}]);
     let doc: Document = serde_json::from_value(value).expect("doc");
-    let again = to_sketchy(&from_sketchy(&doc).expect("from"), None).expect("to").to_value();
+    let again = to_sketchy(&from_sketchy(&doc).expect("from"), None)
+        .expect("to")
+        .to_value();
     let level = lvl(&again);
     assert_eq!(level["ceiling"], json!({"height": 8}));
     assert!(level.get("ceiling_height").is_none());
@@ -1297,34 +1815,59 @@ fn ceiling_height_0_1_becomes_ceiling_object() {
     assert_eq!(space["ceiling"], json!({"height": 9}));
     assert!(space.get("ceiling_height").is_none() && space.get("ceiling_sloped").is_none());
     let stair = &level["features"][0];
-    assert!(stair.get("counted_on").is_none(), "counted_on is gone in 0.2");
-    assert_eq!((&stair["connects_to"], &stair["finished"]), (&json!("L2"), &json!(true)));
-    assert_eq!(stair["extras"]["io.github.garmonbz.sketchrust"]["sketchy_0_1"], json!({"counted_on": "L1"}));
+    assert!(
+        stair.get("counted_on").is_none(),
+        "counted_on is gone in 0.2"
+    );
+    assert_eq!(
+        (&stair["connects_to"], &stair["finished"]),
+        (&json!("L2"), &json!(true))
+    );
+    assert_eq!(
+        stair["extras"]["io.github.garmonbz.sketchrust"]["sketchy_0_1"],
+        json!({"counted_on": "L1"})
+    );
     // The dropped values stay in the residual instead of vanishing.
-    assert_eq!(space["extras"]["io.github.garmonbz.sketchrust"]["sketchy_0_1"], json!({"ceiling_sloped": true}));
+    assert_eq!(
+        space["extras"]["io.github.garmonbz.sketchrust"]["sketchy_0_1"],
+        json!({"ceiling_sloped": true})
+    );
     // A second open/save is stable.
     let doc2 = Document::from_json(&again.to_string()).expect("doc");
-    assert_eq!(to_sketchy(&from_sketchy(&doc2).expect("from"), None).expect("to").to_value(), again);
+    assert_eq!(
+        to_sketchy(&from_sketchy(&doc2).expect("from"), None)
+            .expect("to")
+            .to_value(),
+        again
+    );
 }
 
 #[test]
 fn ceilings_stairs_and_openings_of_0_2_are_preserved() {
     let ceiling = json!({"height": 8, "zones": [{"shape": {"type": "polygon", "points": [[0, 0], [5, 0], [5, 5]]}, "height": 6}]});
-    let mut value = serde_json::to_value(foreign(json!([level(json!([square("s", json!({"ceiling": ceiling}))]), json!([]))]))).expect("value");
+    let mut value = serde_json::to_value(foreign(json!([level(
+        json!([square("s", json!({"ceiling": ceiling}))]),
+        json!([])
+    )])))
+    .expect("value");
     let l = &mut value["structures"][0]["levels"][0];
     l["ceiling"] = json!({"height": 8});
     l["features"] = json!([{"id": "st", "kind": "stair", "well": "v1", "stair": {"configuration": "u_shaped", "direction": "up", "risers": 16,
         "landings": [{"shape": {"type": "polygon", "points": [[0, 0], [2, 0], [2, 2]]}}]}},
         {"id": "col", "kind": "column", "position": [3, 3], "shape": {"type": "circle", "center": [0, 0], "radius": 0.5}}]);
-    l["voids"] = json!([{"id": "v1", "shape": {"type": "polygon", "points": [[1, 1], [2, 1], [2, 2]]}}]);
+    l["voids"] =
+        json!([{"id": "v1", "shape": {"type": "polygon", "points": [[1, 1], [2, 1], [2, 2]]}}]);
     l["openings"] = json!([
         {"id": "o1", "kind": "door", "wall": "w", "swing": "unknown", "swing_into": "s"},
         {"id": "o2", "kind": "door", "space": "s", "edge": 1, "hole": 0, "offset": 1, "width": 3},
         {"id": "o3", "kind": "skylight", "space": "s", "shape": {"type": "polygon", "points": [[1, 1], [2, 1], [2, 2]]}}
     ]);
-    value["structures"][0]["levels"][0]["walls"] = json!([{"id": "w", "start": [0, 0], "end": [10, 0], "kind": "railing"}]);
+    value["structures"][0]["levels"][0]["walls"] =
+        json!([{"id": "w", "start": [0, 0], "end": [10, 0], "kind": "railing"}]);
     let doc: Document = serde_json::from_value(value.clone()).expect("doc");
-    let again = to_sketchy(&from_sketchy(&doc).expect("from"), None).expect("to").to_value();
+    let again = to_sketchy(&from_sketchy(&doc).expect("from"), None)
+        .expect("to")
+        .to_value();
     let (a, v) = (lvl(&again), lvl(&value));
     for key in ["ceiling", "features", "voids", "openings"] {
         assert_eq!(a[key], v[key], "{key}");
@@ -1347,20 +1890,40 @@ fn edge_kinds_survive_round_trip() {
     let doc = foreign(json!([level(json!([edged_square()]), json!([]))]));
     let saved = from_sketchy(&doc).expect("from");
     // Display walls exist for every wall-less edge, virtual ones included, and are not written back.
-    assert_eq!(saved["pages"][0]["lines"].as_array().expect("lines").len(), 4);
+    assert_eq!(
+        saved["pages"][0]["lines"].as_array().expect("lines").len(),
+        4
+    );
     let again = to_sketchy(&saved, None).expect("to").to_value();
     let level = lvl(&again);
-    assert!(level.get("walls").is_none_or(|w| w == &json!([])), "display walls are never written");
+    assert!(
+        level.get("walls").is_none_or(|w| w == &json!([])),
+        "display walls are never written"
+    );
     assert_eq!(level["spaces"][0]["shape"], edged_square()["shape"]);
     // The converter never reverses a ring: the points keep their order and orientation.
-    let Shape::Polygon { points, .. } = &Document::from_json(&again.to_string()).expect("doc").structures[0].levels[0].spaces[0].shape.clone()
+    let Shape::Polygon { points, .. } = &Document::from_json(&again.to_string())
+        .expect("doc")
+        .structures[0]
+        .levels[0]
+        .spaces[0]
+        .shape
+        .clone()
     else {
         panic!("polygon")
     };
-    assert_eq!(points, &vec![[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]]);
+    assert_eq!(
+        points,
+        &vec![[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]]
+    );
     // A second open/save of the written document changes nothing.
     let second = Document::from_json(&again.to_string()).expect("doc");
-    assert_eq!(to_sketchy(&from_sketchy(&second).expect("from"), None).expect("to").to_value(), again);
+    assert_eq!(
+        to_sketchy(&from_sketchy(&second).expect("from"), None)
+            .expect("to")
+            .to_value(),
+        again
+    );
 }
 
 #[test]
@@ -1370,15 +1933,23 @@ fn per_edge_arrays_dropped_when_points_change() {
     // Moving a vertex keeps the arrays aligned.
     saved["pages"][0]["polygons"][0]["points"][2]["x"] = json!(12.0);
     let moved = to_sketchy(&saved, None).expect("to").to_value();
-    assert_eq!(lvl(&moved)["spaces"][0]["shape"]["edges"], json!(["physical", "virtual", "physical", "physical"]));
+    assert_eq!(
+        lvl(&moved)["spaces"][0]["shape"]["edges"],
+        json!(["physical", "virtual", "physical", "physical"])
+    );
     // Adding a vertex does not: the per-edge arrays are dropped rather than misaligned.
     let mut saved = from_sketchy(&doc).expect("from");
-    let pts = saved["pages"][0]["polygons"][0]["points"].as_array_mut().expect("pts");
+    let pts = saved["pages"][0]["polygons"][0]["points"]
+        .as_array_mut()
+        .expect("pts");
     pts.insert(1, json!({"x": 5.0, "y": 0.0}));
     let grown = to_sketchy(&saved, None).expect("to").to_value();
     let shape = &lvl(&grown)["spaces"][0]["shape"];
     assert_eq!(shape["points"].as_array().expect("pts").len(), 5);
-    assert!(shape.get("edges").is_none() && shape.get("edge_measured_to").is_none(), "{shape}");
+    assert!(
+        shape.get("edges").is_none() && shape.get("edge_measured_to").is_none(),
+        "{shape}"
+    );
     // Hole rings keep their own arrays.
     assert!(shape["holes"][0]["edges"].is_array());
 }
@@ -1402,26 +1973,55 @@ fn circle_space_opens_as_four_exact_quarter_arcs() {
     assert_eq!(edges.len(), 4);
     // Counter-clockwise ring: the app's negative bow bows right of travel, away from the centre.
     for e in edges {
-        assert!((bow(e) + 90.0).abs() < 1e-9, "each edge is a 90 degree outward arc: {e}");
+        assert!(
+            (bow(e) + 90.0).abs() < 1e-9,
+            "each edge is a 90 degree outward arc: {e}"
+        );
     }
     // Every arc midpoint, from the app's own arc code, lies on the circle.
-    let app_pts: Vec<Pt> = pts.iter().map(|p| Pt::new(p["x"].as_f64().expect("x"), p["y"].as_f64().expect("y"))).collect();
-    let app_edges: Vec<Edge> = edges.iter().map(|e| Edge { line_id: None, bow_angle: bow(e) }).collect();
+    let app_pts: Vec<Pt> = pts
+        .iter()
+        .map(|p| Pt::new(p["x"].as_f64().expect("x"), p["y"].as_f64().expect("y")))
+        .collect();
+    let app_edges: Vec<Edge> = edges
+        .iter()
+        .map(|e| Edge {
+            line_id: None,
+            bow_angle: bow(e),
+        })
+        .collect();
     let engine = GeometryEngine::new();
     let ring = engine.flatten_ring(&app_pts, &app_edges, 0.0005);
     for p in &ring {
-        assert!(((p.x - 10.0).hypot(p.y - 5.0) - 4.0).abs() < 1e-3, "{p:?} is on the circle");
+        assert!(
+            ((p.x - 10.0).hypot(p.y - 5.0) - 4.0).abs() < 1e-3,
+            "{p:?} is on the circle"
+        );
     }
     for k in 0..4 {
-        let single = engine.flatten_ring(&[app_pts[k], app_pts[(k + 1) % 4]], &[app_edges[k], Edge::default()], 0.0005);
-        let mid = single.iter().map(|p| ((p.x - 10.0).hypot(p.y - 5.0) - 4.0).abs()).fold(0.0, f64::max);
+        let single = engine.flatten_ring(
+            &[app_pts[k], app_pts[(k + 1) % 4]],
+            &[app_edges[k], Edge::default()],
+            0.0005,
+        );
+        let mid = single
+            .iter()
+            .map(|p| ((p.x - 10.0).hypot(p.y - 5.0) - 4.0).abs())
+            .fold(0.0, f64::max);
         assert!(mid < 1e-3);
     }
     // The bulge is the spec's: a CCW quarter arc bowing outward is positive (SPEC 0.2 4.2).
     let mut moved = saved.clone();
     moved["pages"][0]["polygons"][0]["points"][0]["x"] = json!(15.0);
     let again = to_sketchy(&moved, None).expect("to").to_value();
-    assert!((again["structures"][0]["levels"][0]["spaces"][0]["shape"]["bulges"][0].as_f64().expect("b") - (std::f64::consts::PI / 8.0).tan()).abs() < 1e-9);
+    assert!(
+        (again["structures"][0]["levels"][0]["spaces"][0]["shape"]["bulges"][0]
+            .as_f64()
+            .expect("b")
+            - (std::f64::consts::PI / 8.0).tan())
+        .abs()
+            < 1e-9
+    );
     // Display walls get the same bows, one per edge.
     let lines = saved["pages"][0]["lines"].as_array().expect("lines");
     assert_eq!(lines.len(), 4);
@@ -1430,16 +2030,34 @@ fn circle_space_opens_as_four_exact_quarter_arcs() {
         assert_eq!(edges[i]["lineId"], l["id"]);
     }
     let old = from_sketchy(&circle_doc("0.1")).expect("from");
-    assert_eq!(old["pages"][0]["polygons"][0]["points"].as_array().expect("pts").len(), 4);
+    assert_eq!(
+        old["pages"][0]["polygons"][0]["points"]
+            .as_array()
+            .expect("pts")
+            .len(),
+        4
+    );
 }
 
 #[test]
 fn circle_area_matches_pi_r_squared() {
     let saved = from_sketchy(&circle_doc("0.2")).expect("from");
     let poly = &saved["pages"][0]["polygons"][0];
-    let points: Vec<Pt> =
-        poly["points"].as_array().expect("pts").iter().map(|p| Pt::new(p["x"].as_f64().expect("x"), p["y"].as_f64().expect("y"))).collect();
-    let edges: Vec<Edge> = poly["edges"].as_array().expect("edges").iter().map(|e| Edge { line_id: None, bow_angle: bow(e) }).collect();
+    let points: Vec<Pt> = poly["points"]
+        .as_array()
+        .expect("pts")
+        .iter()
+        .map(|p| Pt::new(p["x"].as_f64().expect("x"), p["y"].as_f64().expect("y")))
+        .collect();
+    let edges: Vec<Edge> = poly["edges"]
+        .as_array()
+        .expect("edges")
+        .iter()
+        .map(|e| Edge {
+            line_id: None,
+            bow_angle: bow(e),
+        })
+        .collect();
     // The app's area path (`area_calc::CalcPoly` calls this for a polygon of 3+ points).
     let area = GeometryEngine::new().calculate_area(&points, &edges);
     let exact = std::f64::consts::PI * 16.0;
@@ -1466,11 +2084,23 @@ fn circle_written_back_when_unchanged() {
     assert_eq!(s["type"], json!("polygon"));
     let b = s["bulges"].as_array().expect("bulges");
     assert!((b[0].as_f64().expect("b0") - (std::f64::consts::PI / 8.0).tan()).abs() < 1e-9);
-    assert!((b[1].as_f64().expect("b1") - (45.0_f64 * std::f64::consts::PI / 720.0).tan()).abs() < 1e-9);
+    assert!(
+        (b[1].as_f64().expect("b1") - (45.0_f64 * std::f64::consts::PI / 720.0).tan()).abs() < 1e-9
+    );
     // An ellipse keeps its 48-gon approximation and comes back unchanged.
     let ellipse = json!({"id": "e", "shape": {"type": "ellipse", "center": [0, 0], "radius_x": 6, "radius_y": 3, "rotation": 30}});
-    let saved = from_sketchy(&foreign(json!([level(json!([ellipse.clone()]), json!([]))]))).expect("from");
-    assert_eq!(saved["pages"][0]["polygons"][0]["points"].as_array().expect("pts").len(), 48);
+    let saved = from_sketchy(&foreign(json!([level(
+        json!([ellipse.clone()]),
+        json!([])
+    )])))
+    .expect("from");
+    assert_eq!(
+        saved["pages"][0]["polygons"][0]["points"]
+            .as_array()
+            .expect("pts")
+            .len(),
+        48
+    );
     let again = to_sketchy(&saved, None).expect("to").to_value();
     assert_eq!(lvl(&again)["spaces"][0]["shape"], ellipse["shape"]);
 }
@@ -1482,19 +2112,37 @@ fn oversized_bulge_is_not_silently_clamped() {
     let (big, bigger) = (limit * 4.0, -limit * 2.0);
     let shape = json!({"type": "polygon", "points": [[0, 0], [10, 0], [10, 10], [0, 10]], "bulges": [big, 0.2, 0, bigger]});
     let wall = json!({"id": "w", "start": [0, 0], "end": [10, 0], "bulge": big});
-    let doc = foreign(json!([level(json!([{"id": "s", "shape": shape.clone()}]), json!([wall]))]));
+    let doc = foreign(json!([level(
+        json!([{"id": "s", "shape": shape.clone()}]),
+        json!([wall])
+    )]));
     let saved = from_sketchy(&doc).expect("from");
     let page = &saved["pages"][0];
-    let w = page["lines"].as_array().expect("lines").iter().find(|l| l["sketchy_display"].is_null()).expect("wall");
-    assert!((bow(w) + 359.0).abs() < 1e-9, "the app shows the nearest arc it can: {}", bow(w));
+    let w = page["lines"]
+        .as_array()
+        .expect("lines")
+        .iter()
+        .find(|l| l["sketchy_display"].is_null())
+        .expect("wall");
+    assert!(
+        (bow(w) + 359.0).abs() < 1e-9,
+        "the app shows the nearest arc it can: {}",
+        bow(w)
+    );
     let edges = page["polygons"][0]["edges"].as_array().expect("edges");
     assert!((bow(&edges[0]) + 359.0).abs() < 1e-9 && (bow(&edges[3]) - 359.0).abs() < 1e-9);
     // Unchanged on save: the originals come back exactly.
     let again = to_sketchy(&saved, None).expect("to").to_value();
     assert_eq!(lvl(&again)["walls"][0]["bulge"], json!(big));
-    let got = lvl(&again)["spaces"][0]["shape"]["bulges"].as_array().expect("bulges").clone();
+    let got = lvl(&again)["spaces"][0]["shape"]["bulges"]
+        .as_array()
+        .expect("bulges")
+        .clone();
     for (g, want) in got.iter().zip([big, 0.2, 0.0, bigger]) {
-        assert!((g.as_f64().expect("b") - want).abs() < 1e-9, "{g} vs {want}");
+        assert!(
+            (g.as_f64().expect("b") - want).abs() < 1e-9,
+            "{g} vs {want}"
+        );
     }
     // Editing the arc in the app wins over the parked original.
     let mut edited = saved.clone();
@@ -1507,8 +2155,13 @@ fn oversized_bulge_is_not_silently_clamped() {
     let again = to_sketchy(&edited, None).expect("to").to_value();
     let w = lvl(&again)["walls"][0]["bulge"].as_f64().expect("bulge");
     assert!((w - (90.0_f64 * std::f64::consts::PI / 720.0).tan()).abs() < 1e-9);
-    let b = lvl(&again)["spaces"][0]["shape"]["bulges"].as_array().expect("bulges").clone();
-    assert!((b[0].as_f64().expect("b0") + (45.0_f64 * std::f64::consts::PI / 720.0).tan()).abs() < 1e-9);
+    let b = lvl(&again)["spaces"][0]["shape"]["bulges"]
+        .as_array()
+        .expect("bulges")
+        .clone();
+    assert!(
+        (b[0].as_f64().expect("b0") + (45.0_f64 * std::f64::consts::PI / 720.0).tan()).abs() < 1e-9
+    );
     // A sweep exactly at the limit is representable and not parked.
     let at = json!({"id": "w", "start": [0, 0], "end": [10, 0], "bulge": limit});
     let saved = from_sketchy(&foreign(json!([level(json!([]), json!([at]))]))).expect("from");
@@ -1527,8 +2180,14 @@ fn height_mode_arc_height_matches_bulge() {
                           "bowAngle": bow, "arcHeight": height});
         let doc = to_sketchy(&model_with(json!([line]), json!([])), Some("d")).expect("to");
         let bulge = level_of(&doc).walls[0].bulge.expect("bulge");
-        assert!((bulge.abs() * chord / 2.0 - height.abs()).abs() < 1e-9, "|bulge| * chord / 2 is the rise");
-        assert!((spec_apex_y(bulge) - height).abs() < 1e-9, "the arc's apex sits at the rise, on the same side");
+        assert!(
+            (bulge.abs() * chord / 2.0 - height.abs()).abs() < 1e-9,
+            "|bulge| * chord / 2 is the rise"
+        );
+        assert!(
+            (spec_apex_y(bulge) - height).abs() < 1e-9,
+            "the arc's apex sits at the rise, on the same side"
+        );
         // Opening it again gives the same bow, and an arcHeight the app agrees with.
         let back = from_sketchy(&doc).expect("from");
         let l = &back["pages"][0]["lines"][0];
@@ -1540,9 +2199,22 @@ fn height_mode_arc_height_matches_bulge() {
     m["pages"][0]["lines"][0]["bowAngle"] = json!(30.0);
     m["pages"][0]["lines"][0]["arcHeight"] = json!(1.25);
     let mut doc = to_sketchy(&m, Some("d")).expect("to");
-    doc.structures[0].levels[0].walls.iter_mut().find(|w| w.id == "w-5").expect("w-5").bulge = Some(-0.2);
+    doc.structures[0].levels[0]
+        .walls
+        .iter_mut()
+        .find(|w| w.id == "w-5")
+        .expect("w-5")
+        .bulge = Some(-0.2);
     let back = from_sketchy(&doc).expect("from");
-    assert!((back["pages"][0]["lines"][0]["arcHeight"].as_f64().expect("arcHeight") - 1.0).abs() < 1e-9, "chord 10, bulge 0.2");
+    assert!(
+        (back["pages"][0]["lines"][0]["arcHeight"]
+            .as_f64()
+            .expect("arcHeight")
+            - 1.0)
+            .abs()
+            < 1e-9,
+        "chord 10, bulge 0.2"
+    );
 }
 
 fn bow_of(line: &Value) -> f64 {
@@ -1554,11 +2226,16 @@ fn parked_oversized_bulges_are_not_restored_onto_edited_polygons() {
     let limit = (359.0_f64 * std::f64::consts::PI / 720.0).tan();
     let (big, bigger) = (limit * 4.0, -limit * 2.0);
     let shape = json!({"type": "polygon", "points": [[0, 0], [10, 0], [10, 10], [0, 10]], "bulges": [big, 0.2, 0, bigger]});
-    let doc = foreign(json!([level(json!([{"id": "s", "shape": shape}]), json!([]))]));
+    let doc = foreign(json!([level(
+        json!([{"id": "s", "shape": shape}]),
+        json!([])
+    )]));
     let saved = from_sketchy(&doc).expect("from");
     for edit in ["insert", "delete"] {
         let mut m = saved.clone();
-        let pts = m["pages"][0]["polygons"][0]["points"].as_array_mut().expect("pts");
+        let pts = m["pages"][0]["polygons"][0]["points"]
+            .as_array_mut()
+            .expect("pts");
         if edit == "insert" {
             pts.insert(2, json!({"x": 10.0, "y": 5.0}));
         } else {
@@ -1571,7 +2248,10 @@ fn parked_oversized_bulges_are_not_restored_onto_edited_polygons() {
         assert!(b == 0 || b == n, "{edit}: {b} bulges for {n} points");
         for v in s["bulges"].as_array().into_iter().flatten() {
             let v = v.as_f64().expect("b");
-            assert!((v - big).abs() > 1.0 && (v - bigger).abs() > 1.0, "{edit}: oversized original restored: {v}");
+            assert!(
+                (v - big).abs() > 1.0 && (v - bigger).abs() > 1.0,
+                "{edit}: oversized original restored: {v}"
+            );
         }
     }
 }
@@ -1580,10 +2260,15 @@ fn parked_oversized_bulges_are_not_restored_onto_edited_polygons() {
 fn non_numeric_ceiling_height_is_stashed_not_discarded() {
     let space = square("s", json!({"ceiling_height": "tall"}));
     let doc = foreign_v("0.1", json!([level(json!([space]), json!([]))]));
-    let again = to_sketchy(&from_sketchy(&doc).expect("from"), None).expect("to").to_value();
+    let again = to_sketchy(&from_sketchy(&doc).expect("from"), None)
+        .expect("to")
+        .to_value();
     let space = &lvl(&again)["spaces"][0];
     assert!(space.get("ceiling_height").is_none() && space.get("ceiling").is_none());
-    assert_eq!(space["extras"]["io.github.garmonbz.sketchrust"]["sketchy_0_1"], json!({"ceiling_height": "tall"}));
+    assert_eq!(
+        space["extras"]["io.github.garmonbz.sketchrust"]["sketchy_0_1"],
+        json!({"ceiling_height": "tall"})
+    );
 }
 
 #[test]
@@ -1593,7 +2278,10 @@ fn canvas_theme_is_not_content() {
     a["settings"]["canvasTheme"] = json!("dark");
     let mut b = rich();
     b["settings"]["canvasTheme"] = json!("blue");
-    let (da, db) = (to_sketchy(&a, Some("d")).expect("a"), to_sketchy(&b, Some("d")).expect("b"));
+    let (da, db) = (
+        to_sketchy(&a, Some("d")).expect("a"),
+        to_sketchy(&b, Some("d")).expect("b"),
+    );
     assert_eq!(content_hash(&da.to_value()), content_hash(&db.to_value()));
 }
 
@@ -1611,11 +2299,15 @@ fn migrating_the_most_negative_integer_bulge_does_not_panic() {
     let shape = json!({"type": "polygon", "points": [[0, 0], [10, 0], [10, 10], [0, 10]], "bulges": [0, 0, 0, 0]});
     let mut value = serde_json::to_value(foreign_v(
         "0.1",
-        json!([level(json!([{"id": "s", "shape": shape}]), json!([{"id": "w", "start": [0, 0], "end": [10, 0], "bulge": 0.25}]))]),
+        json!([level(
+            json!([{"id": "s", "shape": shape}]),
+            json!([{"id": "w", "start": [0, 0], "end": [10, 0], "bulge": 0.25}])
+        )]),
     ))
     .expect("value");
     // Typed bulges are floats; an integer this size can only sit in free-form JSON (annotations).
-    value["presentation"] = json!({"annotations": [{"id": "a", "type": "note", "bulge": -9223372036854775808_i64}]});
+    value["presentation"] =
+        json!({"annotations": [{"id": "a", "type": "note", "bulge": -9223372036854775808_i64}]});
     let doc: Document = serde_json::from_value(value).expect("doc");
     let up = upgrade(&doc).expect("upgrade");
     assert_eq!(up.format_version, "0.2");
@@ -1624,7 +2316,9 @@ fn migrating_the_most_negative_integer_bulge_does_not_panic() {
 #[test]
 fn layers_sharing_a_sketchy_id_do_not_get_a_growing_suffix() {
     let mut value = to_sketchy(&rich(), Some("d")).expect("to").to_value();
-    let layers = value["presentation"]["layers"].as_array_mut().expect("layers");
+    let layers = value["presentation"]["layers"]
+        .as_array_mut()
+        .expect("layers");
     let again = layers[0].clone();
     layers.push(again);
     let doc: Document = serde_json::from_value(value).expect("doc");
@@ -1637,5 +2331,9 @@ fn layers_sharing_a_sketchy_id_do_not_get_a_growing_suffix() {
     }
     assert_eq!(seen[0], seen[1], "second round renames nothing");
     assert_eq!(seen[1], seen[2], "and neither does any later one");
-    assert!(seen[2].to_string().matches("layer-1_").count() == 0, "{}", seen[2]);
+    assert!(
+        seen[2].to_string().matches("layer-1_").count() == 0,
+        "{}",
+        seen[2]
+    );
 }
