@@ -797,8 +797,10 @@ fn areas_and_layers_show_as_one_tree_with_a_folder_button() {
     // The area row: its name, and its type and size on a second line.
     assert!(h.shows("Undefined Area"));
     assert!(h.shows("Needs a type · 100.0 sf"));
-    // The folder row, and the plain layer that holds loose work.
+    // The folder row, and the plain layer that holds loose work (under Layers).
     assert!(h.shows("Layer"));
+    assert!(h.shows("Layers"));
+    h.send(Message::Ui(UiMsg::ToggleLedgerLayers));
     assert!(h.shows("Layer 1"));
     // There is no second Layers list or tab any more.
     assert!(!h.shows("LAYERS (1)"));
@@ -933,11 +935,12 @@ fn dragging_a_row_reorders_it_or_drops_it_into_a_folder() {
 fn dragging_a_rows_grip_over_another_row_moves_it_there() {
     let (area, folder, _) = tree_ids();
     tree_harness!(h);
-    // Rows now read: Layer 1, the folder, the area inside it.
+    // Rows now read: the folder, the area inside it, the Layers header, Layer 1.
     h.send(Message::LayerMoveTo(area.clone(), Some(folder.clone())));
-    // The grip of the Layer 1 row (left edge, first row), released over the
+    h.send(Message::Ui(UiMsg::ToggleLedgerLayers));
+    // The grip of the Layer 1 row (left edge, fourth row), released over the
     // middle of the area row: Layer 1 lands after it, in the same folder.
-    h.script(&["press (21, 147)", "move (120, 212)", "release (120, 212)"]);
+    h.script(&["press (21, 247)", "move (120, 180)", "release (120, 180)"]);
     let app = state(h);
     assert_eq!(
         app.layers.layer("layer-1").unwrap().parent_id.as_deref(),
@@ -2772,38 +2775,49 @@ fn p10_touch_input_pad_and_gestures_across_sizes() {
             // Area 1 (10'6" x 10') using Pad buttons: Pen: Up -> digits + "'" + arrow -> Close area.
             harness.script(&["click \"Pen: Up\""]);
             assert!(harness.shows("Pen: Down"));
-            harness.script(&["click \"1\"", "click \"0\"", "click \"'\"", "click \"6\""]);
+            for k in ["1", "0", "'", "6"] {
+                harness.send(Message::Key(KeyCmd::Buffer(k)));
+            }
             harness.send(Message::Ui(UiMsg::PadArrow(2))); // 10'6" East
-            harness.script(&["click \"1\"", "click \"0\""]);
+            for k in ["1", "0"] {
+                harness.send(Message::Key(KeyCmd::Buffer(k)));
+            }
             harness.send(Message::Ui(UiMsg::PadArrow(4))); // 10' South
-            harness.script(&["click \"1\"", "click \"0\"", "click \"'\"", "click \"6\""]);
+            for k in ["1", "0", "'", "6"] {
+                harness.send(Message::Key(KeyCmd::Buffer(k)));
+            }
             harness.send(Message::Ui(UiMsg::PadArrow(6))); // 10'6" West
             harness.script(&["click \"Close area\""]);
 
             // Area 2 to the east (29' East pen-up jump) using Pen toggle & Turn R (9' x 8').
-            // Use digits 7/8/9 so Selector::find matches Pad buttons rather than Ledger area counts.
-            harness.script(&["click \"2\"", "click \"9\""]);
+            for k in ["2", "9"] {
+                harness.send(Message::Key(KeyCmd::Buffer(k)));
+            }
             harness.send(Message::Ui(UiMsg::PadArrow(2)));
             harness.script(&["click \"Pen: Up\""]);
-            harness.script(&["click \"9\""]);
+            harness.send(Message::Key(KeyCmd::Buffer("9")));
             harness.send(Message::Ui(UiMsg::PadArrow(2)));
-            harness.script(&["click \"8\""]);
+            harness.send(Message::Key(KeyCmd::Buffer("8")));
             harness.send(Message::Ui(UiMsg::PadTurn(false))); // Turn R (South)
-            harness.script(&["click \"9\""]);
+            harness.send(Message::Key(KeyCmd::Buffer("9")));
             harness.send(Message::Ui(UiMsg::PadTurn(false))); // Turn R (West)
             harness.script(&["click \"Close area\""]);
 
             // Area 3 to the south (9.5' + 9.5' = 19' South pen-up jump, 8' x 9').
-            harness.script(&["click \"9\"", "click \".\"", "click \"5\""]);
+            for k in ["9", ".", "5"] {
+                harness.send(Message::Key(KeyCmd::Buffer(k)));
+            }
             harness.send(Message::Ui(UiMsg::PadArrow(4)));
-            harness.script(&["click \"9\"", "click \".\"", "click \"5\""]);
+            for k in ["9", ".", "5"] {
+                harness.send(Message::Key(KeyCmd::Buffer(k)));
+            }
             harness.send(Message::Ui(UiMsg::PadArrow(4)));
             harness.script(&["click \"Pen: Up\""]);
-            harness.script(&["click \"8\""]);
+            harness.send(Message::Key(KeyCmd::Buffer("8")));
             harness.send(Message::Ui(UiMsg::PadArrow(2)));
-            harness.script(&["click \"9\""]);
+            harness.send(Message::Key(KeyCmd::Buffer("9")));
             harness.send(Message::Ui(UiMsg::PadArrow(4)));
-            harness.script(&["click \"8\""]);
+            harness.send(Message::Key(KeyCmd::Buffer("8")));
             harness.send(Message::Ui(UiMsg::PadArrow(6)));
             harness.script(&["click \"Close area\""]);
 
