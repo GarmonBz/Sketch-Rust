@@ -328,6 +328,12 @@ impl Buffer {
         self.inner.unmap();
     }
 
+    /// Returns true if any [`BufferView`] or [`BufferViewMut`] is currently active on this buffer.
+    #[cfg(std)]
+    pub(crate) fn has_active_mapped_views(&self) -> bool {
+        self.map_context.lock().has_active_views()
+    }
+
     /// Destroy the associated native resources as soon as possible.
     pub fn destroy(&self) {
         self.inner.destroy();
@@ -774,6 +780,12 @@ impl MapContext {
             self.sub_ranges.is_empty(),
             "You cannot unmap a buffer that still has accessible mapped views"
         );
+    }
+
+    /// Returns true if any mapped views are currently outstanding.
+    #[cfg(std)]
+    pub(crate) fn has_active_views(&self) -> bool {
+        !self.sub_ranges.is_empty()
     }
 
     /// Record that the `size` bytes of the buffer at `offset` are now viewed.
