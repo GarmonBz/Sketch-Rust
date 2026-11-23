@@ -273,7 +273,41 @@ impl UiState {
 }
 
 fn drawing_overlays<'a>(app: &'a App) -> Vec<Element<'a, Message>> {
-    let mut out = vec![controls::bars_layer(app)];
+    let mut out = Vec::new();
+    if let Some(viewing) = &app.viewing_revision {
+        let read_only = app.current_file.as_ref().is_some_and(|f| f.read_only);
+        out.push(crate::versions::banner(viewing, read_only));
+    }
+    if app.dock.open && app.dock.active == crate::dock::DockTab::Versions {
+        if let Some(rows) = &app.dock.versions {
+            let viewing = app.viewing_revision.as_ref().map(|v| v.id.as_str());
+            let panel = iced::widget::container(crate::versions::panel(rows, viewing))
+                .width(280)
+                .height(iced::Length::Fill)
+                .padding(10)
+                .style(|_| iced::widget::container::Style {
+                    background: Some(crate::theme::bg_panel().into()),
+                    border: iced::Border {
+                        color: crate::theme::border(),
+                        width: 1.0,
+                        radius: 6.0.into(),
+                    },
+                    ..iced::widget::container::Style::default()
+                });
+            out.push(
+                iced::widget::row![
+                    iced::widget::Space::new().width(iced::Length::Fill),
+                    iced::widget::container(panel)
+                        .padding(12)
+                        .height(iced::Length::Fill),
+                ]
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fill)
+                .into(),
+            );
+        }
+    }
+    out.push(controls::bars_layer(app));
     if let Some(strip) = tape::layer(app) {
         out.push(strip);
     }

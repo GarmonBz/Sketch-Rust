@@ -571,6 +571,7 @@ impl AxfDocument {
                     line_style: None,
                     dimension_position: None,
                     dimension_anchor: None,
+                    extra: Default::default(),
                 });
                 edge.line_id = Some(line_id);
             }

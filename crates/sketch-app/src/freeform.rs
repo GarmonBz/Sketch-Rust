@@ -41,6 +41,7 @@ impl App {
                     line_style: None,
                     dimension_position: None,
                     dimension_anchor: None,
+                    extra: Default::default(),
                 });
                 self.view.drag = Some(Drag::Freeform {
                     last: view_state::World {

@@ -1329,7 +1329,7 @@ fn form_pane<'a>(editor: &'a TypeEditor, d: Density, compact: bool) -> Element<'
 
     let gla_row = form_field(
         "Living area",
-        styled_checkbox("Count in gross living area", area.include_in_gla, |v| {
+        styled_checkbox("Count in finished above grade", area.include_in_gla, |v| {
             send(Msg::IncludeGla(v))
         }),
         compact,

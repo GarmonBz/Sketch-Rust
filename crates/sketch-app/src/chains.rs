@@ -34,6 +34,10 @@ pub struct ChainRecord {
     /// Indices of spans hidden by a click (drawChains skips them).
     #[serde(default)]
     pub hidden_spans: Vec<i64>,
+    /// Keys this build does not model (Sketchy residue such as `sketchy_id`
+    /// or `sketchy_other`), kept so a save writes them back unchanged.
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
 fn default_true() -> bool {
@@ -50,6 +54,7 @@ impl ChainRecord {
             offset,
             show_overall: true,
             hidden_spans: Vec::new(),
+            extra: Default::default(),
         }
     }
 }
@@ -270,6 +275,7 @@ mod tests {
             line_style: None,
             dimension_position: None,
             dimension_anchor: None,
+            extra: Default::default(),
         }
     }
 

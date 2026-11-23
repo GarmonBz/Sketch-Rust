@@ -725,10 +725,21 @@ impl SketchCanvas<'_> {
             && self.scene.ctx.kind.is_some()
             && !d.points.is_empty();
         if keyboard_visible {
-            None
-        } else {
-            cursor.position_in(bounds)
+            return None;
         }
+        let raw = cursor.position_in(bounds)?;
+        // In a wall mode the painted pointer sits on the point a click would
+        // commit (grid point, wall endpoint, polar step), pen up or down.
+        if self.mode.is_drawing() && !d.keyboard_pointer && self.scene.ctx.kind.is_some() {
+            let k = PIXELS_PER_FOOT * self.scene.zoom;
+            let world = sketch_core::geometry::Pt::new(
+                (f64::from(raw.x) - self.scene.pan.0) / k,
+                (self.scene.pan.1 - f64::from(raw.y)) / k,
+            );
+            let target = d.drawing_target(world, self.scene.ctx);
+            return Some(self.scene.screen(target));
+        }
+        Some(raw)
     }
 }
 
@@ -1214,6 +1225,25 @@ mod tests {
         assert_eq!(c.mouse_pointer_position(BOUNDS, over), None);
         c.space_pan = false;
         assert_eq!(c.mouse_pointer_position(BOUNDS, at(2.0, 2.0)), None);
+    }
+
+    #[test]
+    fn the_wall_pointer_jumps_to_the_grid_point_before_the_first_click() {
+        let k = PIXELS_PER_FOOT;
+        let world_of = |p: Point| ((f64::from(p.x) - 523.5) / k, (351.5 - f64::from(p.y)) / k);
+        let mut c = canvas(Mode::DrawExterior);
+        c.scene.ctx.kind = Some(sketch_core::model::WallType::Exterior);
+        let over = at(400.0, 400.0);
+        let raw = c.mouse_pointer_position(BOUNDS, over).unwrap();
+        let (x, y) = world_of(raw);
+        assert!(
+            (x - x.round()).abs() < 1e-3 && (y - y.round()).abs() < 1e-3,
+            "pen up with Snap on: the pointer sits on a grid point, got ({x}, {y})"
+        );
+        // Snap off: the pointer is left where the mouse is.
+        c.scene.ctx.snap = false;
+        let free = c.mouse_pointer_position(BOUNDS, over).unwrap();
+        assert_eq!(free, Point::new(359.0, 271.0));
     }
 
     #[test]

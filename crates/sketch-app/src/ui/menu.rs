@@ -163,6 +163,7 @@ pub const ENTRIES: &[Entry] = &[
     Entry::Cmd("symbol-library", "Symbol library"),
     Entry::Sep,
     Entry::Cmd("undo-history", "Undo history"),
+    Entry::Cmd("version-history", "Version history…"),
     Entry::Sub(MenuSub::Select),
     Entry::Sub(MenuSub::Transform),
     Entry::Sep,
@@ -757,7 +758,7 @@ mod tests {
 
     #[test]
     fn main_list_has_nineteen_rows_and_every_command_exists() {
-        assert_eq!(rows().count(), 19);
+        assert_eq!(rows().count(), 20);
         for entry in ENTRIES {
             if let Entry::Cmd(id, _) = entry {
                 assert!(commands::find(id).is_some(), "unknown command {id}");

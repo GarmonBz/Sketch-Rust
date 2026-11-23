@@ -195,7 +195,7 @@ pub struct Scene<'a> {
 
 impl Scene<'_> {
     /// `Geometry.toScreen`.
-    fn screen(&self, p: Pt) -> Point {
+    pub(crate) fn screen(&self, p: Pt) -> Point {
         let k = PIXELS_PER_FOOT * self.zoom;
         Point::new((self.pan.0 + p.x * k) as f32, (self.pan.1 - p.y * k) as f32)
     }
@@ -2489,6 +2489,12 @@ pub fn draw_scene_overlay(frame: &mut Frame, scene: &Scene, w: f32, h: f32) {
     draw_scale_points(frame, scene);
     let d = scene.drawing;
     let live = d.pen_down && scene.ctx.kind.is_some() && !d.points.is_empty();
+    if !d.pen_down && scene.ctx.kind.is_some() && !d.keyboard_pointer {
+        // Pen up: show where the first click would start the wall.
+        if let Some(pointer) = scene.live_pointer {
+            draw_snap_preview(frame, scene, d.drawing_target(pointer, scene.ctx));
+        }
+    }
     if live {
         if d.keyboard_pointer {
             // The arrow keys own the cursor: a dashed preview to it, the
@@ -2640,6 +2646,7 @@ mod curve_tests {
             line_style: None,
             dimension_position: None,
             dimension_anchor: None,
+            extra: Default::default(),
         }
     }
 

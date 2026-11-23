@@ -155,10 +155,20 @@ pub const TOPICS: &[Topic] = &[
         title: "Saving and recovery",
         blocks: &[
             Points(&[
-                "Ctrl + S saves to the current .skx file. Save As (F12) writes a copy under a new name and continues editing that copy.",
-                "The pill next to the title reads Saved or Unsaved; clicking the file title renames the sketch.",
+                "Ctrl + S saves to the current file. The first save asks where to put it; Save As (F12) saves a copy under a new name and carries on in that copy.",
+                "Sketches are saved as .sketchy files. A .sketchy file keeps every save as a version, so earlier states of the sketch are never lost (see Version history below).",
+                "The pill next to the title reads Unsaved while there are changes that are not in the file, and Saved when there are none. A .sketchy file adds its version number: Saved · v3, Final · v3, Read-only · v3, or Viewing v1. Clicking the file title renames the sketch.",
                 "The Start screen and Menu > File > Recent sketches reopen recent work with live outline thumbnails.",
-                "Drop any .skx or .sketchie file anywhere on the window (or Start screen) to open it.",
+                "Drop a sketch file anywhere on the window (or Start screen) to open it. Each window holds one sketch; opening a sketch that is already open brings its window forward.",
+            ]),
+            Heading("Version history"),
+            Points(&[
+                "File > Version History shows a panel listing every version of the sketch, newest first, with its date and note.",
+                "Open shows an old version read-only, under a banner. Nothing can be edited there; Back to latest returns to the current sketch.",
+                "Restore this version (on the banner) brings the old version back as a new latest version. Nothing is deleted, so you can go back again.",
+                "Save a copy writes any version out as a separate .sketchy file and leaves the original alone.",
+                "Mark as Final records the current sketch as a signed-off version with an optional note. A final version is never changed; saving more work adds a new version after it.",
+                "Saving without making changes adds no new version.",
             ]),
             Heading("Autosave"),
             Para("While you work, Sketch Rust writes atomic recovery snapshots automatically. If the app closes unexpectedly, the next launch offers to restore your recovery snapshot, or use Menu > File > Recover autosave at any time. Configure intervals in Menu > Tools > Preferences."),
@@ -168,7 +178,7 @@ pub const TOPICS: &[Topic] = &[
     Topic {
         title: "Appraise-It reports",
         blocks: &[
-            Para("Keep your editable source in a .skx file. On Windows, use Send to report in the top bar (and the controls below) to check an open Appraise-It Pro report, preview pages, optionally transfer GLA totals, and append sketch addenda."),
+            Para("Keep your editable source in a .skx file. On Windows, use Send to report in the top bar (and the controls below) to check an open Appraise-It Pro report, preview pages, optionally transfer the living unit's area totals (all six URAR area-breakdown fields), and append sketch addenda."),
             Heading("Export a sketch for your report"),
             Steps(&[
                 "Use Send to report when Appraise-It Pro is open, or Export > Export PNG / Export PDF for manual attachment.",
@@ -440,6 +450,35 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+
+    #[test]
+    fn saving_topic_describes_sketchy_versions() {
+        let topic = TOPICS
+            .iter()
+            .find(|t| t.title == "Saving and recovery")
+            .expect("topic");
+        let text: String = topic
+            .blocks
+            .iter()
+            .flat_map(|b| match b {
+                Heading(s) | Para(s) | Note(s) => vec![*s],
+                Steps(items) | Points(items) => items.to_vec(),
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        for needle in [
+            ".sketchy",
+            "Version History",
+            "read-only",
+            "Restore this version",
+            "Save a copy",
+            "Mark as Final",
+            "Final · v3",
+            "Read-only · v3",
+        ] {
+            assert!(text.contains(needle), "guide lacks {needle:?}");
         }
     }
 

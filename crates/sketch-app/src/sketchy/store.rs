@@ -19,6 +19,7 @@ const SCHEMA: &str = "
         content_hash TEXT NOT NULL, document TEXT NOT NULL
     );";
 
+#[allow(dead_code)]
 pub fn is_sqlite(bytes: &[u8]) -> bool {
     bytes.starts_with(b"SQLite format 3\0")
 }

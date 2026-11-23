@@ -7,6 +7,7 @@ use std::{
 
 use iced::widget::image::Handle;
 use image::{codecs::png::PngEncoder, ExtendedColorType, ImageEncoder};
+use sketch_core::geometry::area_codes;
 use windows::{
     core::{w, IUnknown, Interface, BSTR, GUID, PCWSTR},
     Win32::{
@@ -43,10 +44,23 @@ pub enum ReportStatus {
     Open(Report, Result<AreaTarget>),
 }
 
-// Unit field IDs verified through Appraise-It Pro's dynamic data store.
-const AREA_FIELDS: [(&str, &str); 3] = [
+// The six UAD 3.6 URAR Appendix F-1 area-breakdown fields, in form order. The
+// field IDs are the URAR's own (FNMA-URAR-0924's "Area Breakdown" block names
+// them); the first, fourth and sixth are the three Appraise-It Pro's dynamic
+// data store has already been verified to accept, and the rest follow the same
+// living-unit naming.
+const AREA_FIELDS: [(&str, &str); 6] = [
     ("FinishedAreaAboveGrade", "Standard finished above grade"),
+    (
+        "FinishedAreaAboveGradeNonstandard",
+        "Nonstandard finished above grade",
+    ),
+    ("UnfinishedAreaAboveGrade", "Unfinished above grade"),
     ("FinishedAreaBelowGrade", "Finished below grade"),
+    (
+        "FinishedAreaBelowGradeNonstandard",
+        "Nonstandard finished below grade",
+    ),
     ("UnfinishedAreaBelowGrade", "Unfinished below grade"),
 ];
 
@@ -54,7 +68,9 @@ const AREA_FIELDS: [(&str, &str); 3] = [
 pub struct AreaTarget {
     dwelling: String,
     unit: String,
-    values: [String; 3],
+    /// Boxed so the six URAR area strings do not inflate `ReportStatus` and the
+    /// shell messages that carry it.
+    values: Box<[String; 6]>,
 }
 
 #[derive(Debug, Clone)]
@@ -63,7 +79,7 @@ pub(crate) struct AreaTransfer {
     square_feet: UnitAreaTotals,
 }
 
-pub(crate) type UnitAreaTotals = [Option<u64>; 3];
+pub(crate) type UnitAreaTotals = [Option<u64>; 6];
 
 impl AreaTransfer {
     pub(crate) fn new(target: AreaTarget, totals: UnitAreaTotals) -> Self {
@@ -109,14 +125,13 @@ impl AreaTransfer {
 }
 
 fn unit_area_totals(totals: &BTreeMap<String, f64>) -> Result<UnitAreaTotals> {
-    let mut areas = [0.0; 3];
+    let mut areas = [0.0; AREA_FIELDS.len()];
     for (code, &value) in totals {
-        let index = match code.as_str() {
-            "GLA1" | "GLA2" | "GLA3" | "GLA4" | "GLA5" | "GLA6" | "GLA7" | "GLA8" | "GLA9"
-            | "GLA10" => 0,
-            "BSMT" => 1,
-            "BSMT2" => 2,
-            _ => continue,
+        // UAD 3.6 URAR Appendix F-1: each code feeds one of the six
+        // area-breakdown fields. Anything else (gross building area, garages,
+        // porches, amenities…) has no field and is entered by hand.
+        let Some(index) = area_codes::f1_slot(code) else {
+            continue;
         };
         if !value.is_finite() || value < 0.0 {
             return Err(format!(
@@ -135,7 +150,10 @@ fn unit_area_totals(totals: &BTreeMap<String, f64>) -> Result<UnitAreaTotals> {
         (whole > 0).then_some(whole)
     });
     if rounded.iter().all(Option::is_none) {
-        return Err("Define a living-area or basement outline to include area totals.".into());
+        return Err(
+            "Define a finished, nonstandard or unfinished outline above or below grade to include area totals."
+                .into(),
+        );
     }
     Ok(rounded)
 }
@@ -764,7 +782,7 @@ fn unit_area_fields(report: &Report, subject: &ComObject) -> Result<(AreaTarget,
     let fields = unit
         .call(w!("GetFields"), "opening the living unit fields", &mut [])?
         .required_object("the living unit fields")?;
-    let mut values = [String::new(), String::new(), String::new()];
+    let mut values: [String; 6] = std::array::from_fn(|_| String::new());
     for ((id, name), value) in AREA_FIELDS.iter().zip(&mut values) {
         let field = fields
             .call(
@@ -801,7 +819,7 @@ fn unit_area_fields(report: &Report, subject: &ComObject) -> Result<(AreaTarget,
     let target = AreaTarget {
         dwelling: name(&dwelling, "1")?,
         unit: name(&unit, "1")?,
-        values,
+        values: Box::new(values),
     };
     Ok((target, fields))
 }
@@ -1087,7 +1105,12 @@ mod tests {
                 .collect()
         };
         let totals = AreaTransfer::calculated_totals([
-            page(&[("GLA1", 120.25), ("GBA1", 500.0), ("BSMT", 54.6)]),
+            page(&[
+                ("GLA1", 120.25),
+                ("GBA1", 500.0),
+                ("BSMT", 54.6),
+                ("GLAN", 9.0),
+            ]),
             page(&[
                 ("GLA1", 35.1),
                 ("GLA2", 40.25),
@@ -1096,13 +1119,51 @@ mod tests {
             ]),
         ])
         .unwrap();
-        assert_eq!(totals, [Some(196), Some(55), Some(20)]);
+        // F-1 order: finished AG, finished AG nonstandard, unfinished AG,
+        // finished BG, finished BG nonstandard, unfinished BG.
+        assert_eq!(totals, [Some(196), Some(9), None, Some(55), None, Some(20)]);
+    }
+
+    #[test]
+    fn each_f1_field_gets_its_own_code_and_similar_codes_stay_out() {
+        let totals = BTreeMap::from([
+            ("GLA1".into(), 1000.0),
+            ("GLA10".into(), 250.0),
+            ("GLAN".into(), 120.0),
+            ("GLAU".into(), 80.0),
+            ("BSMT".into(), 600.0),
+            ("BSMTN".into(), 60.0),
+            ("BSMT2".into(), 400.0),
+            // No F-1 field: never sent.
+            ("GBA1".into(), 1800.0),
+            ("GAR".into(), 400.0),
+        ]);
+        assert_eq!(
+            unit_area_totals(&totals).unwrap(),
+            [
+                Some(1250),
+                Some(120),
+                Some(80),
+                Some(600),
+                Some(60),
+                Some(400)
+            ]
+        );
+        // A nonstandard-only sketch is still worth sending.
+        let nonstandard = BTreeMap::from([("GLAN".into(), 40.0)]);
+        assert_eq!(
+            unit_area_totals(&nonstandard).unwrap(),
+            [None, Some(40), None, None, None, None]
+        );
     }
 
     #[test]
     fn only_sends_positive_supported_totals() {
         let totals = BTreeMap::from([("GLA1".into(), 100.0), ("BSMT".into(), 0.4)]);
-        assert_eq!(unit_area_totals(&totals).unwrap(), [Some(100), None, None]);
+        assert_eq!(
+            unit_area_totals(&totals).unwrap(),
+            [Some(100), None, None, None, None, None]
+        );
         let unclassified = BTreeMap::from([("SKETCHY".into(), 120.0), ("GBA1".into(), 300.0)]);
         assert!(unit_area_totals(&unclassified).is_err());
         for invalid in [-1.0, f64::NAN, f64::INFINITY] {

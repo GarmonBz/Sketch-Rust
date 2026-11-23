@@ -553,6 +553,10 @@ impl Drawing {
             // `options.autoSubtractOverlapped === false` -> 'never'.
             auto_subtract: self.options.auto_subtract_overlapped,
         };
+        // A wall that another wall ends on (a T-junction) is only partly the
+        // side of the area it helps enclose; cut it there so the area can
+        // close along whole walls.
+        self.split_walls_at_enclosing_junctions();
         // An area opened by deleting a wall comes back as soon as walls are
         // drawn again between the same points, whatever touches its sides.
         let reclosed = crate::area_repair::restore_by_walls(
@@ -705,6 +709,15 @@ impl Drawing {
             return Err("Straighten the curved wall before inserting a vertex.");
         }
 
+        self.split_line_at(index, projection);
+        Ok(())
+    }
+
+    /// Splits the wall at `index` in two at `projection` and adds the vertex
+    /// to every area whose boundary runs along it. Returns the new wall's id
+    /// (the half from the vertex to the original end).
+    fn split_line_at(&mut self, index: usize, projection: Pt) -> i64 {
+        let line = &self.lines[index];
         let (line_start, original_end, line_id) = (line.start, line.end, line.id);
         let second_id = self.gen_id();
         let first = &mut self.lines[index];
@@ -715,6 +728,7 @@ impl Drawing {
         first.end = projection;
         let mut second = first.clone();
         second.id = second_id;
+        second.forget_sketchy_id();
         second.start = projection;
         second.end = original_end;
         self.lines.insert(index + 1, second);
@@ -748,7 +762,136 @@ impl Drawing {
                 break;
             }
         }
-        Ok(())
+        second_id
+    }
+
+    /// Cuts an exterior wall wherever an enclosed face runs along only part
+    /// of it. Faces beside a T-junction (another wall ending on the wall's
+    /// body) or an overlapping wall would otherwise never become areas,
+    /// because an area's side must be a whole wall. Only faces that can then
+    /// close are used, so walls that bound nothing keep their length.
+    fn split_walls_at_enclosing_junctions(&mut self) {
+        use sketch_core::joins::{is_drawable, is_polygon_boundary_intact, point_key};
+        use std::collections::HashMap;
+
+        let exterior: Vec<&SketchLine> = self
+            .lines
+            .iter()
+            .filter(|l| l.kind == WallType::Exterior && is_drawable(l))
+            .collect();
+        if exterior.len() < 3 {
+            return;
+        }
+        let geo_lines: Vec<_> = exterior.iter().map(|l| l.geometry()).collect();
+        let faces = self.geo.find_enclosed_faces(&geo_lines, 1e-9, 1e-5);
+        let by_id: HashMap<i64, &SketchLine> = self.lines.iter().map(|l| (l.id, l)).collect();
+        let intact: Vec<&Polygon> = self
+            .polygons
+            .iter()
+            .filter(|poly| is_polygon_boundary_intact(poly, &by_id))
+            .collect();
+        let endpoints: Vec<Pt> = exterior.iter().flat_map(|l| [l.start, l.end]).collect();
+        let snap = |p: Pt| {
+            endpoints
+                .iter()
+                .copied()
+                .find(|e| sketch_core::model::same(*e, p))
+                .unwrap_or(p)
+        };
+
+        // wall id -> the cut points it needs.
+        let mut cuts: HashMap<i64, Vec<Pt>> = HashMap::new();
+        for face in &faces {
+            let n = face.points.len();
+            if n < 3 || face.edges.len() != n || face.area < sketch_core::joins::MIN_CLOSED_AREA {
+                continue;
+            }
+            let mut face_cuts: Vec<(i64, Pt, Pt)> = Vec::new();
+            let mut usable = true;
+            for (i, edge) in face.edges.iter().enumerate() {
+                let Some(line) = edge.line_id.and_then(|id| by_id.get(&id).copied()) else {
+                    usable = false;
+                    break;
+                };
+                let (a, b) = (face.points[i], face.points[(i + 1) % n]);
+                let whole = (sketch_core::model::same(line.start, a)
+                    && sketch_core::model::same(line.end, b))
+                    || (sketch_core::model::same(line.end, a)
+                        && sketch_core::model::same(line.start, b));
+                if whole {
+                    continue;
+                }
+                if line.bow_angle.abs() > 0.5 {
+                    usable = false;
+                    break;
+                }
+                face_cuts.push((line.id, snap(a), snap(b)));
+            }
+            if !usable || face_cuts.is_empty() {
+                continue;
+            }
+            // A face an existing area already covers (or sits inside) is not
+            // a new area, so it earns no cuts.
+            let ids: HashSet<i64> = face.edges.iter().filter_map(|e| e.line_id).collect();
+            let covered = intact.iter().any(|poly| {
+                poly.edges
+                    .iter()
+                    .filter_map(|e| e.line_id)
+                    .any(|id| ids.contains(&id))
+                    && ((poly.area - face.area).abs() < 1e-6
+                        || (poly.gross - face.area).abs() < 1e-6
+                        || self.geo.polygon_contains(
+                            &face.points,
+                            &face.edges,
+                            &poly.points,
+                            &poly.edges,
+                            1e-4,
+                            0.01,
+                        )
+                        || self.geo.polygon_contains(
+                            &poly.points,
+                            &poly.edges,
+                            &face.points,
+                            &face.edges,
+                            1e-4,
+                            0.01,
+                        ))
+            });
+            if covered {
+                continue;
+            }
+            for (id, a, b) in face_cuts {
+                let list = cuts.entry(id).or_default();
+                for p in [a, b] {
+                    if !list.iter().any(|q| point_key(*q) == point_key(p)) {
+                        list.push(p);
+                    }
+                }
+            }
+        }
+
+        for (wall_id, points) in cuts {
+            // The wall's pieces so far: the original and the halves made below.
+            let mut pieces = vec![wall_id];
+            for point in points {
+                let found = pieces.iter().find_map(|id| {
+                    let index = self.lines.iter().position(|l| l.id == *id)?;
+                    let line = &self.lines[index];
+                    let inside = distance(point, line.start) > 1e-4
+                        && distance(point, line.end) > 1e-4
+                        && distance(
+                            point,
+                            self.geo
+                                .project_point_to_segment(point, line.start, line.end),
+                        ) <= 1e-4;
+                    inside.then_some(index)
+                });
+                if let Some(index) = found {
+                    let created = self.split_line_at(index, point);
+                    pieces.push(created);
+                }
+            }
+        }
     }
 
     /// `wallThicknessOf(line)`: per-line `thickness` (inches) wins over the
@@ -975,6 +1118,7 @@ impl Drawing {
             line_style: None,
             dimension_position: None,
             dimension_anchor: None,
+            extra: Default::default(),
         });
         self.suppress_dimension_next = false;
         self.line_ids.push(id);
@@ -1010,6 +1154,7 @@ impl Drawing {
                 line_style: None,
                 dimension_position: None,
                 dimension_anchor: None,
+                extra: Default::default(),
             });
             self.suppress_dimension_next = false;
             self.line_ids.push(id);
@@ -1095,6 +1240,7 @@ impl Drawing {
                     label_italic: None,
                     label_underline: None,
                     label_color: None,
+                    extra: Default::default(),
                 });
             }
         }
@@ -1250,6 +1396,7 @@ impl Drawing {
         );
         let mut mirrored = last.clone();
         mirrored.id = self.gen_id();
+        mirrored.forget_sketchy_id();
         mirrored.start = self.cursor;
         mirrored.end = target;
         mirrored.color = mirrored.color.or_else(|| Some(self.draw_color.clone()));
@@ -1297,6 +1444,7 @@ impl Drawing {
             line_style: None,
             dimension_position: None,
             dimension_anchor: None,
+            extra: Default::default(),
         });
         self.suppress_dimension_next = false;
         self.line_ids.push(id);
@@ -1488,6 +1636,7 @@ impl Drawing {
                 line_style: None,
                 dimension_position: None,
                 dimension_anchor: None,
+                extra: Default::default(),
             });
             ids.push(id);
         }
@@ -1541,6 +1690,7 @@ impl Drawing {
                 label_italic: None,
                 label_underline: None,
                 label_color: None,
+                extra: Default::default(),
             });
         }
     }
@@ -1798,6 +1948,101 @@ mod tests {
         e.click(w(300.0, 300.0), c);
         e.click(w(500.0, 300.0), c);
         assert!(e.lines[0].dimension_hidden && !e.suppress_dimension_next);
+    }
+
+    fn exterior_wall(id: i64, a: (f64, f64), b: (f64, f64)) -> SketchLine {
+        serde_json::from_value(serde_json::json!({
+            "id": id,
+            "start": {"x": a.0, "y": a.1},
+            "end": {"x": b.0, "y": b.1},
+            "type": "exterior"
+        }))
+        .expect("a wall")
+    }
+
+    fn walls_of(rings: &[&[(f64, f64)]]) -> Vec<SketchLine> {
+        let mut id = 1;
+        let mut out = vec![];
+        for ring in rings {
+            for i in 0..ring.len() {
+                out.push(exterior_wall(id, ring[i], ring[(i + 1) % ring.len()]));
+                id += 1;
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn an_area_closes_along_walls_that_other_walls_end_on() {
+        // A first floor, then a deck whose 12 ft wall overlaps the first
+        // floor's wall by one foot, so each ends on the other's body.
+        let floor: &[(f64, f64)] = &[
+            (32., 14.),
+            (32., -11.),
+            (13., -11.),
+            (13., -10.),
+            (7., -10.),
+            (7., -11.),
+            (-20., -11.),
+            (-20., 17.),
+            (4., 17.),
+            (4., 20.),
+            (18., 20.),
+            (18., 14.),
+        ];
+        let deck: &[(f64, f64)] = &[
+            (5., 20.),
+            (5., 23.),
+            (25., 23.),
+            (25., 17.),
+            (45., 17.),
+            (45., 21.),
+            (41., 21.),
+            (41., 37.),
+            (19., 37.),
+            (19., 27.),
+            (-7., 27.),
+            (-7., 20.),
+        ];
+        let mut d = Drawing {
+            lines: walls_of(&[floor]),
+            ..Drawing::default()
+        };
+        d.next_id = 100;
+        assert_eq!(d.close_loops(1.0), 1, "the first floor closes");
+        let first_floor = d.polygons[0].id;
+        let walls_before = d.lines.len();
+        // The deck is drawn with its top wall last.
+        let deck_walls = walls_of(&[deck]);
+        for (next, mut wall) in (walls_before as i64 + 1..).zip(deck_walls) {
+            wall.id = next;
+            d.lines.push(wall);
+        }
+        d.next_id = 200;
+        assert_eq!(d.close_loops(1.0), 1, "the deck closes too");
+        assert_eq!(d.polygons.len(), 2);
+        assert_eq!(d.polygons[0].id, first_floor, "the first floor is kept");
+        assert!((d.polygons[0].area - 1450.0).abs() < 1e-6);
+        let by_id = d.lines.iter().map(|l| (l.id, l)).collect();
+        assert!(d
+            .polygons
+            .iter()
+            .all(|p| sketch_core::joins::is_polygon_boundary_intact(p, &by_id)));
+    }
+
+    #[test]
+    fn a_wall_ending_on_another_is_not_cut_when_it_bounds_nothing() {
+        let square: &[(f64, f64)] = &[(0., 0.), (10., 0.), (10., 10.), (0., 10.)];
+        let mut d = Drawing {
+            lines: walls_of(&[square]),
+            ..Drawing::default()
+        };
+        d.next_id = 100;
+        d.close_loops(1.0);
+        d.lines.push(exterior_wall(50, (5., 0.), (5., -6.)));
+        d.close_loops(1.0);
+        assert_eq!(d.lines.len(), 5, "no wall was split");
+        assert_eq!(d.polygons.len(), 1);
     }
 
     #[test]
@@ -2132,6 +2377,7 @@ mod bow_tests {
             line_style: None,
             dimension_position: None,
             dimension_anchor: None,
+            extra: Default::default(),
         });
         d
     }
@@ -2221,6 +2467,7 @@ mod heal_tests {
             line_style: None,
             dimension_position: None,
             dimension_anchor: None,
+            extra: Default::default(),
         }
     }
 
@@ -2289,6 +2536,7 @@ mod edit_tools_tests {
                 line_style: None,
                 dimension_position: None,
                 dimension_anchor: None,
+                extra: Default::default(),
             }],
             ..Drawing::default()
         }
@@ -2395,6 +2643,7 @@ mod curve_tests {
             line_style: None,
             dimension_position: None,
             dimension_anchor: None,
+            extra: Default::default(),
         }
     }
 

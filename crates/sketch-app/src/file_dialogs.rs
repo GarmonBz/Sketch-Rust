@@ -44,32 +44,34 @@ pub async fn open_image() -> Option<PathBuf> {
     .await
 }
 
+#[cfg(test)]
+pub fn take_test_save_path(default_name: String) -> Option<PathBuf> {
+    TEST_PICKER.with(|state| {
+        let mut state = state.borrow_mut();
+        state.requests.push(default_name);
+        state.destination.take()
+    })
+}
+
 /// File > Save / Save As: ask where to save, offering `default_name`. In
-/// test builds the TEST_PICKER boundary resolves immediately.
+/// test builds the TEST_PICKER boundary resolves immediately. Only the
+/// non-test build calls it, so the test harness sees it as dead code.
+#[cfg_attr(test, allow(dead_code))]
 pub async fn save_sketch(default_name: String, preferred: String) -> Option<PathBuf> {
     #[cfg(test)]
     {
         let _ = preferred;
-        TEST_PICKER.with(|state| {
-            let mut state = state.borrow_mut();
-            state.requests.push(default_name);
-            state.destination.take()
-        })
+        take_test_save_path(default_name)
     }
     #[cfg(not(test))]
     {
-        let mut filters = vec![
+        let filters = [
+            ("Sketchy sketch", "sketchy"),
             ("Sketch", "skx"),
-            ("Sketchie JSON", "sketchie.json"),
             ("Sketchie Store", "sketchie"),
+            ("Sketchie JSON", "sketchie.json"),
             ("Sketch JSON", "json"),
         ];
-        if matches!(preferred.as_str(), "sketchy.json" | "sketchy") {
-            filters.extend([
-                ("Sketchy JSON (legacy)", "sketchy.json"),
-                ("Sketchy Store (legacy)", "sketchy"),
-            ]);
-        }
         let ordered: Vec<(String, String)> = filters
             .iter()
             .filter(|(_, ext)| preferred == *ext)

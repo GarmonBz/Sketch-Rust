@@ -1652,18 +1652,21 @@ pub mod area_codes {
     /// The `DEFAULT_AREA_CODES` catalogue, verbatim from the ref file.
     pub const DEFAULT_AREA_CODES_JSON: &str = r##"[
 
-  { "code": "GLA1", "name": "First Floor", "description": "Gross Living Area", "group": "GLA", "multiplier": 1, "positive": true, "includeInGLA": true, "color": "#2B6CB0", "fill": "rgba(43,108,176,.10)" },
-  { "code": "GLA2", "name": "Second Floor", "description": "Gross Living Area", "group": "GLA", "multiplier": 1, "positive": true, "includeInGLA": true, "color": "#0987A0", "fill": "rgba(9,135,160,.10)" },
-  { "code": "GLA3", "name": "Third Floor", "description": "Gross Living Area", "group": "GLA", "multiplier": 1, "positive": true, "includeInGLA": true, "color": "#B83280", "fill": "rgba(184,50,128,.10)" },
-  { "code": "GLA4", "name": "Fourth Floor", "description": "Gross Living Area", "group": "GLA", "multiplier": 1, "positive": true, "includeInGLA": true, "color": "#C53030", "fill": "rgba(197,48,48,.10)" },
+  { "code": "GLA1", "name": "First Floor", "description": "Finished Above Grade", "group": "GLA", "multiplier": 1, "positive": true, "includeInGLA": true, "color": "#2B6CB0", "fill": "rgba(43,108,176,.10)" },
+  { "code": "GLA2", "name": "Second Floor", "description": "Finished Above Grade", "group": "GLA", "multiplier": 1, "positive": true, "includeInGLA": true, "color": "#0987A0", "fill": "rgba(9,135,160,.10)" },
+  { "code": "GLA3", "name": "Third Floor", "description": "Finished Above Grade", "group": "GLA", "multiplier": 1, "positive": true, "includeInGLA": true, "color": "#B83280", "fill": "rgba(184,50,128,.10)" },
+  { "code": "GLA4", "name": "Fourth Floor", "description": "Finished Above Grade", "group": "GLA", "multiplier": 1, "positive": true, "includeInGLA": true, "color": "#C53030", "fill": "rgba(197,48,48,.10)" },
+  { "code": "GLAN", "name": "Finished AG Nonstd", "description": "Finished Above Grade (Nonstandard)", "group": "GLA", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#3182CE", "fill": "rgba(49,130,206,.10)" },
+  { "code": "GLAU", "name": "Unfinished AG", "description": "Unfinished Above Grade", "group": "GLA", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#63B3ED", "fill": "rgba(99,179,237,.10)" },
   { "code": "GBA1", "name": "First Floor", "description": "Gross Building Area", "group": "GBA", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#024F39", "fill": "rgba(2,79,57,.10)" },
   { "code": "GBA2", "name": "Second Floor", "description": "Gross Building Area", "group": "GBA", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#065F40", "fill": "rgba(6,95,64,.10)" },
   { "code": "GBA3", "name": "Third Floor", "description": "Gross Building Area", "group": "GBA", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#017142", "fill": "rgba(1,113,66,.10)" },
   { "code": "GBA4", "name": "Fourth Floor", "description": "Gross Building Area", "group": "GBA", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#238247", "fill": "rgba(35,130,71,.10)" },
   { "code": "GAR", "name": "Garage", "description": "Garage", "group": "GAR", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#805AD5", "fill": "rgba(128,90,213,.10)" },
   { "code": "CPT", "name": "Carport", "description": "Carport", "group": "GAR", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#9F7AEA", "fill": "rgba(159,122,234,.10)" },
-  { "code": "BSMT", "name": "Finished BSMT", "description": "Basement", "group": "BSMT", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#4A5568", "fill": "rgba(74,85,104,.10)" },
-  { "code": "BSMT2", "name": "Unfinished BSMT", "description": "Basement", "group": "BSMT", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#718096", "fill": "rgba(113,128,150,.10)" },
+  { "code": "BSMT", "name": "Finished BSMT", "description": "Finished Below Grade", "group": "BSMT", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#4A5568", "fill": "rgba(74,85,104,.10)" },
+  { "code": "BSMTN", "name": "Finished BSMT Nonstd", "description": "Finished Below Grade (Nonstandard)", "group": "BSMT", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#2D3748", "fill": "rgba(45,55,72,.10)" },
+  { "code": "BSMT2", "name": "Unfinished BSMT", "description": "Unfinished Below Grade", "group": "BSMT", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#718096", "fill": "rgba(113,128,150,.10)" },
   { "code": "OFP", "name": "Open Frame Porch", "description": "Porch/Patio", "group": "P/P", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#B7791F", "fill": "rgba(183,121,31,.10)" },
   { "code": "SFP", "name": "Screen Frame Porch", "description": "Porch/Patio", "group": "P/P", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#D69E2E", "fill": "rgba(214,158,46,.10)" },
   { "code": "EFP", "name": "Enclosed Frame Porch", "description": "Porch/Patio", "group": "P/P", "multiplier": 1, "positive": true, "includeInGLA": false, "color": "#ECC94B", "fill": "rgba(236,201,75,.10)" },
@@ -1710,6 +1713,67 @@ pub mod area_codes {
             finished,
             unfinished,
         }
+    }
+
+    // --- UAD 3.6 URAR Appendix F-1 area breakdown ---
+    //
+    // The URAR reports a living unit's area in six separate fields, in this
+    // order (the FNMA-URAR-0924 "Area Breakdown" block). Slot order here is
+    // also the order the Appraise-It transfer writes the living-unit fields in.
+    // Only slot `F1_FINISHED_ABOVE_GRADE` is standard finished area, so the
+    // nonstandard and unfinished codes stay out of `includeInGLA`.
+
+    /// 10.003 "Finished Above Grade" — `GLA1`–`GLA10`.
+    pub const F1_FINISHED_ABOVE_GRADE: usize = 0;
+    /// 10.004 "Finished Above Grade (Nonstandard)" — `GLAN`.
+    pub const F1_FINISHED_ABOVE_GRADE_NONSTANDARD: usize = 1;
+    /// 10.005 "Unfinished Above Grade" — `GLAU`.
+    pub const F1_UNFINISHED_ABOVE_GRADE: usize = 2;
+    /// 10.006 "Finished Below Grade" — `BSMT`.
+    pub const F1_FINISHED_BELOW_GRADE: usize = 3;
+    /// 10.007 "Finished Below Grade (Nonstandard)" — `BSMTN`.
+    pub const F1_FINISHED_BELOW_GRADE_NONSTANDARD: usize = 4;
+    /// 10.008 "Unfinished Below Grade" — `BSMT2`.
+    pub const F1_UNFINISHED_BELOW_GRADE: usize = 5;
+
+    /// The F-1 area-breakdown slot an area code feeds, or `None` when F-1 has
+    /// no field for it (gross building area, garage, porches, undefined…).
+    /// `GLA5`–`GLA10` count as finished above grade even though the bundled
+    /// table only names four floors.
+    pub fn f1_slot(code: &str) -> Option<usize> {
+        match code.trim().to_uppercase().as_str() {
+            "GLAN" => Some(F1_FINISHED_ABOVE_GRADE_NONSTANDARD),
+            "GLAU" => Some(F1_UNFINISHED_ABOVE_GRADE),
+            "BSMT" => Some(F1_FINISHED_BELOW_GRADE),
+            "BSMTN" => Some(F1_FINISHED_BELOW_GRADE_NONSTANDARD),
+            "BSMT2" => Some(F1_UNFINISHED_BELOW_GRADE),
+            other => {
+                let floor: u32 = other.strip_prefix("GLA")?.parse().ok()?;
+                (1..=10).contains(&floor).then_some(F1_FINISHED_ABOVE_GRADE)
+            }
+        }
+    }
+
+    /// Revision of the bundled table. A stored `area-codes.json` older than
+    /// this is merged with the built-ins it is missing once, so a user who has
+    /// edited their types still receives new default codes. Bump it whenever
+    /// `DEFAULT_AREA_CODES_JSON` gains a code.
+    pub const DEFAULT_CODES_REVISION: u32 = 2;
+
+    /// Appends every built-in code the stored table does not have, keeping the
+    /// stored order and every stored entry untouched. Returns whether anything
+    /// was added.
+    pub fn with_missing_builtins(stored: &[AreaCode]) -> (Vec<AreaCode>, bool) {
+        let mut merged = stored.to_vec();
+        let mut added = false;
+        for builtin in default_area_codes() {
+            if merged.iter().any(|entry| entry.code == builtin.code) {
+                continue;
+            }
+            merged.push(builtin);
+            added = true;
+        }
+        (merged, added)
     }
 
     /// `normalizeAreaCode` — trimming, defaults and clamping.
@@ -1855,8 +1919,11 @@ pub mod area_codes {
 }
 
 pub use area_codes::{
-    as_map, basement_rollup_from_totals, clone_area_codes, default_area_codes, from_json,
-    normalize_area_code, to_json, validate_area_codes, DEFAULT_AREA_CODES_JSON,
+    as_map, basement_rollup_from_totals, clone_area_codes, default_area_codes, f1_slot, from_json,
+    normalize_area_code, to_json, validate_area_codes, with_missing_builtins,
+    DEFAULT_AREA_CODES_JSON, DEFAULT_CODES_REVISION, F1_FINISHED_ABOVE_GRADE,
+    F1_FINISHED_ABOVE_GRADE_NONSTANDARD, F1_FINISHED_BELOW_GRADE,
+    F1_FINISHED_BELOW_GRADE_NONSTANDARD, F1_UNFINISHED_ABOVE_GRADE, F1_UNFINISHED_BELOW_GRADE,
 };
 
 // --- Oracle-derived tests ---
@@ -2540,13 +2607,14 @@ mod tests {
     // --- Area codes (the ref file's AreaCodes module) ---
 
     #[test]
-    fn default_area_codes_parse_to_32_verified_entries() {
+    fn default_area_codes_parse_to_the_verified_entries() {
         let codes = default_area_codes();
-        assert_eq!(codes.len(), 26);
+        assert_eq!(codes.len(), 29);
         let first = &codes[0];
         assert_eq!(first.code, "GLA1");
         assert_eq!(first.name, "First Floor");
-        assert_eq!(first.description, "Gross Living Area");
+        // F-1 wording: no "gross living area" anywhere in the table.
+        assert_eq!(first.description, "Finished Above Grade");
         assert_eq!(first.group, "GLA");
         near(first.multiplier, 1.0);
         assert!(first.positive && first.include_in_gla);
@@ -2662,9 +2730,9 @@ mod tests {
         let codes = area_codes::default_area_codes();
         let actual_codes: Vec<&str> = codes.iter().map(|c| c.code.as_str()).collect();
         let expected_codes = [
-            "GLA1", "GLA2", "GLA3", "GLA4", "GBA1", "GBA2", "GBA3", "GBA4", "GAR", "CPT", "BSMT",
-            "BSMT2", "OFP", "SFP", "EFP", "PAT", "PORCH", "DK", "BAL", "POOL", "SHED", "LAND",
-            "SITE", "OTH", "NCA", "UND",
+            "GLA1", "GLA2", "GLA3", "GLA4", "GLAN", "GLAU", "GBA1", "GBA2", "GBA3", "GBA4", "GAR",
+            "CPT", "BSMT", "BSMTN", "BSMT2", "OFP", "SFP", "EFP", "PAT", "PORCH", "DK", "BAL",
+            "POOL", "SHED", "LAND", "SITE", "OTH", "NCA", "UND",
         ];
         assert_eq!(actual_codes, expected_codes);
         let gla: Vec<(&str, &str, &str)> = codes
@@ -2681,5 +2749,89 @@ mod tests {
                 ("GLA4", "#C53030", "rgba(197,48,48,.10)"),
             ]
         );
+    }
+
+    #[test]
+    fn the_six_f1_fields_map_to_their_codes_and_only_the_standard_one_counts() {
+        use area_codes::{
+            f1_slot, F1_FINISHED_ABOVE_GRADE, F1_FINISHED_ABOVE_GRADE_NONSTANDARD,
+            F1_FINISHED_BELOW_GRADE, F1_FINISHED_BELOW_GRADE_NONSTANDARD,
+            F1_UNFINISHED_ABOVE_GRADE, F1_UNFINISHED_BELOW_GRADE,
+        };
+        // The six live-unit slots, in URAR order.
+        assert_eq!(f1_slot("GLA1"), Some(F1_FINISHED_ABOVE_GRADE));
+        assert_eq!(f1_slot("gla10"), Some(F1_FINISHED_ABOVE_GRADE));
+        assert_eq!(f1_slot("GLAN"), Some(F1_FINISHED_ABOVE_GRADE_NONSTANDARD));
+        assert_eq!(f1_slot("GLAU"), Some(F1_UNFINISHED_ABOVE_GRADE));
+        assert_eq!(f1_slot("BSMT"), Some(F1_FINISHED_BELOW_GRADE));
+        assert_eq!(f1_slot("BSMTN"), Some(F1_FINISHED_BELOW_GRADE_NONSTANDARD));
+        assert_eq!(f1_slot("BSMT2"), Some(F1_UNFINISHED_BELOW_GRADE));
+        // No F-1 field: other codes, GLA11, a bare GLA, junk.
+        for code in ["GBA1", "GAR", "PORCH", "UND", "", "GLA11", "GLA", "XBSMT"] {
+            assert_eq!(f1_slot(code), None, "{code} has no F-1 field");
+        }
+        // Only the standard code counts as finished above grade, so the
+        // nonstandard and unfinished defaults stay out of the total.
+        let codes = default_area_codes();
+        for code in ["GLAN", "GLAU", "BSMTN"] {
+            let entry = codes.iter().find(|c| c.code == code).expect(code);
+            assert!(!entry.include_in_gla, "{code} must not count in GLA");
+            assert_eq!(entry.multiplier, 1.0);
+            assert_eq!(
+                entry.group,
+                if code.starts_with("BSMT") {
+                    "BSMT"
+                } else {
+                    "GLA"
+                }
+            );
+        }
+        assert!(
+            !codes
+                .iter()
+                .any(|c| c.description.to_lowercase().contains("gross living area")),
+            "F-1 wording replaces GLA everywhere in the bundled table"
+        );
+        for (code, description) in [
+            ("GLA1", "Finished Above Grade"),
+            ("BSMT", "Finished Below Grade"),
+            ("BSMT2", "Unfinished Below Grade"),
+            ("GLAN", "Finished Above Grade (Nonstandard)"),
+            ("GLAU", "Unfinished Above Grade"),
+            ("BSMTN", "Finished Below Grade (Nonstandard)"),
+        ] {
+            let entry = codes.iter().find(|c| c.code == code).expect(code);
+            assert_eq!(entry.description, description, "{code} description");
+        }
+    }
+
+    #[test]
+    fn a_stored_table_gains_the_builtins_it_is_missing_once() {
+        // A table from an older build: everything but the three F-1 codes, with
+        // one renamed entry that must survive untouched.
+        let mut stored: Vec<AreaCode> = default_area_codes()
+            .into_iter()
+            .filter(|c| !matches!(c.code.as_str(), "GLAN" | "GLAU" | "BSMTN"))
+            .collect();
+        let renamed = stored.iter_mut().find(|c| c.code == "GAR").unwrap();
+        renamed.name = "Attached Garage".into();
+        let (merged, added) = with_missing_builtins(&stored);
+        assert!(added);
+        assert_eq!(merged.len(), stored.len() + 3);
+        assert_eq!(
+            merged.iter().find(|c| c.code == "GAR").unwrap().name,
+            "Attached Garage"
+        );
+        // New codes append after the stored order; nothing is reordered.
+        assert_eq!(merged[..stored.len()], stored[..]);
+        // A current table is left alone.
+        let current = default_area_codes();
+        let (same, added) = with_missing_builtins(&current);
+        assert!(!added);
+        assert_eq!(same, current);
+        // An empty table gets the whole catalogue.
+        let (all, added) = with_missing_builtins(&[]);
+        assert!(added);
+        assert_eq!(all, current);
     }
 }

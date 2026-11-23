@@ -50,6 +50,8 @@ pub enum Action {
     SaveAndExit,
     /// Open the sketch file dropped on the window, discarding the changes.
     OpenDropped(std::path::PathBuf),
+    /// Mark as Final...: the optional note is the prompt's input.
+    MarkFinal,
     /// Rename the document title displayed in the top bar.
     RenameDocument,
     /// Rename page at index `usize`.

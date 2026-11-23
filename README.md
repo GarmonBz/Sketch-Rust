@@ -33,6 +33,9 @@ Quick start: press `E`, click a start point, type a length and press an arrow ke
 each wall, press `A` to close the area, then pick what the area is in the Define Area
 panel (`F4`).
 
+Sketches save as `.sketchy` files in the open Sketchy format, and every save is kept as
+a version. `.sketchy.json` files open too.
+
 ### Appraise-It Pro reports
 
 On Windows, open a saved, editable report in Appraise-It Pro. In Sketch Rust,
@@ -82,6 +85,19 @@ cargo test --workspace
 | `tools/` | Packaging and test scripts |
 
 `STATUS.md` is the running change ledger.
+
+## Contributing
+
+Humans and AI agents welcome. Please:
+
+- **Use test-driven development.** Write a failing test first, make it pass, then tidy up.
+  Every change ships with tests.
+- **Use an agent skills framework.** [Superpowers](https://github.com/obra/superpowers) is
+  recommended: it gives agents brainstorming, planning, TDD and code-review workflows. Put
+  designs in `docs/superpowers/specs/` and plans in `docs/superpowers/plans/`.
+- **Keep changes focused,** and run `cargo test --workspace` and
+  `cargo clippy --workspace -- -D warnings` before opening a pull request.
+- **Review what your agent wrote** before you submit it. You're responsible for the change.
 
 ## License
 

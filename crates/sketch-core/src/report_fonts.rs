@@ -17,12 +17,8 @@ pub fn face(bold: bool) -> Option<&'static Face> {
         db.load_system_fonts();
         #[cfg(target_arch = "wasm32")]
         {
-            db.load_font_data(
-                include_bytes!("../../../assets/fonts/Barlow-Regular.ttf").to_vec(),
-            );
-            db.load_font_data(
-                include_bytes!("../../../assets/fonts/Barlow-SemiBold.ttf").to_vec(),
-            );
+            db.load_font_data(include_bytes!("../../../assets/fonts/Barlow-Regular.ttf").to_vec());
+            db.load_font_data(include_bytes!("../../../assets/fonts/Barlow-SemiBold.ttf").to_vec());
         }
         [false, true].map(|bold| {
             let id = db.query(&fontdb::Query {

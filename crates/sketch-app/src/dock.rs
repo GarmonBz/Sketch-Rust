@@ -66,6 +66,8 @@ pub enum DockTab {
     Symbols,
     Calcs,
     Layers,
+    /// Version history; shown only for a `.sketchy` store (not in `ALL`).
+    Versions,
 }
 
 impl DockTab {
@@ -84,6 +86,7 @@ impl DockTab {
             DockTab::Symbols => "Symbols",
             DockTab::Calcs => "Calcs",
             DockTab::Layers => "Layers",
+            DockTab::Versions => "Versions",
         }
     }
 
@@ -95,10 +98,12 @@ impl DockTab {
             DockTab::Symbols => "symbols",
             DockTab::Calcs => "calcs",
             DockTab::Layers => "layers",
+            DockTab::Versions => "versions",
         }
     }
 
-    /// The inverse of `key` — restoring `state.sidebar.active`.
+    /// The inverse of `key` — restoring `state.sidebar.active`. The Versions
+    /// tab is never restored: it exists only while a store is open.
     pub fn from_key(text: &str) -> Option<Self> {
         match text {
             "define" => Some(DockTab::Areas),
@@ -203,6 +208,9 @@ pub struct DockState {
     pub layer_rename: Option<(String, String)>,
     /// The right-click popup's row (`showLayerContextMenu`).
     pub layer_menu: Option<String>,
+    /// The version rows (newest first) while a `.sketchy` store is open; None
+    /// hides the Versions tab.
+    pub versions: Option<Vec<crate::versions::VersionRow>>,
 }
 
 impl Default for DockState {
@@ -229,6 +237,7 @@ impl Default for DockState {
             layer_hover: None,
             layer_rename: None,
             layer_menu: None,
+            versions: None,
         }
     }
 }
@@ -632,9 +641,25 @@ mod area_tree_tests {
         );
         let gla = &model.groups[0];
         assert_eq!(gla.label, "Living space");
-        assert_eq!(gla.tiles.len(), 4);
+        // GLA1–GLA4 plus the two F-1 above-grade types.
+        assert_eq!(gla.tiles.len(), 6);
         assert_eq!(gla.tiles[0].0, "First Floor");
         assert_eq!(gla.tiles[0].1, "GLA1");
+        assert_eq!(gla.tiles[4].1, "GLAN");
+        assert_eq!(gla.tiles[5].1, "GLAU");
+        let basement = model
+            .groups
+            .iter()
+            .find(|g| g.group == "BSMT")
+            .expect("basement group");
+        assert_eq!(
+            basement
+                .tiles
+                .iter()
+                .map(|(_, code, _)| code.as_str())
+                .collect::<Vec<_>>(),
+            vec!["BSMT", "BSMTN", "BSMT2"]
+        );
     }
 
     #[test]
