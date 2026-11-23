@@ -54,7 +54,9 @@ pub fn take_test_save_path(default_name: String) -> Option<PathBuf> {
 }
 
 /// File > Save / Save As: ask where to save, offering `default_name`. In
-/// test builds the TEST_PICKER boundary resolves immediately.
+/// test builds the TEST_PICKER boundary resolves immediately. Only the
+/// non-test build calls it, so the test harness sees it as dead code.
+#[cfg_attr(test, allow(dead_code))]
 pub async fn save_sketch(default_name: String, preferred: String) -> Option<PathBuf> {
     #[cfg(test)]
     {

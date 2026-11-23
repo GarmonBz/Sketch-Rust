@@ -337,10 +337,7 @@ mod native_dialogs {
         }
     }
 
-    pub(super) fn with_start_dir<D: NativeDialog>(
-        dialog: D,
-        dir: Option<std::path::PathBuf>,
-    ) -> D {
+    pub(super) fn with_start_dir<D: NativeDialog>(dialog: D, dir: Option<std::path::PathBuf>) -> D {
         match dir {
             Some(dir) => dialog.set_directory(dir),
             None => dialog,
@@ -396,12 +393,16 @@ mod native_dialogs {
     }
 }
 
+// Test builds resolve picks through the TEST_PICKER boundary instead of these
+// dialogs, so some of the re-exports are unused there.
 #[cfg(not(target_arch = "wasm32"))]
+#[cfg_attr(test, allow(unused_imports))]
+pub use native_dialogs::{pick_file_async, pick_files_async, save_file_as_async, save_file_async};
+// This module's tests drive the anchor contract through these two; a normal
+// build only resolves them inside `native_dialogs`.
+#[cfg(not(target_arch = "wasm32"))]
+#[cfg_attr(not(test), allow(unused_imports))]
 use native_dialogs::{with_start_dir, NativeDialog};
-#[cfg(not(target_arch = "wasm32"))]
-pub use native_dialogs::{
-    pick_file_async, pick_files_async, save_file_as_async, save_file_async,
-};
 
 #[cfg(target_arch = "wasm32")]
 pub async fn pick_file_async(

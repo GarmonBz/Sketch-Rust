@@ -2013,11 +2013,9 @@ mod tests {
         let first_floor = d.polygons[0].id;
         let walls_before = d.lines.len();
         // The deck is drawn with its top wall last.
-        let mut next = walls_before as i64 + 1;
         let deck_walls = walls_of(&[deck]);
-        for mut wall in deck_walls {
+        for (next, mut wall) in (walls_before as i64 + 1..).zip(deck_walls) {
             wall.id = next;
-            next += 1;
             d.lines.push(wall);
         }
         d.next_id = 200;
