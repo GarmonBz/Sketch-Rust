@@ -9,6 +9,8 @@ license-file.workspace = true
 # alone with --no-default-features instead of opening a GPU device per test.
 default = ["gpu"]
 gpu = ["iced/wgpu"]
+# Dev-only: iced-mcp bridge for Cursor/Claude/Codex. Leave off for release builds.
+agent = ["dep:iced-mcp"]
 
 [dependencies]
 sketch-core = { path = "../sketch-core" }
@@ -30,6 +32,7 @@ iced = { version = "0.14", default-features = false, features = ["thread-pool", 
 btleplug = "0.11"
 tokio = { version = "1", features = ["rt", "time"] }
 rusqlite = { version = "=0.40.2", features = ["bundled"] }
+iced-mcp = { version = "0.3", optional = true, default-features = false }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 iced = { version = "0.14", default-features = false, features = ["wgpu", "webgl"] }

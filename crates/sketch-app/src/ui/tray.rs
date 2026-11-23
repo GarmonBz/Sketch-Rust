@@ -61,6 +61,24 @@ impl TrayTool {
         TrayTool::Pan,
     ];
 
+    /// Stable iced widget id for agents (`#tool-wall`, …).
+    pub fn mcp_id(self) -> &'static str {
+        match self {
+            TrayTool::Select => "tool-select",
+            TrayTool::Wall => "tool-wall",
+            TrayTool::Inner => "tool-inner",
+            TrayTool::Area => "tool-area",
+            TrayTool::Freeform => "tool-freeform",
+            TrayTool::Erase => "tool-erase",
+            TrayTool::Shape => "tool-shape",
+            TrayTool::Curve => "tool-curve",
+            TrayTool::Measure => "tool-measure",
+            TrayTool::Label => "tool-label",
+            TrayTool::Insert => "tool-insert",
+            TrayTool::Pan => "tool-pan",
+        }
+    }
+
     pub const fn label(self) -> &'static str {
         match self {
             TrayTool::Select => "Select",
@@ -287,7 +305,7 @@ fn tray_tile<'a>(app: &'a App, tool: TrayTool, d: Density) -> Element<'a, Messag
         )
     };
 
-    interactive
+    kit::with_id(tool.mcp_id(), interactive)
 }
 
 fn compact_pill<'a>(app: &'a App, tool: TrayTool, d: Density) -> Element<'a, Message> {
@@ -390,7 +408,7 @@ fn compact_pill<'a>(app: &'a App, tool: TrayTool, d: Density) -> Element<'a, Mes
         )
     };
 
-    interactive
+    kit::with_id(tool.mcp_id(), interactive)
 }
 
 // ---------------------------------------------------------------------------
@@ -611,4 +629,23 @@ fn flyout_overlay<'a>(app: &'a App, tool: TrayTool) -> Element<'a, Message> {
         .align_y(iced::alignment::Vertical::Bottom);
 
     opaque(mouse_area(positioned).on_press(Message::Ui(UiMsg::ToggleTrayFlyout(None))))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tray_tools_expose_stable_mcp_ids() {
+        assert_eq!(TrayTool::Select.mcp_id(), "tool-select");
+        assert_eq!(TrayTool::Wall.mcp_id(), "tool-wall");
+        assert_eq!(TrayTool::Pan.mcp_id(), "tool-pan");
+        let ids: Vec<_> = TrayTool::ALL.iter().map(|t| t.mcp_id()).collect();
+        assert_eq!(ids.len(), 12);
+        assert!(ids.iter().all(|id| id.starts_with("tool-")));
+        let mut unique = ids.clone();
+        unique.sort_unstable();
+        unique.dedup();
+        assert_eq!(unique.len(), ids.len(), "mcp ids must be unique");
+    }
 }
