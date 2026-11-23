@@ -621,7 +621,10 @@ fn unshown_notice(summary: &[(String, usize)]) -> Option<String> {
         return None;
     }
     let parts: Vec<String> = summary.iter().map(|(l, n)| format!("{n} {l}")).collect();
-    Some(format!("Opened. Not shown in Sketch Rust: {}.", parts.join(", ")))
+    Some(format!(
+        "Opened. Not shown in Sketch Rust: {}.",
+        parts.join(", ")
+    ))
 }
 
 /// Decode `.sketchy.json`, `.sketchie.json`, `.skx` or save-model JSON bytes into a save model.
@@ -661,8 +664,8 @@ fn decode_sketch_bytes(bytes: &[u8]) -> Result<DecodedSketch, String> {
     }
     if let Ok(model) = serde_json::from_slice::<serde_json::Value>(bytes) {
         if sketchy::recognizes(&model) {
-            let converted =
-                sketchy::convert(model).map_err(|e| format!("Could not open Sketchie file: {e}"))?;
+            let converted = sketchy::convert(model)
+                .map_err(|e| format!("Could not open Sketchie file: {e}"))?;
             return Ok(DecodedSketch {
                 model: converted.model,
                 format: SketchFileFormat::Sketchie,
@@ -750,8 +753,6 @@ fn read_sketch_model(bytes: &[u8]) -> Result<(serde_json::Value, SketchFileForma
     Ok((decoded.model, decoded.format, decoded.omitted))
 }
 
-
-
 /// A legacy Apex `.axf` sketch: converted on open, never saved back.
 fn is_axf_path(path: &std::path::Path) -> bool {
     path.extension()
@@ -816,7 +817,10 @@ fn sketch_destination(
         (path, SketchFileFormat::SketchieStore)
     } else if file_name.ends_with(".json") {
         (path, SketchFileFormat::Json)
-    } else if file_name.ends_with(".skx") || file_name.ends_with(".apx") || file_name.ends_with(".sketch") {
+    } else if file_name.ends_with(".skx")
+        || file_name.ends_with(".apx")
+        || file_name.ends_with(".sketch")
+    {
         (path, SketchFileFormat::Skx)
     } else {
         let mut name = path.into_os_string();
@@ -979,7 +983,10 @@ fn write_store_with(
     if in_place {
         if let Some(mut store) = source {
             let doc = to_sketchy(model, Some(store.document_id())).map_err(es)?;
-            return store.commit(doc, info).map(|_| StoreWrite::Kept).map_err(es);
+            return store
+                .commit(doc, info)
+                .map(|_| StoreWrite::Kept)
+                .map_err(es);
         }
     } else if source.is_none() {
         // The target may already be this document's own store.
@@ -989,10 +996,16 @@ fn write_store_with(
         });
         if let Some(mut store) = own {
             let doc = to_sketchy(model, Some(store.document_id())).map_err(es)?;
-            return store.commit(doc, info).map(|_| StoreWrite::Kept).map_err(es);
+            return store
+                .commit(doc, info)
+                .map(|_| StoreWrite::Kept)
+                .map_err(es);
         }
     }
-    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("sketch");
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("sketch");
     let temp = path.with_file_name(format!(".{name}.{}.tmp", new_id()));
     let built = match source {
         Some(source) => source.copy_to(&temp).and_then(|mut copy| {
@@ -1012,7 +1025,13 @@ fn write_store_with(
     if moved.is_err() {
         let _ = std::fs::remove_file(&temp);
     }
-    moved.map(|()| if history_lost { StoreWrite::HistoryLost } else { StoreWrite::Kept })
+    moved.map(|()| {
+        if history_lost {
+            StoreWrite::HistoryLost
+        } else {
+            StoreWrite::Kept
+        }
+    })
 }
 
 /// How far the pointer travels before a press on a dock item is a drag.
@@ -3995,7 +4014,10 @@ impl App {
             Message::OpenFile => Task::perform(
                 web_io::pick_file_bytes(
                     "Sketch".to_owned(),
-                    SKETCH_OPEN_EXTENSIONS.iter().map(|e| (*e).to_owned()).collect(),
+                    SKETCH_OPEN_EXTENSIONS
+                        .iter()
+                        .map(|e| (*e).to_owned())
+                        .collect(),
                 ),
                 |file| Message::WebFileOpened(WebFileKind::OpenSketch, file),
             ),
@@ -8168,9 +8190,9 @@ impl App {
                     });
                 }
                 #[cfg(not(windows))]
-                return self.toasts.show(
-                    "Appraise-It Pro report integration runs on Windows.".to_string(),
-                );
+                return self
+                    .toasts
+                    .show("Appraise-It Pro report integration runs on Windows.".to_string());
             }
             #[cfg(windows)]
             M::AutoFillResult(result) => match result {
@@ -8181,7 +8203,8 @@ impl App {
                             self.subject_info.file_no = file_no.clone();
                             filled_file_no = true;
                         }
-                        if self.subject_dialog.open && self.subject_dialog.fields[1].trim().is_empty()
+                        if self.subject_dialog.open
+                            && self.subject_dialog.fields[1].trim().is_empty()
                         {
                             self.subject_dialog.fields[1] = file_no.clone();
                         }
@@ -8445,6 +8468,26 @@ impl App {
         if let Some(codes) = persist::read("area-codes.json")
             .and_then(|text| sketch_core::geometry::area_codes::from_json(&text).ok())
         {
+            // The stored table is merged with built-in codes it lacks ONCE per
+            // defaults revision, so a user who edited their types still
+            // receives new default area types; a later deletion sticks.
+            let current = sketch_core::geometry::area_codes::DEFAULT_CODES_REVISION;
+            let revision = persist::read("area-codes.defaults")
+                .and_then(|text| text.trim().parse::<u32>().ok())
+                .unwrap_or(0);
+            let codes = if revision < current {
+                let (merged, added) =
+                    sketch_core::geometry::area_codes::with_missing_builtins(&codes);
+                if added {
+                    if let Ok(text) = sketch_core::geometry::area_codes::to_json(merged.clone()) {
+                        let _ = persist::write("area-codes.json", &text);
+                    }
+                }
+                let _ = persist::write("area-codes.defaults", &current.to_string());
+                merged
+            } else {
+                codes
+            };
             self.dock.area_codes = codes.clone();
             self.area_codes = codes;
         }
@@ -10259,7 +10302,10 @@ impl App {
             self.view.center_and_fit(self.sketch_view_bounds());
         }
         let omitted_note = if omitted {
-            Some("Some Sketchie details are hidden in this view and retained in the file.".to_owned())
+            Some(
+                "Some Sketchie details are hidden in this view and retained in the file."
+                    .to_owned(),
+            )
         } else {
             None
         };
@@ -10385,9 +10431,9 @@ impl App {
             sketch_destination(path, &ext)
         };
         if format == SketchFileFormat::SketchyJson {
-            return self
-                .toasts
-                .show("Sketchy JSON export isn't available yet \u{2014} choose a .sketchy name.".into());
+            return self.toasts.show(
+                "Sketchy JSON export isn't available yet \u{2014} choose a .sketchy name.".into(),
+            );
         }
         let confirmed_legacy = format != SketchFileFormat::Sketchy;
         let task = self.write_save_target(
@@ -10475,17 +10521,14 @@ impl App {
                         prepared = Some(save);
                         if target.format == SketchFileFormat::SketchieStore {
                             let previous = if same_target {
-                                match self
-                                    .sketchy_backing
-                                    .as_ref()
-                                    .and_then(|backing| backing.revision_id().zip(backing.revision_hash()))
-                                {
+                                match self.sketchy_backing.as_ref().and_then(|backing| {
+                                    backing.revision_id().zip(backing.revision_hash())
+                                }) {
                                     Some(id) => Some(id),
-                                    None => {
-                                        return self.toasts.show(
-                                            "Could not save Sketchie store: missing original revision.".into(),
-                                        )
-                                    }
+                                    None => return self.toasts.show(
+                                        "Could not save Sketchie store: missing original revision."
+                                            .into(),
+                                    ),
                                 }
                             } else {
                                 None
@@ -10500,7 +10543,9 @@ impl App {
             }
         };
         if let Err(e) = result {
-            return self.toasts.show(toast_error(&format!("Could not save sketch: {e}")));
+            return self
+                .toasts
+                .show(toast_error(&format!("Could not save sketch: {e}")));
         }
         if let Some(save) = prepared {
             if let Some(pages) = model["pages"].as_array_mut() {
@@ -10565,9 +10610,9 @@ impl App {
         match kind {
             WebFileKind::OpenSketch => {
                 if sketchy::store::is_sqlite(&bytes) {
-                    return self.toasts.show(
-                        "Sketchie SQLite stores are not supported in the web build.".into(),
-                    );
+                    return self
+                        .toasts
+                        .show("Sketchie SQLite stores are not supported in the web build.".into());
                 }
                 if name.to_ascii_lowercase().ends_with(".axf") {
                     return match sketch_core::axf::read(&bytes) {
@@ -12308,8 +12353,8 @@ mod tests {
 
     impl TempDir {
         fn new(test: &str) -> Self {
-            let dir = std::env::temp_dir()
-                .join(format!("sketch-rust-{}-{test}", std::process::id()));
+            let dir =
+                std::env::temp_dir().join(format!("sketch-rust-{}-{test}", std::process::id()));
             let _ = std::fs::remove_dir_all(&dir);
             std::fs::create_dir_all(&dir).expect("create temp dir");
             Self(dir)
@@ -12343,10 +12388,16 @@ mod tests {
             let _ = app.update(Message::Key(input::KeyCmd::Save));
         });
         assert_eq!(requests.len(), 1, "Save falls back to the Save As dialog");
-        assert_eq!(requests[0], "copy.sketchy", "default name drops `.sketchy` once");
+        assert_eq!(
+            requests[0], "copy.sketchy",
+            "default name drops `.sketchy` once"
+        );
         assert_eq!(std::fs::read(&copy).unwrap(), original);
         assert!(dest.is_file());
-        assert_eq!(app.current_file.as_ref().unwrap().format, SketchFileFormat::Skx);
+        assert_eq!(
+            app.current_file.as_ref().unwrap().format,
+            SketchFileFormat::Skx
+        );
         // A legacy file the user chose in Save As is bound: Save writes it.
         let (_, requests) = file_dialogs::with_save_path(None, || {
             let _ = app.update(Message::Key(input::KeyCmd::Save));
@@ -12418,7 +12469,10 @@ mod tests {
         let (mut app, _) = App::boot(1.);
         let _ = app.open_sketch_path(sketchy_example("commercial-building"));
         let text = app.toasts.text().expect("unshown-content toast");
-        assert!(text.starts_with("Opened. Not shown in Sketch Rust: "), "{text}");
+        assert!(
+            text.starts_with("Opened. Not shown in Sketch Rust: "),
+            "{text}"
+        );
     }
 
     #[test]
@@ -12455,10 +12509,16 @@ mod tests {
         let bytes = std::fs::read(&path).unwrap();
         assert!(sketch_core::sketchy::store::is_store_bytes(&bytes));
         let file = app.current_file.clone().expect("bound");
-        assert_eq!((file.format, file.path.as_path()), (SketchFileFormat::Sketchy, path.as_path()));
+        assert_eq!(
+            (file.format, file.path.as_path()),
+            (SketchFileFormat::Sketchy, path.as_path())
+        );
         let (mut fresh, _) = App::boot(1.0);
         let _ = fresh.open_sketch_path(path.clone());
-        assert_eq!(fresh.current_file.as_ref().unwrap().format, SketchFileFormat::Sketchy);
+        assert_eq!(
+            fresh.current_file.as_ref().unwrap().format,
+            SketchFileFormat::Sketchy
+        );
         assert_eq!(fresh.pages.pages.len(), 2);
         assert_eq!(fresh.drawing.lines.len(), 1);
         assert_eq!(fresh.drawing.lines[0].id, 5);
@@ -12469,8 +12529,14 @@ mod tests {
         assert_eq!(fresh.drawing.symbols[0].symbol_type, "door");
         assert_eq!(fresh.drawing.texts.len(), 1);
         let saved = app.build_save_model();
-        assert_eq!(fresh.drawing.texts[0].text, saved["pages"][0]["labels"][0]["text"]);
-        assert_eq!(fresh.file_name, "rich", "the saved title is the file's stem");
+        assert_eq!(
+            fresh.drawing.texts[0].text,
+            saved["pages"][0]["labels"][0]["text"]
+        );
+        assert_eq!(
+            fresh.file_name, "rich",
+            "the saved title is the file's stem"
+        );
     }
 
     #[test]
@@ -12526,9 +12592,16 @@ mod tests {
         versions_msg(&mut app, versions::VersionsMsg::Show);
         assert_eq!(app.dock.active, dock::DockTab::Versions);
         let rows = app.dock.versions.clone().expect("store-backed rows");
-        assert_eq!(rows.iter().map(|r| r.sequence).collect::<Vec<_>>(), [3, 2, 1]);
+        assert_eq!(
+            rows.iter().map(|r| r.sequence).collect::<Vec<_>>(),
+            [3, 2, 1]
+        );
         assert!(rows[0].is_head && !rows[1].is_head && !rows[2].is_head);
-        let ids: Vec<_> = revisions(&path).iter().rev().map(|r| r.id.clone()).collect();
+        let ids: Vec<_> = revisions(&path)
+            .iter()
+            .rev()
+            .map(|r| r.id.clone())
+            .collect();
         assert_eq!(rows.iter().map(|r| r.id.clone()).collect::<Vec<_>>(), ids);
         assert_eq!(rows[0].author, None, "revisions record no author");
         assert_eq!(commit_author(), None);
@@ -12536,7 +12609,10 @@ mod tests {
         let (mut legacy, _) = App::boot(1.0);
         versions_msg(&mut legacy, versions::VersionsMsg::Show);
         assert!(legacy.dock.versions.is_none());
-        assert!(legacy.toasts.text().is_some(), "explains why nothing opened");
+        assert!(
+            legacy.toasts.text().is_some(),
+            "explains why nothing opened"
+        );
     }
 
     #[test]
@@ -12556,7 +12632,10 @@ mod tests {
         let _ = app.update(Message::SelectAll);
         let _ = app.update(Message::Delete);
         assert_eq!(app.drawing.lines.len(), 1, "delete is blocked");
-        assert!(app.toasts.text().is_some_and(|t| t.contains("read-only")), "says why");
+        assert!(
+            app.toasts.text().is_some_and(|t| t.contains("read-only")),
+            "says why"
+        );
         // The reason is given once per viewing session, and only for edits:
         // canvas clicks (selection) stay quiet.
         app.toasts = toast::Toasts::default();
@@ -12589,7 +12668,10 @@ mod tests {
         assert!(app.viewing_revision.is_none());
         assert_eq!(app.subject_info.city, "City 3");
         assert_eq!(app.drawing.lines[0].end.x, 14.0, "head geometry");
-        assert_eq!(app.current_file.as_ref().map(|f| f.path.clone()), Some(path));
+        assert_eq!(
+            app.current_file.as_ref().map(|f| f.path.clone()),
+            Some(path)
+        );
     }
 
     #[test]
@@ -12599,7 +12681,10 @@ mod tests {
         app.subject_info.city = "Unsaved edit".into();
         app.refresh_dirty();
         assert!(app.dirty);
-        versions_msg(&mut app, versions::VersionsMsg::View(revisions(&path)[0].id.clone()));
+        versions_msg(
+            &mut app,
+            versions::VersionsMsg::View(revisions(&path)[0].id.clone()),
+        );
         assert!(app.viewing_revision.is_none());
         assert_eq!(app.subject_info.city, "Unsaved edit", "edits kept");
     }
@@ -12616,9 +12701,16 @@ mod tests {
         versions_msg(&mut app, versions::VersionsMsg::RestoreViewed);
         let after = revisions(&path);
         assert_eq!(after.len(), 4, "history grows by one");
-        assert_eq!(after[3].parents, [before[2].id.clone()], "parent is the previous head");
+        assert_eq!(
+            after[3].parents,
+            [before[2].id.clone()],
+            "parent is the previous head"
+        );
         assert_eq!(after[3].message.as_deref(), Some("Restored from v1"));
-        assert_eq!(after[3].status, sketch_core::sketchy::store::RevisionStatus::Draft);
+        assert_eq!(
+            after[3].status,
+            sketch_core::sketchy::store::RevisionStatus::Draft
+        );
         assert_eq!(&after[..3], &before[..], "old revisions untouched");
         let store = sketch_core::sketchy::store::Store::open(&path).unwrap();
         assert_eq!(store.revision(&before[0].id).unwrap(), old_doc);
@@ -12655,13 +12747,21 @@ mod tests {
         let dir = TempDir::new("versions_final");
         let (mut app, path) = three_version_app(&dir);
         versions_msg(&mut app, versions::VersionsMsg::MarkFinal);
-        assert!(app.dialog.as_ref().is_some_and(|d| d.input.is_some()), "asks for a note");
-        let _ = app.update(Message::Dialog(dialog::DialogMsg::Input("Signed off".into())));
+        assert!(
+            app.dialog.as_ref().is_some_and(|d| d.input.is_some()),
+            "asks for a note"
+        );
+        let _ = app.update(Message::Dialog(dialog::DialogMsg::Input(
+            "Signed off".into(),
+        )));
         let _ = app.update(Message::Dialog(dialog::DialogMsg::Ok));
         let history = revisions(&path);
         assert_eq!(history.len(), 4);
         let last = history.last().unwrap();
-        assert_eq!(last.status, sketch_core::sketchy::store::RevisionStatus::Final);
+        assert_eq!(
+            last.status,
+            sketch_core::sketchy::store::RevisionStatus::Final
+        );
         assert_eq!(last.message.as_deref(), Some("Signed off"));
         assert_eq!(app.save_state(), "Final \u{b7} v4");
         let rows = app.dock.versions.clone().unwrap();
@@ -12680,7 +12780,10 @@ mod tests {
         let dir = TempDir::new("versions_copy");
         let (mut app, path) = three_version_app(&dir);
         let first = revisions(&path)[0].id.clone();
-        let source_id = sketch_core::sketchy::store::Store::open(&path).unwrap().document_id().to_string();
+        let source_id = sketch_core::sketchy::store::Store::open(&path)
+            .unwrap()
+            .document_id()
+            .to_string();
         versions_msg(&mut app, versions::VersionsMsg::View(first.clone()));
         let copy = dir.0.join("copy.sketchy");
         let (_, requests) = file_dialogs::with_save_path(Some(copy.clone()), || {
@@ -12692,7 +12795,10 @@ mod tests {
         assert_eq!(history.len(), 1, "the snapshot is the first revision");
         assert_ne!(store.document_id(), source_id, "new document id");
         let head = store.head().unwrap();
-        assert_eq!(head.derived_from, Some(serde_json::json!({"document": source_id, "revision": first})));
+        assert_eq!(
+            head.derived_from,
+            Some(serde_json::json!({"document": source_id, "revision": first}))
+        );
         assert_eq!(head.revision.as_ref().unwrap().sequence, Some(1));
         let model = sketch_core::sketchy::convert::from_sketchy(&head).unwrap();
         assert_eq!(model["subjectInfo"]["city"], "Springfield");
@@ -12739,21 +12845,38 @@ mod tests {
         let before = std::fs::read(&legacy).unwrap();
         let (mut app2, _) = App::boot(1.0);
         let _ = app2.open_sketch_path(legacy.clone());
-        assert_eq!(app2.current_file.as_ref().unwrap().format, SketchFileFormat::Skx);
+        assert_eq!(
+            app2.current_file.as_ref().unwrap().format,
+            SketchFileFormat::Skx
+        );
         app2.drawing.lines[0].end = Pt::new(30.0, 0.0);
         let dest = dir.0.join("old.sketchy");
         let (_, requests) = file_dialogs::with_save_path(Some(dest.clone()), || {
             let _ = app2.save_to_file(false, false);
         });
-        assert_eq!(requests, ["Rodney.sketchy"], "Save asks, defaulting to .sketchy");
-        assert_eq!(std::fs::read(&legacy).unwrap(), before, "legacy file untouched");
+        assert_eq!(
+            requests,
+            ["Rodney.sketchy"],
+            "Save asks, defaulting to .sketchy"
+        );
+        assert_eq!(
+            std::fs::read(&legacy).unwrap(),
+            before,
+            "legacy file untouched"
+        );
         assert!(dest.is_file());
-        assert_eq!(app2.current_file.as_ref().unwrap().format, SketchFileFormat::Sketchy);
+        assert_eq!(
+            app2.current_file.as_ref().unwrap().format,
+            SketchFileFormat::Sketchy
+        );
         // Explicit Save As to a legacy name still works.
         let legacy2 = dir.0.join("again.skx");
         save_as_path(&mut app2, &legacy2);
         assert!(sketch_core::skx::read(&std::fs::read(&legacy2).unwrap()).is_ok());
-        assert_eq!(app2.current_file.as_ref().unwrap().format, SketchFileFormat::Skx);
+        assert_eq!(
+            app2.current_file.as_ref().unwrap().format,
+            SketchFileFormat::Skx
+        );
         // ...and once chosen explicitly, Save keeps writing it without asking.
         let before = std::fs::read(&legacy2).unwrap();
         app2.drawing.lines[0].end = Pt::new(31.0, 0.0);
@@ -12778,7 +12901,11 @@ mod tests {
         assert_eq!(app.toasts.text(), Some(HISTORY_LOST), "not silent");
         assert_eq!(revisions(&second).len(), 1, "this version only");
         assert_eq!(app.current_file.as_ref().unwrap().path, second);
-        assert_eq!(std::fs::read_dir(&dir.0).unwrap().count(), 1, "no temp file left behind");
+        assert_eq!(
+            std::fs::read_dir(&dir.0).unwrap().count(),
+            1,
+            "no temp file left behind"
+        );
     }
 
     #[test]
@@ -12798,7 +12925,11 @@ mod tests {
         std::fs::write(&path, b"not a store").unwrap();
         app.toasts = toast::Toasts::default();
         let _ = app.update(Message::SaveFile);
-        assert!(app.toasts.text().unwrap().starts_with("Could not save sketch:"));
+        assert!(app
+            .toasts
+            .text()
+            .unwrap()
+            .starts_with("Could not save sketch:"));
         assert_eq!(std::fs::read(&path).unwrap(), b"not a store");
     }
 
@@ -12831,8 +12962,15 @@ mod tests {
         save_as_path(&mut fresh, &path);
         let after = revisions(&path);
         assert_eq!(after.len(), 3, "appended, history kept");
-        assert_eq!(&after[..2], &before[..], "earlier revisions, including the Final, intact");
-        assert_eq!(after[1].status, sketch_core::sketchy::store::RevisionStatus::Final);
+        assert_eq!(
+            &after[..2],
+            &before[..],
+            "earlier revisions, including the Final, intact"
+        );
+        assert_eq!(
+            after[1].status,
+            sketch_core::sketchy::store::RevisionStatus::Final
+        );
         assert_eq!(after[2].parents, [before[1].id.clone()]);
         assert_eq!(fresh.toasts.text(), None, "an ordinary save says nothing");
     }
@@ -12847,13 +12985,22 @@ mod tests {
             app.subject_info.city = "Unsaved edit".into();
             let _ = app.autosave_tick(true);
             let (_, snapshot) = autosave::latest().expect("snapshot");
-            assert!(snapshot.get("recoverySource").is_some(), "the snapshot names its source");
+            assert!(
+                snapshot.get("recoverySource").is_some(),
+                "the snapshot names its source"
+            );
             let (mut fresh, _) = App::boot(1.0);
             fresh.autosave.recovery = autosave::latest();
             let _ = fresh.recover_autosave(true);
-            assert_eq!(fresh.current_file.as_ref().map(|f| f.path.clone()), Some(path.clone()));
+            assert_eq!(
+                fresh.current_file.as_ref().map(|f| f.path.clone()),
+                Some(path.clone())
+            );
             assert_eq!(fresh.subject_info.city, "Unsaved edit");
-            assert!(fresh.root_extra.get("recoverySource").is_none(), "not carried into the file");
+            assert!(
+                fresh.root_extra.get("recoverySource").is_none(),
+                "not carried into the file"
+            );
             // Save appends to the source, with no dialog.
             let (_, requests) = file_dialogs::with_save_path(None, || {
                 let _ = fresh.update(Message::SaveFile);
@@ -12882,7 +13029,11 @@ mod tests {
         let _ = app.update(Message::Dialog(dialog::DialogMsg::Ok));
         assert_eq!(app.save_state(), "Final \u{b7} v4");
         let _ = app.update(Message::Key(input::KeyCmd::Save));
-        assert_eq!(revisions(&path).len(), 4, "a draft over an identical final is a no-op");
+        assert_eq!(
+            revisions(&path).len(),
+            4,
+            "a draft over an identical final is a no-op"
+        );
         assert_eq!(app.save_state(), "Final \u{b7} v4");
         assert!(app.save_is_final());
     }
@@ -12937,11 +13088,19 @@ mod tests {
     fn assert_unedited_save_is_unchanged(app: &mut App, path: &std::path::Path) {
         let before = revisions(path).len();
         let _ = app.update(Message::SaveFile);
-        assert_eq!(revisions(path).len(), before, "an unedited Save is unchanged");
+        assert_eq!(
+            revisions(path).len(),
+            before,
+            "an unedited Save is unchanged"
+        );
     }
 
     fn head_version_of(path: &std::path::Path) -> String {
-        sketch_core::sketchy::store::Store::open(path).unwrap().head().unwrap().format_version
+        sketch_core::sketchy::store::Store::open(path)
+            .unwrap()
+            .head()
+            .unwrap()
+            .format_version
     }
 
     #[test]
@@ -12967,7 +13126,11 @@ mod tests {
             versions_msg(&mut app, versions::VersionsMsg::SaveCopy(first));
         });
         assert_eq!(requests.len(), 1);
-        assert_eq!(head_version_of(&copy), "0.2", "the copy's first revision is 0.2");
+        assert_eq!(
+            head_version_of(&copy),
+            "0.2",
+            "the copy's first revision is 0.2"
+        );
         let (mut reopened, _) = App::boot(1.0);
         let _ = reopened.open_sketch_path(copy.clone());
         assert_unedited_save_is_unchanged(&mut reopened, &copy);
@@ -12986,14 +13149,20 @@ mod tests {
         let (_, _) = file_dialogs::with_save_path(Some(alias.clone()), || {
             versions_msg(&mut app, versions::VersionsMsg::SaveCopy(first));
         });
-        assert_eq!(app.toasts.text(), Some("Choose a different file for the copy."));
+        assert_eq!(
+            app.toasts.text(),
+            Some("Choose a different file for the copy.")
+        );
         assert_eq!(std::fs::read(&path).unwrap(), before);
         assert_eq!(revisions(&path).len(), 3);
         // Save As onto it appends in place and leaves the alias a link.
         app.subject_info.city = "Via alias".into();
         save_as_path(&mut app, &alias);
         assert_eq!(revisions(&path).len(), 4);
-        assert!(std::fs::symlink_metadata(&alias).unwrap().file_type().is_symlink());
+        assert!(std::fs::symlink_metadata(&alias)
+            .unwrap()
+            .file_type()
+            .is_symlink());
     }
 
     #[test]
@@ -13001,12 +13170,11 @@ mod tests {
         let dir = TempDir::new("sketchy_json_doc_id");
         let (mut app, _) = App::boot(1.0);
         let _ = app.open_sketch_path(sketchy_example("single-family"));
-        let json_id = sketch_core::sketchy::read(
-            &std::fs::read(sketchy_example("single-family")).unwrap(),
-        )
-        .unwrap()
-        .unwrap()
-        .id;
+        let json_id =
+            sketch_core::sketchy::read(&std::fs::read(sketchy_example("single-family")).unwrap())
+                .unwrap()
+                .unwrap()
+                .id;
         let path = dir.0.join("house.sketchy");
         save_as_path(&mut app, &path);
         let store = sketch_core::sketchy::store::Store::open(&path).unwrap();
@@ -13017,7 +13185,10 @@ mod tests {
     fn unknown_or_missing_extension_gets_a_sketchy_suffix() {
         let dir = TempDir::new("sketchy_suffix");
         let mut app = rich_app();
-        for (given, expected) in [("house.txt", "house.txt.sketchy"), ("plain", "plain.sketchy")] {
+        for (given, expected) in [
+            ("house.txt", "house.txt.sketchy"),
+            ("plain", "plain.sketchy"),
+        ] {
             save_as_path(&mut app, &dir.0.join(given));
             let path = dir.0.join(expected);
             assert!(path.is_file(), "{expected}");
@@ -13048,14 +13219,21 @@ mod tests {
         };
         let mut props = area_props::AreaProperties::from_area(&app.drawing.polygons[0]);
         props.name = "Renamed".into();
-        assert!(area_props::apply_properties(&mut app.drawing, &area, &props));
+        assert!(area_props::apply_properties(
+            &mut app.drawing,
+            &area,
+            &props
+        ));
         let (_, requests) = file_dialogs::with_save_path(None, || {
             let _ = app.update(Message::SaveFile);
         });
         assert!(requests.is_empty());
         assert_eq!(revisions(&path).len(), 2);
         let saved = decode_store(&path).unwrap().model;
-        assert_eq!(saved["sketchy_other"]["site"], model["sketchy_other"]["site"]);
+        assert_eq!(
+            saved["sketchy_other"]["site"],
+            model["sketchy_other"]["site"]
+        );
         assert_eq!(saved["mystery_root"], model["mystery_root"]);
         let (before, after) = (&model["pages"][0], &saved["pages"][0]);
         assert_eq!(after["mystery_page"], 7);
@@ -13077,7 +13255,11 @@ mod tests {
         let bad = dir.0.join("x.sketchy");
         std::fs::write(&bad, [0x13u8, 0x37, 0xc0, 0xff, 0xee, 0x00, 0x01, 0x02]).unwrap();
         let _ = app.open_sketch_path(bad);
-        assert!(app.toasts.text().unwrap().starts_with("Could not open sketch:"));
+        assert!(app
+            .toasts
+            .text()
+            .unwrap()
+            .starts_with("Could not open sketch:"));
         assert_eq!(app.current_file, before);
     }
 
@@ -13093,9 +13275,16 @@ mod tests {
         app.drawing.lines[0].end = Pt::new(16.0, 0.0);
         save_as_path(&mut app, &second);
         assert_eq!(revisions(&first).len(), 2, "source store untouched");
-        assert_eq!(revisions(&second).len(), 3, "copy keeps history plus the new revision");
+        assert_eq!(
+            revisions(&second).len(),
+            3,
+            "copy keeps history plus the new revision"
+        );
         let doc = |p: &std::path::Path| {
-            sketch_core::sketchy::store::Store::open(p).unwrap().document_id().to_owned()
+            sketch_core::sketchy::store::Store::open(p)
+                .unwrap()
+                .document_id()
+                .to_owned()
         };
         assert_eq!(doc(&first), doc(&second));
         assert_eq!(app.current_file.as_ref().unwrap().path, second);
@@ -13106,23 +13295,38 @@ mod tests {
         let dir = TempDir::new("sketchy_display_walls");
         let (mut app, _) = App::boot(1.0);
         let _ = app.open_sketch_path(sketchy_example("single-family"));
-        assert!(app.drawing.lines.iter().any(|l| l.extra.contains_key("sketchy_display")));
-        let original = sketch_core::sketchy::read(
-            &std::fs::read(sketchy_example("single-family")).unwrap(),
-        )
-        .unwrap()
-        .unwrap();
+        assert!(app
+            .drawing
+            .lines
+            .iter()
+            .any(|l| l.extra.contains_key("sketchy_display")));
+        let original =
+            sketch_core::sketchy::read(&std::fs::read(sketchy_example("single-family")).unwrap())
+                .unwrap()
+                .unwrap();
         let path = dir.0.join("house.sketchy");
         let (_, requests) = file_dialogs::with_save_path(Some(path.clone()), || {
             let _ = app.update(Message::SaveFile);
         });
         assert_eq!(requests.len(), 1, "a Sketchy JSON source always asks");
-        let head = sketch_core::sketchy::store::Store::open(&path).unwrap().head().unwrap();
+        let head = sketch_core::sketchy::store::Store::open(&path)
+            .unwrap()
+            .head()
+            .unwrap();
         let level = |d: &sketch_core::sketchy::model::Document| {
-            d.structures[0].levels.iter().find(|l| l.id == "l1").cloned().unwrap()
+            d.structures[0]
+                .levels
+                .iter()
+                .find(|l| l.id == "l1")
+                .cloned()
+                .unwrap()
         };
         assert_eq!(level(&original).walls.len(), 0, "fixture has no real walls");
-        assert_eq!(level(&head).walls.len(), 0, "display walls are not written back");
+        assert_eq!(
+            level(&head).walls.len(),
+            0,
+            "display walls are not written back"
+        );
         // The app adds its own area-code classification; everything the file
         // said about each space (identity, use, outline, foreign codes) stays.
         let spaces = |d: &sketch_core::sketchy::model::Document| {
@@ -13132,7 +13336,15 @@ mod tests {
                 .iter()
                 .map(|s| {
                     let mut v = serde_json::to_value(s).unwrap();
-                    let keep = ["id", "name", "use", "finished", "enclosure", "shape", "notes"];
+                    let keep = [
+                        "id",
+                        "name",
+                        "use",
+                        "finished",
+                        "enclosure",
+                        "shape",
+                        "notes",
+                    ];
                     let mut out = serde_json::Map::new();
                     for key in keep {
                         if let Some(value) = v.get_mut(key) {
@@ -13154,7 +13366,9 @@ mod tests {
         // Numbers compare as f64 (a stored `0` and `0.0` are the same length).
         fn floats(v: &serde_json::Value) -> serde_json::Value {
             match v {
-                serde_json::Value::Number(n) => serde_json::json!((n.as_f64().unwrap_or(0.0) * 1e9).round() / 1e9),
+                serde_json::Value::Number(n) => {
+                    serde_json::json!((n.as_f64().unwrap_or(0.0) * 1e9).round() / 1e9)
+                }
                 serde_json::Value::Array(a) => a.iter().map(floats).collect(),
                 serde_json::Value::Object(o) => {
                     o.iter().map(|(k, v)| (k.clone(), floats(v))).collect()
@@ -13180,7 +13394,10 @@ mod tests {
         .unwrap();
         let path = dir.0.join("commercial.sketchy");
         save_as_path(&mut app, &path);
-        let head = sketch_core::sketchy::store::Store::open(&path).unwrap().head().unwrap();
+        let head = sketch_core::sketchy::store::Store::open(&path)
+            .unwrap()
+            .head()
+            .unwrap();
         assert_eq!(
             sketch_core::sketchy::unshown_summary(&head),
             sketch_core::sketchy::unshown_summary(&original)
@@ -13189,7 +13406,10 @@ mod tests {
         let (mut again, _) = App::boot(1.0);
         let _ = again.open_sketch_path(path);
         let text = again.toasts.text().expect("unshown toast");
-        assert!(text.starts_with("Opened. Not shown in Sketch Rust: "), "{text}");
+        assert!(
+            text.starts_with("Opened. Not shown in Sketch Rust: "),
+            "{text}"
+        );
     }
 
     #[test]
@@ -13209,7 +13429,11 @@ mod tests {
             Some("This file is read-only \u{2014} use Save As to keep your changes")
         );
         assert!(fresh.current_file.as_ref().unwrap().read_only);
-        assert_eq!(fresh.save_state(), "Read-only \u{b7} v1", "untouched read-only store");
+        assert_eq!(
+            fresh.save_state(),
+            "Read-only \u{b7} v1",
+            "untouched read-only store"
+        );
         fresh.subject_info.city = "Edited".into();
         fresh.refresh_dirty();
         assert_eq!(fresh.save_state(), "Unsaved \u{b7} v1");
@@ -13260,13 +13484,25 @@ mod tests {
         let (mut fresh, _) = App::boot(1.0);
         canvas_theme::set(canvas_theme::CanvasTheme::Dark);
         let _ = fresh.open_sketch_path(path.clone());
-        assert_eq!(canvas_theme::current(), canvas_theme::CanvasTheme::Dark, "open");
+        assert_eq!(
+            canvas_theme::current(),
+            canvas_theme::CanvasTheme::Dark,
+            "open"
+        );
         canvas_theme::set(canvas_theme::CanvasTheme::Blue);
         let first = revisions(&path)[0].id.clone();
         versions_msg(&mut app, versions::VersionsMsg::View(first));
-        assert_eq!(canvas_theme::current(), canvas_theme::CanvasTheme::Blue, "view");
+        assert_eq!(
+            canvas_theme::current(),
+            canvas_theme::CanvasTheme::Blue,
+            "view"
+        );
         versions_msg(&mut app, versions::VersionsMsg::RestoreViewed);
-        assert_eq!(canvas_theme::current(), canvas_theme::CanvasTheme::Blue, "restore");
+        assert_eq!(
+            canvas_theme::current(),
+            canvas_theme::CanvasTheme::Blue,
+            "restore"
+        );
         canvas_theme::set(canvas_theme::CanvasTheme::Light);
     }
 
@@ -13281,7 +13517,10 @@ mod tests {
             let _ = again.update(Message::SaveFile);
             counts.push(revisions(&path).len());
         }
-        assert_eq!(counts[1], counts[0], "the second round adds nothing: {counts:?}");
+        assert_eq!(
+            counts[1], counts[0],
+            "the second round adds nothing: {counts:?}"
+        );
         assert_eq!(counts[2], counts[1], "nor does any later round: {counts:?}");
         assert_eq!(counts[3], counts[2], "{counts:?}");
     }
@@ -13311,7 +13550,8 @@ mod tests {
         let (mut app, _) = App::boot(1.0);
         let next = app.drawing.gen_id();
         app.drawing.next_id_for_tests(next);
-        app.layers.create_layer_raw(format!("layer-{next}"), "Taken".into(), false);
+        app.layers
+            .create_layer_raw(format!("layer-{next}"), "Taken".into(), false);
         let id = app.fresh_layer_id();
         assert_ne!(id, format!("layer-{next}"));
         assert!(app.layers.layer(&id).is_none(), "{id} is unused");
@@ -13362,8 +13602,8 @@ mod tests {
     fn rich_sketch_round_trips_through_sketchy() {
         let mut app = rich_app();
         let model = app.build_save_model();
-        let doc = sketch_core::sketchy::convert::to_sketchy(&model, Some("doc-1"))
-            .expect("to_sketchy");
+        let doc =
+            sketch_core::sketchy::convert::to_sketchy(&model, Some("doc-1")).expect("to_sketchy");
         let back = sketch_core::sketchy::convert::from_sketchy(&doc).expect("from_sketchy");
         let (mut fresh, _) = App::boot(1.0);
         let _ = fresh.apply_model(&back, "x");

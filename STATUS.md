@@ -1,5 +1,35 @@
 # Sketch Rust — STATUS ledger
 
+UAD 3.6 F-1 area types (issue #19). The bundled area-code table now carries the
+six URAR Appendix F-1 area-breakdown fields. `GLA1`–`GLA10` keep their codes but
+describe themselves as "Finished Above Grade"; `BSMT` is "Finished Below Grade"
+and `BSMT2` "Unfinished Below Grade" — no "gross living area" wording survives
+in the table, and because the codes did not change, existing `.skx` files and
+the Appraise-It mapping keep working. Three new built-ins fill the missing
+fields: `GLAN` "Finished AG Nonstd" (10.004), `GLAU` "Unfinished AG" (10.005)
+and `BSMTN` "Finished BSMT Nonstd" (10.007), all `includeInGLA: false`, so the
+standard finished total is unchanged and each gets its own line in the Calcs
+tree and the Area Breakdown SUMMARY (both are per-code, so no report text
+changed). `geometry::area_codes::f1_slot` is the single code→field mapping
+(URAR order), pinned by a test that also proves GBA/garage/porch/UND and
+`GLA11` have no field. A stored `area-codes.json` from an older build is
+merged with the built-ins it lacks once per `DEFAULT_CODES_REVISION` (marker
+file `area-codes.defaults`), so users who edited types still get the new
+defaults while a later deletion sticks. `appraise_it` now writes all six
+living-unit fields (`FinishedAreaAboveGrade{,Nonstandard}`,
+`UnfinishedAreaAboveGrade`, `FinishedAreaBelowGrade{,Nonstandard}`,
+`UnfinishedAreaBelowGrade`): `AREA_FIELDS`/`UnitAreaTotals` grew from 3 to 6,
+the summary shows each slot, and the read-back-and-rollback path is unchanged.
+Field IDs come from the FNMA-URAR-0924 "Area Breakdown" block in the installed
+client (`Validation Rules\FNMA-URAR-0924.xml`, and the form definition embedded
+in `Bin\Sfrep.AppraiseIt.Client.dll`, which pairs each label with its
+`TextField Id`); the three IDs already in use appear there under the same
+names, but the three new ones are NOT yet verified against a live report's
+living-unit data store — do that before claiming the COM transfer works.
+Deferred: the issue's optional item 4 (a per-sketch ANSI/AMS measurement
+standard printed with the area summary) — it would change the ported Area
+Breakdown text, so it needs its own setting design.
+
 0.3.12 also closes the Pages navigator when a page is picked (user request:
 selecting a page left the panel open, forcing a separate close click).
 `NavMsg::Go` in `pages_nav_msg` (main.rs) now sets `pages_nav_open = false`,

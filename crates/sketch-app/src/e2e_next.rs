@@ -3212,7 +3212,7 @@ fn p11_area_type_editor_and_default_colors_across_sizes() {
             h.send(Message::Key(KeyCmd::Enter));
             h.send(Message::Rail(crate::view_state::RailTool::DrawExterior));
             let mut app = state(h);
-            assert_eq!(app.area_codes.len(), 26);
+            assert_eq!(app.area_codes.len(), 29);
             assert_eq!(app.area_codes[1].code, "GLA2");
             assert_eq!(app.area_codes[1].color, "#0987A0");
             assert_eq!(app.area_codes[2].color, "#B83280");
@@ -3237,7 +3237,7 @@ fn p11_area_type_editor_and_default_colors_across_sizes() {
         h.script(&["click \"Types\"", "click \"Edit types\""]);
         assert!(h.shows("Area types"));
         assert!(h.shows("Built in"));
-        assert!(h.shows("Count in gross living area"));
+        assert!(h.shows("Count in finished above grade"));
 
         // Edit fields on selected GLA1 and open ColorDialog for Line & Fill.
         h.send(Message::Ui(UiMsg::TypeEditor(TypeMsg::Name(
@@ -3400,7 +3400,7 @@ fn p11_area_type_editor_and_default_colors_across_sizes() {
             TypeMsg::ConfirmRestoreDefaults,
         )));
         let _ = app.update(Message::Ui(UiMsg::TypeEditor(TypeMsg::Save)));
-        assert_eq!(app.area_codes.len(), 26);
+        assert_eq!(app.area_codes.len(), 29);
         assert!(app.area_codes.iter().any(|c| c.code == "GAR"));
         let _ = std::fs::remove_dir_all(&tmp_dir);
     }

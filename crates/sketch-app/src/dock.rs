@@ -641,9 +641,25 @@ mod area_tree_tests {
         );
         let gla = &model.groups[0];
         assert_eq!(gla.label, "Living space");
-        assert_eq!(gla.tiles.len(), 4);
+        // GLA1–GLA4 plus the two F-1 above-grade types.
+        assert_eq!(gla.tiles.len(), 6);
         assert_eq!(gla.tiles[0].0, "First Floor");
         assert_eq!(gla.tiles[0].1, "GLA1");
+        assert_eq!(gla.tiles[4].1, "GLAN");
+        assert_eq!(gla.tiles[5].1, "GLAU");
+        let basement = model
+            .groups
+            .iter()
+            .find(|g| g.group == "BSMT")
+            .expect("basement group");
+        assert_eq!(
+            basement
+                .tiles
+                .iter()
+                .map(|(_, code, _)| code.as_str())
+                .collect::<Vec<_>>(),
+            vec!["BSMT", "BSMTN", "BSMT2"]
+        );
     }
 
     #[test]

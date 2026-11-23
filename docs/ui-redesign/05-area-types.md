@@ -110,7 +110,7 @@ type to open its form with a back arrow).
 | Group | Pick list of existing groups, plus "New group" | |
 | Multiplier | Number | Finite |
 | Sign | Segmented: Adds, Subtracts | maps to `positive` |
-| Count in gross living area | Checkbox | `include_in_gla` |
+| Count in finished above grade | Checkbox | `include_in_gla` |
 | Line colour | Swatch that opens the colour dialog, plus hex text | Valid hex |
 | Fill colour | Same | |
 | Fill style | Pick list: Solid, None, Diagonal, Crosshatch, Dots | |

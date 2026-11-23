@@ -178,7 +178,7 @@ pub const TOPICS: &[Topic] = &[
     Topic {
         title: "Appraise-It reports",
         blocks: &[
-            Para("Keep your editable source in a .skx file. On Windows, use Send to report in the top bar (and the controls below) to check an open Appraise-It Pro report, preview pages, optionally transfer GLA totals, and append sketch addenda."),
+            Para("Keep your editable source in a .skx file. On Windows, use Send to report in the top bar (and the controls below) to check an open Appraise-It Pro report, preview pages, optionally transfer the living unit's area totals (all six URAR area-breakdown fields), and append sketch addenda."),
             Heading("Export a sketch for your report"),
             Steps(&[
                 "Use Send to report when Appraise-It Pro is open, or Export > Export PNG / Export PDF for manual attachment.",
@@ -455,7 +455,10 @@ mod tests {
 
     #[test]
     fn saving_topic_describes_sketchy_versions() {
-        let topic = TOPICS.iter().find(|t| t.title == "Saving and recovery").expect("topic");
+        let topic = TOPICS
+            .iter()
+            .find(|t| t.title == "Saving and recovery")
+            .expect("topic");
         let text: String = topic
             .blocks
             .iter()
@@ -465,7 +468,16 @@ mod tests {
             })
             .collect::<Vec<_>>()
             .join("\n");
-        for needle in [".sketchy", "Version History", "read-only", "Restore this version", "Save a copy", "Mark as Final", "Final · v3", "Read-only · v3"] {
+        for needle in [
+            ".sketchy",
+            "Version History",
+            "read-only",
+            "Restore this version",
+            "Save a copy",
+            "Mark as Final",
+            "Final · v3",
+            "Read-only · v3",
+        ] {
             assert!(text.contains(needle), "guide lacks {needle:?}");
         }
     }
