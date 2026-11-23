@@ -1444,11 +1444,16 @@ fn arrow_nudge_of_one_selected_wall_moves_the_whole_wall() {
 #[test]
 fn the_areas_list_deletes_areas_and_layers_and_offers_no_layer_export() {
     let (area, _, _) = tree_ids();
-    // The row menu: Delete area, and no Export any more.
+    // The row menu: Delete area / Edit / Hide / Lock / Close. Layer Export was
+    // removed; the topbar still has a global "Export" on Apple hosts, so do
+    // not search the whole tree for that word.
     tree_harness!(h);
     h.send(Message::LayerRowMenu(area.clone()));
     assert!(h.shows("Delete area"));
-    assert!(!h.shows("Export"), "single-layer export is gone");
+    assert!(h.shows("Edit area…"));
+    assert!(h.shows("Hide"));
+    assert!(h.shows("Lock"));
+    assert!(h.shows("Close menu"));
 
     // Delete area: the area, its walls and its layer all go.
     tree_harness!(h);

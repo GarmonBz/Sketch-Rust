@@ -337,10 +337,7 @@ mod native_dialogs {
         }
     }
 
-    pub(super) fn with_start_dir<D: NativeDialog>(
-        dialog: D,
-        dir: Option<std::path::PathBuf>,
-    ) -> D {
+    pub(super) fn with_start_dir<D: NativeDialog>(dialog: D, dir: Option<std::path::PathBuf>) -> D {
         match dir {
             Some(dir) => dialog.set_directory(dir),
             None => dialog,
@@ -396,12 +393,16 @@ mod native_dialogs {
     }
 }
 
+// Only the dialog unit tests need these names in this module; production
+// dialogs call them inside `native_dialogs` itself.
 #[cfg(not(target_arch = "wasm32"))]
+pub use native_dialogs::{pick_file_async, save_file_async};
+#[cfg(all(not(target_arch = "wasm32"), test))]
 use native_dialogs::{with_start_dir, NativeDialog};
-#[cfg(not(target_arch = "wasm32"))]
-pub use native_dialogs::{
-    pick_file_async, pick_files_async, save_file_as_async, save_file_async,
-};
+// Call sites for multi-pick / Save As are `#[cfg(not(test))]` (tests inject
+// paths), so re-export them only for non-test builds.
+#[cfg(all(not(target_arch = "wasm32"), not(test)))]
+pub use native_dialogs::{pick_files_async, save_file_as_async};
 
 #[cfg(target_arch = "wasm32")]
 pub async fn pick_file_async(
