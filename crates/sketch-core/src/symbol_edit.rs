@@ -3,8 +3,9 @@
 //! Every edit works on the raw JSON, so fields this port does not model
 //! survive, and goes through [`rewrite`]: the file as it was is kept beside it
 //! as `<name>.bak`, the new one is written whole and swapped in, so a failed
-//! write leaves the library as it was. An edit that changes nothing writes
-//! nothing.
+//! write leaves the library as it was. A read-only target is refused before
+//! any swap (Unix can otherwise rename over mode `0444`). An edit that
+//! changes nothing writes nothing.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -17,6 +18,20 @@ use crate::symbols::{
 
 type Edit = Result<usize, SymbolLibraryError>;
 
+/// Refuses a read-only library file. On Unix, `rename` can replace a mode
+/// `0444` file in a writable directory; Windows often cannot. Checking here
+/// keeps "library not writable" behaviour the same on every host.
+fn ensure_library_writable(path: &Path) -> std::io::Result<()> {
+    let meta = std::fs::metadata(path)?;
+    if meta.permissions().readonly() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            format!("{} is not writable", path.display()),
+        ));
+    }
+    Ok(())
+}
+
 /// Runs `edit` on the library document at `path`; when it reports a non-zero
 /// count the document is saved (see the module docs) and the count returned.
 fn rewrite(path: &Path, edit: impl FnOnce(&mut Value) -> usize) -> Edit {
@@ -26,6 +41,7 @@ fn rewrite(path: &Path, edit: impl FnOnce(&mut Value) -> usize) -> Edit {
     if changed == 0 {
         return Ok(0);
     }
+    ensure_library_writable(path)?;
     if let Some(count) = doc
         .get("symbols")
         .and_then(Value::as_object)
@@ -789,6 +805,28 @@ mod tests {
     }
     fn ids(v: &[&str]) -> BTreeSet<String> {
         v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn delete_refuses_a_read_only_library_and_leaves_it_unchanged() {
+        let f = Fixture::new("readonly");
+        let path = f.path();
+        let before = std::fs::read(&path).unwrap();
+        let mut perms = std::fs::metadata(&path).unwrap().permissions();
+        perms.set_readonly(true);
+        std::fs::set_permissions(&path, perms.clone()).unwrap();
+        let err = delete(&path, &ids(&["a/one"])).expect_err("read-only must fail");
+        assert!(
+            matches!(err, SymbolLibraryError::Io(ref e) if e.kind() == std::io::ErrorKind::PermissionDenied),
+            "{err:?}"
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert!(!f.0.join("symbols.json.bak").exists());
+        assert!(!f.0.join("symbols.json.tmp").exists());
+        #[allow(clippy::permissions_set_readonly_false)]
+        perms.set_readonly(false);
+        std::fs::set_permissions(&path, perms).unwrap();
+        assert_eq!(delete(&path, &ids(&["a/one"])).unwrap(), 1);
     }
 
     #[test]

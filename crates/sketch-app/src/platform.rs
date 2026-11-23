@@ -393,16 +393,16 @@ mod native_dialogs {
     }
 }
 
-// Test builds resolve picks through the TEST_PICKER boundary instead of these
-// dialogs, so some of the re-exports are unused there.
+// Only the dialog unit tests need these names in this module; production
+// dialogs call them inside `native_dialogs` itself.
 #[cfg(not(target_arch = "wasm32"))]
-#[cfg_attr(test, allow(unused_imports))]
-pub use native_dialogs::{pick_file_async, pick_files_async, save_file_as_async, save_file_async};
-// This module's tests drive the anchor contract through these two; a normal
-// build only resolves them inside `native_dialogs`.
-#[cfg(not(target_arch = "wasm32"))]
-#[cfg_attr(not(test), allow(unused_imports))]
+pub use native_dialogs::{pick_file_async, save_file_async};
+#[cfg(all(not(target_arch = "wasm32"), test))]
 use native_dialogs::{with_start_dir, NativeDialog};
+// Call sites for multi-pick / Save As are `#[cfg(not(test))]` (tests inject
+// paths), so re-export them only for non-test builds.
+#[cfg(all(not(target_arch = "wasm32"), not(test)))]
+pub use native_dialogs::{pick_files_async, save_file_as_async};
 
 #[cfg(target_arch = "wasm32")]
 pub async fn pick_file_async(

@@ -1,7 +1,8 @@
 # Building Sketch Rust on macOS
 
-Apple Silicon (`aarch64-apple-darwin`) packaging for a local/internal `.app`.
-Windows remains the primary shipping platform (MSI / portable zip).
+Apple Silicon (`aarch64-apple-darwin`) packaging for a `.app` and optional `.dmg`.
+Windows remains the primary shipping platform (MSI / portable zip); macOS release CI
+publishes an unsigned arm64 disk image on `release/*` branches.
 
 Design notes: [docs/superpowers/specs/2026-11-20-macos-app-bundle-design.md](superpowers/specs/2026-11-20-macos-app-bundle-design.md).
 
@@ -32,12 +33,24 @@ cargo build --release -p sketch-app --target aarch64-apple-darwin
 
 Produces `dist/macos/Sketch Rust.app` (arm64 binary, `AppIcon.icns`, symbol library beside the executable). Requires [`cargo-bundle`](https://crates.io/crates/cargo-bundle) 0.12 (the script installs it if missing).
 
+## Package a `.dmg`
+
+```bash
+./tools/package-macos-dmg.sh
+```
+
+Wraps the `.app` in `dist/SketchRust-<version>-macos-arm64.dmg` (plus a matching `.sha256`).
+Pass `--skip-build` if `target/aarch64-apple-darwin/release/sketch-app` is already built.
+
+Release CI (`.github/workflows/macos-release.yml`) runs this on `release/*` and uploads the
+disk image (and stable alias `SketchRust-macos-arm64.dmg`) to the GitHub release.
+
 Bundle metadata lives in `crates/sketch-app/Cargo.toml` under `[package.metadata.bundle]`.
 `[package.metadata.bundle.osx].info_plist_exts` appends
 `assets/macos/info_plist_ext.xml` (includes `NSBluetoothAlwaysUsageDescription`
 so DISTO / CoreBluetooth prompts instead of terminating the process).
 
-**Out of scope for this pass:** Developer ID signing, notarization, Sparkle, and universal (Intel + ARM) binaries.
+**Still out of scope:** Developer ID signing, notarization, Sparkle, and universal (Intel + ARM) binaries. Unsigned DMGs need right-click → Open the first time.
 
 ## App icon
 
