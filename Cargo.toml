@@ -14,3 +14,10 @@ web-time = "1"
 
 [profile.release]
 lto = "thin"
+
+# Safari 26 WebGPU rejects StagingBelt frames that encode two copies from one
+# still-mapped chunk (wgpu#10460). Chrome accepts them. Until upstream ships a
+# fix for 27.x, close the active chunk before each wasm32 allocation so iced
+# can paint on Safari.
+[patch.crates-io]
+wgpu = { path = "vendor/wgpu" }
