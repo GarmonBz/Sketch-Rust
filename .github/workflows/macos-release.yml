@@ -1,0 +1,138 @@
+name: macOS release
+
+on:
+  push:
+    branches: ['release/*']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Upload DMG to the GitHub release for this version'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    # Apple Silicon runner (matches aarch64-apple-darwin packaging).
+    runs-on: macos-14
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Validate release version
+        run: |
+          version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -1)"
+          if [[ -z "${version}" ]]; then
+            echo "version not found in Cargo.toml" >&2
+            exit 1
+          fi
+          ref="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_EVENT_NAME}" == "push" && "${ref}" != "release/${version}" ]]; then
+            echo "Release branch ${ref} does not match Cargo.toml version ${version}" >&2
+            exit 1
+          fi
+          echo "RELEASE_VERSION=${version}" >> "$GITHUB_ENV"
+
+      - name: Set up Rust
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          rustup target add aarch64-apple-darwin
+          cargo fetch --locked
+
+      - name: Cache cargo-bundle
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-bundle
+          key: cargo-bundle-0.12.0-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Install cargo-bundle
+        run: |
+          if ! command -v cargo-bundle >/dev/null 2>&1; then
+            cargo install cargo-bundle --locked --version 0.12.0
+          fi
+
+      - name: Test workspace
+        timeout-minutes: 30
+        run: cargo test --workspace --no-default-features --locked -- --test-threads=1 --nocapture
+
+      - name: Compile optimized application
+        run: cargo build --release --locked -p sketch-app --target aarch64-apple-darwin
+
+      - name: Package .app and .dmg
+        run: |
+          chmod +x tools/package-macos.sh tools/package-macos-dmg.sh
+          ./tools/package-macos-dmg.sh --skip-build
+
+      - name: Make checked release files available
+        uses: actions/upload-artifact@v6
+        with:
+          name: macos-release-files
+          path: |
+            dist/SketchRust-*-macos-arm64.dmg
+            dist/SketchRust-*-macos-arm64.dmg.sha256
+            dist/macos/Sketch Rust.app
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish macOS assets to release
+        if: github.event_name == 'push' || inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_VERSION}"
+          tag="v${version}"
+          notes="docs/RELEASE_${version}.md"
+          if [[ ! -f "$notes" ]]; then
+            echo "Missing release notes: $notes" >&2
+            exit 1
+          fi
+          dmg="dist/SketchRust-${version}-macos-arm64.dmg"
+          checksum="${dmg}.sha256"
+          test -f "$dmg"
+          test -f "$checksum"
+
+          # Windows job usually creates the GitHub release; wait, then upload (or create if absent).
+          release_ready=0
+          for i in $(seq 1 40); do
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              release_ready=1
+              break
+            fi
+            echo "Waiting for release ${tag} (${i}/40)…"
+            sleep 15
+          done
+
+          if [[ "$release_ready" -eq 1 ]]; then
+            gh release upload "$tag" "$dmg" "$checksum" --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            echo "Release ${tag} not found after wait; creating with macOS assets."
+            git fetch origin main
+            git merge-base --is-ancestor origin/main HEAD \
+              || { echo 'Main has changed; reconcile the release branch before publishing' >&2; exit 1; }
+            gh release create "$tag" "$dmg" "$checksum" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "Sketch Rust v${version}" \
+              --notes-file "$notes" \
+              --prerelease
+          fi
+
+          # Stable name so README /releases/latest/download/… links keep working.
+          alias_dir="$(mktemp -d)"
+          cp "$dmg" "${alias_dir}/SketchRust-macos-arm64.dmg"
+          gh release upload "$tag" "${alias_dir}/SketchRust-macos-arm64.dmg" \
+            --repo "$GITHUB_REPOSITORY" --clobber

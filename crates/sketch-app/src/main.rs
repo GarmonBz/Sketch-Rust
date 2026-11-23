@@ -3598,7 +3598,10 @@ impl App {
             Message::OpenFile => Task::perform(
                 web_io::pick_file_bytes(
                     "Sketch".to_owned(),
-                    SKETCH_OPEN_EXTENSIONS.iter().map(|e| (*e).to_owned()).collect(),
+                    SKETCH_OPEN_EXTENSIONS
+                        .iter()
+                        .map(|e| (*e).to_owned())
+                        .collect(),
                 ),
                 |file| Message::WebFileOpened(WebFileKind::OpenSketch, file),
             ),
@@ -7768,9 +7771,9 @@ impl App {
                     });
                 }
                 #[cfg(not(windows))]
-                return self.toasts.show(
-                    "Appraise-It Pro report integration runs on Windows.".to_string(),
-                );
+                return self
+                    .toasts
+                    .show("Appraise-It Pro report integration runs on Windows.".to_string());
             }
             #[cfg(windows)]
             M::AutoFillResult(result) => match result {
@@ -7781,7 +7784,8 @@ impl App {
                             self.subject_info.file_no = file_no.clone();
                             filled_file_no = true;
                         }
-                        if self.subject_dialog.open && self.subject_dialog.fields[1].trim().is_empty()
+                        if self.subject_dialog.open
+                            && self.subject_dialog.fields[1].trim().is_empty()
                         {
                             self.subject_dialog.fields[1] = file_no.clone();
                         }
@@ -10084,9 +10088,9 @@ impl App {
         match kind {
             WebFileKind::OpenSketch => {
                 if sketchy::store::is_sqlite(&bytes) {
-                    return self.toasts.show(
-                        "Sketchie SQLite stores are not supported in the web build.".into(),
-                    );
+                    return self
+                        .toasts
+                        .show("Sketchie SQLite stores are not supported in the web build.".into());
                 }
                 if name.to_ascii_lowercase().ends_with(".axf") {
                     return match sketch_core::axf::read(&bytes) {

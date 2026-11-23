@@ -1,28 +1,35 @@
 # Sketch Rust
 
-A native Windows floor-plan sketching program for appraisers: draw walls to scale,
+A cross-platform floor-plan sketching program for appraisers: draw walls to scale,
 define areas, and get living-area and building-area calculations.
+
+The goal is to provide appraisers free, high-quality, performant cross-platform tools as an
+open alternative to legacy closed ecosystems — and to build that together in the open, where
+anyone can contribute.
+
+Runs on **Windows**, **macOS** (Apple Silicon), **Android**, and the
+**[web](https://garmonbz.github.io/Sketch-Rust)**. Windows is the primary desktop
+build. macOS packaging: [docs/MACOS.md](docs/MACOS.md).
 
 ![Sketch Rust with the Fallingwater demo: first floor, terraces, entry loggia and bridge over Bear Run, with the Areas list and its totals on the left](docs/images/sketch-rust.png)
 
 ## Install
 
-Download the latest release and use one of:
+**Always current:** [latest release](https://github.com/GarmonBz/Sketch-Rust/releases/latest)
+· **[Try the web app](https://garmonbz.github.io/Sketch-Rust)** (no install)
 
-- **Installer** — `SketchRust-<version>-x64.msi` (a Windows Installer package built with
-  WiX Toolset 5). Installs for the current Windows user (no administrator permission), with
-  a licence page, a choice of folder, an optional desktop shortcut and a Start Menu shortcut.
-  Later versions upgrade it in place, and it is removed from Windows Settings > Apps >
-  Installed apps. It opens `.sketchie` and `.skx` files on a double click and adds Sketch
-  Rust to **Open with** for `.json` (so `.sketchie.json` files open with it), and lists the
-  Fallingwater demo under Recent sketches on the first start. Silent install: `msiexec /i SketchRust-<version>-x64.msi /qn`.
-- **Portable zip** — `SketchRust-<version>-native-preview-<date>-windows-x64.zip`.
-  Extract it anywhere and run `sketch-app.exe`.
+| | Download (current: v0.3.15) | What to do |
+|---|---|---|
+| **Windows** | [Installer](https://github.com/GarmonBz/Sketch-Rust/releases/download/v0.3.15/SketchRust-0.3.15-x64.msi) | Run the `.msi` (64-bit Windows 10/11) |
+| **Windows** | [Portable zip](https://github.com/GarmonBz/Sketch-Rust/releases/download/v0.3.15/SketchRust-0.3.15-native-preview-2026-11-23-windows-x64.zip) | Unzip and run `sketch-app.exe` |
+| **macOS** | [Disk image](https://github.com/GarmonBz/Sketch-Rust/releases/download/v0.3.15/SketchRust-0.3.15-macos-arm64.dmg) | Open the `.dmg`, drag **Sketch Rust** to Applications (Apple Silicon). First launch: right-click → Open (unsigned) |
+| **Android** | [APK](https://github.com/GarmonBz/Sketch-Rust/releases/download/v0.3.15/Mobile-Sketch-0.3.15-release.apk) | Install the `.apk` on the device |
 
-The downloads are not code-signed, so Windows SmartScreen may warn before running
-them. Each has a `.sha256` file to check the download against.
+After a newer release, use the [latest release](https://github.com/GarmonBz/Sketch-Rust/releases/latest) page (grab the `.msi`, `.zip`, `.dmg`, or `.apk`). Release CI also publishes stable names `SketchRust-x64.msi`, `SketchRust-windows-x64.zip`, and `SketchRust-macos-arm64.dmg` under `/releases/latest/download/…`.
 
-Requires 64-bit Windows 10 or 11.
+From-source macOS packaging: [docs/MACOS.md](docs/MACOS.md).
+
+Downloads are not code-signed (Windows SmartScreen / macOS Gatekeeper may warn). Each file has a matching `.sha256` on the release.
 
 ## Using it
 
@@ -64,7 +71,7 @@ cargo build --release -p sketch-app
 cargo test --workspace
 ```
 
-- **macOS (Apple Silicon)** — see [docs/MACOS.md](docs/MACOS.md) for `cargo run` and `./tools/package-macos.sh`.
+- **macOS (Apple Silicon)** — see [docs/MACOS.md](docs/MACOS.md) for `cargo run`, `./tools/package-macos.sh`, and `./tools/package-macos-dmg.sh`.
 - `tools\package.ps1 -NativePreview` builds the portable zip into `dist\`.
 - `tools\installer.ps1` builds the zip and then `dist\SketchRust-<version>-x64.msi`
   (source in `installer\`). Run it once with `-FetchWix` to download WiX (it needs a .NET
