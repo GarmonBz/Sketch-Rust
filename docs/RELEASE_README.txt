@@ -1,3 +1,21 @@
+Sketch Rust 0.3.16 - Windows x64
+
+0.3.16 lines the area types up with the UAD 3.6 URAR's area breakdown. The
+bundled types keep their codes — so existing sketches still open and the
+Appraise-It transfer keeps working — but now carry Appendix F-1 wording:
+"Finished Above Grade" for GLA1-GLA10, "Finished Below Grade" for BSMT and
+"Unfinished Below Grade" for BSMT2. Three new built-in types fill the fields
+that had none: GLAN "Finished AG Nonstd", GLAU "Unfinished AG" and BSMTN
+"Finished BSMT Nonstd". The nonstandard and unfinished types are deliberately
+outside the standard finished total, and each reports on its own line in the
+Calcs tree and the Area Breakdown summary. "Include area totals" now fills all
+six F-1 fields in an editable UAD 3.6 URAR: Finished Above Grade, Finished
+Above Grade (Nonstandard), Unfinished Above Grade, Finished Below Grade,
+Finished Below Grade (Nonstandard) and Unfinished Below Grade — each read back
+and restored if the transfer fails. Area tables saved by an earlier build pick
+the new types up automatically, and the type editor's checkbox now reads "Count
+in finished above grade".
+
 Sketch Rust 0.3.13 - Windows x64
 
 0.3.13 adds Apex AXF import and export to the Menu and fixes the Areas list

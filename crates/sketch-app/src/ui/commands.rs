@@ -386,6 +386,15 @@ static COMMANDS: &[Command] = &[
         run: |_| Message::UndoHistory,
     },
     Command {
+        id: "version-history",
+        label: "Version history...",
+        group: Group::File,
+        shortcut: "",
+        enabled: always,
+        checked: Some(|a| a.dock.open && a.dock.active == crate::dock::DockTab::Versions),
+        run: |_| Message::Versions(crate::versions::VersionsMsg::Show),
+    },
+    Command {
         id: "cut",
         label: "Cut",
         group: Group::Edit,
@@ -1627,7 +1636,7 @@ pub fn icon_for(id: &str) -> Option<(&'static str, bool)> {
     Some(match id {
         // File
         "start-screen" | "page-layout" => ("layout", false),
-        "recent" | "undo-history" => ("clock-counter-clockwise", true),
+        "recent" | "undo-history" | "version-history" => ("clock-counter-clockwise", true),
         "new" | "page-add" => ("file-plus", false),
         "open" => ("folder-open", true),
         "save" | "save-as" => ("floppy-disk", true),

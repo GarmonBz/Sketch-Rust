@@ -37,19 +37,29 @@ URAR with one dwelling, one living unit, and no ADUs. Sketch Rust sums the
 calculated net areas across all pages, then rounds each total to whole square
 feet. Enter area totals directly in Appraise-It Pro for legacy reports.
 
+The transfer fills all six URAR area-breakdown fields (UAD 3.6 URAR Appendix
+F-1), in form order:
+
 | Sketch Rust area codes | Appraise-It Pro living-unit field |
 | --- | --- |
-| `GLA1`–`GLA10` | Standard finished above grade |
-| `BSMT` | Finished below grade |
-| `BSMT2` | Unfinished below grade |
+| `GLA1`–`GLA10` | `FinishedAreaAboveGrade` (10.003) |
+| `GLAN` | `FinishedAreaAboveGradeNonstandard` (10.004) |
+| `GLAU` | `UnfinishedAreaAboveGrade` (10.005) |
+| `BSMT` | `FinishedAreaBelowGrade` (10.006) |
+| `BSMTN` | `FinishedAreaBelowGradeNonstandard` (10.007) |
+| `BSMT2` | `UnfinishedAreaBelowGrade` (10.008) |
 
-Classify outlines before transfer. In particular, use GLA codes for standard
-finished area. Unclassified Sketchie areas, gross building area, nonstandard
-area, garage, amenities, and other categories require manual entry. The
-preview shows each positive rounded total and the report value it will
-replace. Enter zeroes and clear report fields directly in Appraise-It Pro.
-Sketch Rust writes the three supported fields through SFREP's
-[living-unit field API](https://api.sfrep.com/com/Sfrep.AppraiseIt.Client.Integration.Com.DataStore.FieldsIndexIntegrationCom.html).
+Classify outlines before transfer. `GLAN`, `GLAU` and `BSMTN` are finished or
+unfinished area that F-1 reports outside the standard finished total; they are
+separate codes (not part of the `GLA`/`BSMT` totals) precisely so the area
+breakdown can report them on their own lines. Unclassified Sketchie areas,
+gross building area, garage, amenities, and other categories have no F-1 field
+and require manual entry. The preview shows each positive rounded total and the
+report value it will replace. Enter zeroes and clear report fields directly in
+Appraise-It Pro. Sketch Rust writes the fields through SFREP's
+[living-unit field API](https://api.sfrep.com/com/Sfrep.AppraiseIt.Client.Integration.Com.DataStore.FieldsIndexIntegrationCom.html),
+reading each one back and restoring the previous values if the whole transfer
+fails.
 
 ## Verification on Appraise-It Pro 3.8.8
 

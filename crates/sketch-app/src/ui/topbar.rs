@@ -24,11 +24,11 @@ const COMPACT_CAPTION_BTN: f32 = 26.0;
 const DESKTOP_CAPTION_BTN: f32 = 30.0;
 
 /// Next top bar save-state text derived from `App::save_state()`.
-pub fn save_state_label(app: &App) -> &'static str {
-    match app.save_state() {
-        "Unsaved" => "Edited",
-        "New document" => "Not saved",
-        other => other,
+pub fn save_state_label(app: &App) -> String {
+    match app.save_state().as_str() {
+        "Unsaved" => "Edited".to_owned(),
+        "New document" => "Not saved".to_owned(),
+        other => other.to_owned(),
     }
 }
 

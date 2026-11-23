@@ -444,6 +444,7 @@ pub fn symbol_to_drawing(sym: &Symbol) -> (Drawing, Vec<Entity>) {
             line_style: None,
             dimension_position: None,
             dimension_anchor: None,
+            extra: Default::default(),
         });
     };
 
@@ -549,6 +550,7 @@ pub fn symbol_to_drawing(sym: &Symbol) -> (Drawing, Vec<Entity>) {
                     underline: false,
                     color: String::new(),
                     layer_id: 0,
+                    extra: Default::default(),
                 });
             }
         }
@@ -597,6 +599,7 @@ mod tests {
             line_style: None,
             dimension_position: None,
             dimension_anchor: None,
+            extra: Default::default(),
         }
     }
 
@@ -622,6 +625,7 @@ mod tests {
             underline: false,
             color: String::new(),
             layer_id: 0,
+            extra: Default::default(),
         }];
         let mut selection = Selection::default();
         selection.lines.extend([1, 2, 3, 4]);

@@ -1532,6 +1532,44 @@ fn a_dragged_wall_end_joins_a_nearby_endpoint_before_it_snaps_to_the_grid() {
 }
 
 #[test]
+fn the_first_wall_click_starts_exactly_on_the_grid_point_the_pointer_shows() {
+    let mut h = harness_next_at(VIEWPORT);
+    h.send(Message::Key(KeyCmd::DrawExterior));
+    let (mx, my) = (333.3_f32, 271.7_f32);
+    h.send(Message::CanvasHover(mx, my));
+    let app = state(h);
+    assert!(app.view.snap, "Snap is on by default");
+    let grid = app.view.grid_size;
+    let raw = app.world(mx, my);
+    let shown = app.drawing.drawing_target(raw, app.draw_ctx());
+    assert!(
+        (shown.x / grid - (shown.x / grid).round()).abs() < 1e-9
+            && (shown.y / grid - (shown.y / grid).round()).abs() < 1e-9,
+        "the pen-up target is a grid point: {shown:?}"
+    );
+    assert!(
+        (shown.x - raw.x).abs() > 1e-6 || (shown.y - raw.y).abs() > 1e-6,
+        "the raw pointer was off the grid"
+    );
+
+    // The first click commits exactly the point that was shown.
+    let mut h = harness_next_at(VIEWPORT);
+    h.send(Message::Key(KeyCmd::DrawExterior));
+    h.send(Message::CanvasHover(mx, my));
+    h.send(Message::CanvasClick {
+        x: mx,
+        y: my,
+        double: false,
+        ctrl: false,
+    });
+    let app = state(h);
+    assert!(app.drawing.pen_down);
+    assert_eq!(app.drawing.points.len(), 1);
+    assert_eq!(app.drawing.points[0], shown);
+    assert_eq!(app.drawing.cursor, shown);
+}
+
+#[test]
 fn deleting_a_folder_keeps_the_areas_that_were_in_it() {
     let (area, folder, _) = tree_ids();
     tree_harness!(h);
@@ -3179,7 +3217,7 @@ fn p11_area_type_editor_and_default_colors_across_sizes() {
             h.send(Message::Key(KeyCmd::Enter));
             h.send(Message::Rail(crate::view_state::RailTool::DrawExterior));
             let mut app = state(h);
-            assert_eq!(app.area_codes.len(), 26);
+            assert_eq!(app.area_codes.len(), 29);
             assert_eq!(app.area_codes[1].code, "GLA2");
             assert_eq!(app.area_codes[1].color, "#0987A0");
             assert_eq!(app.area_codes[2].color, "#B83280");
@@ -3204,7 +3242,7 @@ fn p11_area_type_editor_and_default_colors_across_sizes() {
         h.script(&["click \"Types\"", "click \"Edit types\""]);
         assert!(h.shows("Area types"));
         assert!(h.shows("Built in"));
-        assert!(h.shows("Count in gross living area"));
+        assert!(h.shows("Count in finished above grade"));
 
         // Edit fields on selected GLA1 and open ColorDialog for Line & Fill.
         h.send(Message::Ui(UiMsg::TypeEditor(TypeMsg::Name(
@@ -3367,7 +3405,7 @@ fn p11_area_type_editor_and_default_colors_across_sizes() {
             TypeMsg::ConfirmRestoreDefaults,
         )));
         let _ = app.update(Message::Ui(UiMsg::TypeEditor(TypeMsg::Save)));
-        assert_eq!(app.area_codes.len(), 26);
+        assert_eq!(app.area_codes.len(), 29);
         assert!(app.area_codes.iter().any(|c| c.code == "GAR"));
         let _ = std::fs::remove_dir_all(&tmp_dir);
     }
@@ -4834,5 +4872,60 @@ fn deleting_a_wall_of_a_closed_area_and_redrawing_it_closes_the_area_again() {
         app.drawing.polygons.len(),
         1,
         "the redrawn wall closes the area again"
+    );
+}
+
+/// Picking an area near the right edge docks the Inspector over that edge of
+/// the canvas; the view moves the area clear of it, so it stays reachable.
+#[test]
+fn an_area_picked_at_the_right_edge_stays_clear_of_the_docked_inspector() {
+    use crate::view_state::World;
+    let probe = {
+        let mut tmp = harness_next_at(VIEWPORT);
+        draw_closed_square(&mut tmp);
+        let app = state(tmp);
+        let poly = &app.drawing.polygons[0];
+        let to_screen = |x: f64, y: f64| app.view.to_screen(World { x, y });
+        let n = poly.points.len() as f64;
+        let (cx, cy) = to_screen(
+            poly.points.iter().map(|p| p.x).sum::<f64>() / n,
+            poly.points.iter().map(|p| p.y).sum::<f64>() / n,
+        );
+        let max_x = poly
+            .points
+            .iter()
+            .map(|p| to_screen(p.x, p.y).0)
+            .fold(f64::MIN, f64::max);
+        (cx, cy, max_x, f64::from(app.canvas_rect().width))
+    };
+    let (cx, cy, max_x, canvas_w) = probe;
+    // Slide the drawing so the square ends 10 px short of the canvas edge.
+    let dx = (canvas_w - 10.0 - max_x) as f32;
+    let mut h = harness_next_at(VIEWPORT);
+    draw_closed_square(&mut h);
+    h.send(Message::PanStart(0.0, 0.0));
+    h.send(Message::PanMove(dx, 0.0));
+    h.send(Message::PanEnd);
+    h.send(Message::Key(KeyCmd::Select));
+    h.send(Message::CanvasClick {
+        x: cx as f32 + dx,
+        y: cy as f32,
+        double: false,
+        ctrl: false,
+    });
+    let app = state(h);
+    assert!(!app.selection.polys.is_empty(), "the area is picked");
+    let docked = f64::from(app.canvas_rect().width);
+    assert!(docked < canvas_w, "the Inspector took its width");
+    let right = app
+        .drawing
+        .polygons
+        .iter()
+        .flat_map(|p| p.points.iter())
+        .map(|p| app.view.to_screen(World { x: p.x, y: p.y }).0)
+        .fold(f64::MIN, f64::max);
+    assert!(
+        right <= docked,
+        "the area ends at {right:.0}, inside the {docked:.0} px left of the Inspector"
     );
 }

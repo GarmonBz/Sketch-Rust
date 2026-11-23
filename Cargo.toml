@@ -1,16 +1,25 @@
 [workspace]
 resolver = "2"
 members = ["crates/sketch-core", "crates/sketch-app"]
+exclude = ["vendor/wgpu"]
 
 [workspace.package]
-version = "0.3.15"
+version = "0.3.16"
 edition = "2021"
 license-file = "LICENSE"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["float_roundtrip"] }
 web-time = "1"
 
 [profile.release]
 lto = "thin"
+
+# Safari 26 WebGPU rejects StagingBelt frames that encode two copies from one
+# still-mapped chunk (wgpu#10460). Chrome accepts them. Until upstream ships a
+# fix for 27.x, isolate StagingBelt transfers on the browser WebGPU backend
+# (closing idle chunks while preserving live views and sizing buffers per write)
+# so iced can paint on Safari.
+[patch.crates-io]
+wgpu = { path = "vendor/wgpu" }
