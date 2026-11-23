@@ -15,17 +15,17 @@ build. macOS packaging: [docs/MACOS.md](docs/MACOS.md).
 
 ## Install
 
-**Always current:** [latest release](https://github.com/GarmonBz/Sketch-Rust/releases/latest)
+**Downloads:** [GitHub Releases](https://github.com/GarmonBz/Sketch-Rust/releases)
 · **[Try the web app](https://garmonbz.github.io/Sketch-Rust)** (no install)
 
-| | Download (current: v0.3.15) | What to do |
+| Platform | Asset (from [Releases](https://github.com/GarmonBz/Sketch-Rust/releases)) | What to do |
 |---|---|---|
-| **Windows** | [Installer](https://github.com/GarmonBz/Sketch-Rust/releases/download/v0.3.15/SketchRust-0.3.15-x64.msi) | Run the `.msi` (64-bit Windows 10/11) |
-| **Windows** | [Portable zip](https://github.com/GarmonBz/Sketch-Rust/releases/download/v0.3.15/SketchRust-0.3.15-native-preview-2026-11-23-windows-x64.zip) | Unzip and run `sketch-app.exe` |
-| **macOS** | [Disk image](https://github.com/GarmonBz/Sketch-Rust/releases/download/v0.3.15/SketchRust-0.3.15-macos-arm64.dmg) | Open the `.dmg`, drag **Sketch Rust** to Applications (Apple Silicon). First launch: right-click → Open (unsigned) |
-| **Android** | [APK](https://github.com/GarmonBz/Sketch-Rust/releases/download/v0.3.15/Mobile-Sketch-0.3.15-release.apk) | Install the `.apk` on the device |
+| **Windows** | `SketchRust-<version>-x64.msi` (or `SketchRust-x64.msi`) | Run the `.msi` installer (64-bit Windows 10/11) |
+| **Windows** | `SketchRust-<version>-*-windows-x64.zip` (or `SketchRust-windows-x64.zip`) | Unzip and run `sketch-app.exe` |
+| **macOS** | `SketchRust-<version>-macos-arm64.dmg` (or `SketchRust-macos-arm64.dmg`) | Open the `.dmg`, drag **Sketch Rust** to Applications (Apple Silicon). First launch: right-click → Open (unsigned) |
+| **Android** | `Mobile-Sketch-<version>-release.apk` | Install the `.apk` on the device |
 
-After a newer release, use the [latest release](https://github.com/GarmonBz/Sketch-Rust/releases/latest) page (grab the `.msi`, `.zip`, `.dmg`, or `.apk`). Release CI also publishes stable names `SketchRust-x64.msi`, `SketchRust-windows-x64.zip`, and `SketchRust-macos-arm64.dmg` under `/releases/latest/download/…`.
+Release CI publishes preview builds as GitHub prereleases with both versioned filenames and stable aliases (`SketchRust-x64.msi`, `SketchRust-windows-x64.zip`, and `SketchRust-macos-arm64.dmg`). Use the [Releases](https://github.com/GarmonBz/Sketch-Rust/releases) page to grab the newest build; once a release is promoted from prerelease to final, the stable aliases are also served under `/releases/latest/download/<filename>`.
 
 From-source macOS packaging: [docs/MACOS.md](docs/MACOS.md).
 

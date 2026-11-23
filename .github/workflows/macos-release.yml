@@ -131,8 +131,9 @@ jobs:
               --prerelease
           fi
 
-          # Stable name so README /releases/latest/download/… links keep working.
+          # Stable alias for /releases/latest/download/… once promoted to a final release.
           alias_dir="$(mktemp -d)"
+          trap 'rm -rf "$alias_dir"' EXIT
           cp "$dmg" "${alias_dir}/SketchRust-macos-arm64.dmg"
           gh release upload "$tag" "${alias_dir}/SketchRust-macos-arm64.dmg" \
             --repo "$GITHUB_REPOSITORY" --clobber
