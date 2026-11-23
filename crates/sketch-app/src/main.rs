@@ -10363,6 +10363,11 @@ impl App {
 
     /// Pen-down exterior walls forming a closed `width_ft` × `height_ft` rectangle.
     fn draw_exterior_rect_ft(&mut self, width_ft: f64, height_ft: f64) {
+        // Reselecting DrawExterior does not end an unfinished exterior chain.
+        // Clear chain + buffer first so the scripted Enter always means pen-down,
+        // not the pen-up branch of `Drawing::enter_key`.
+        self.drawing.pen_up();
+        self.drawing.buffer.clear();
         let _ = self.update(Message::Key(input::KeyCmd::DrawExterior));
         let _ = self.update(Message::Key(input::KeyCmd::Enter));
         // Right, down, left, up — same order as the e2e closed-square smoke.
@@ -12103,6 +12108,42 @@ mod tests {
         assert_eq!(app.drawing.lines.len(), 4);
         assert_eq!(app.drawing.polygons.len(), 1);
         assert_eq!(app.view.mode, view_state::Mode::DrawExterior);
+        let area = app.drawing.polygons[0].area;
+        assert!(
+            (area - 100.0).abs() < 0.5,
+            "expected ~100 sf for 10×10, got {area}"
+        );
+    }
+
+    #[test]
+    fn agent_draw_exterior_rect_resets_an_unfinished_chain() {
+        let (mut app, _) = App::boot(1.0);
+        let _ = app.update(Message::Key(input::KeyCmd::DrawExterior));
+        let _ = app.update(Message::Key(input::KeyCmd::Enter));
+        for c in "12".chars() {
+            let key = match c {
+                '1' => "1",
+                '2' => "2",
+                _ => unreachable!(),
+            };
+            let _ = app.update(Message::Key(input::KeyCmd::Buffer(key)));
+        }
+        let _ = app.update(Message::Key(input::KeyCmd::Arrow {
+            dir: 2,
+            ctrl: false,
+            shift: false,
+        }));
+        let _ = app.update(Message::Key(input::KeyCmd::Enter));
+        assert!(app.drawing.pen_down);
+        assert_eq!(app.drawing.lines.len(), 1);
+
+        let _ = app.update(Message::AgentDrawExteriorRect {
+            width_ft: 10.0,
+            height_ft: 10.0,
+        });
+        // Prior wall remains; the scripted rectangle must still close.
+        assert_eq!(app.drawing.lines.len(), 5);
+        assert_eq!(app.drawing.polygons.len(), 1);
         let area = app.drawing.polygons[0].area;
         assert!(
             (area - 100.0).abs() < 0.5,

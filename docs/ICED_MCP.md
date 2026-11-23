@@ -36,15 +36,9 @@ Prefer widget `.id(...)` values over visible labels when driving the UI.
 cargo install iced-mcp --locked
 ```
 
-Resolve the **real binary**, not an asdf/mise shim (Cursor often cannot run
-shims):
-
-```bash
-asdf which iced-mcp
-# e.g. ~/.asdf/installs/rust/<version>/bin/iced-mcp
-
-command -v iced-mcp
-```
+Hosts often cannot run asdf/mise **shims**. Prefer a real binary
+(`asdf which iced-mcp`, `~/.cargo/bin/iced-mcp`, …). The worktree launcher
+`scripts/run-iced-mcp.sh` resolves one of those for you.
 
 ### 2. Register the MCP server
 
@@ -53,19 +47,22 @@ command -v iced-mcp
 
 **Cursor Desktop / other hosts** may also read the worktree `.mcp.json`.
 
-Minimal entry (use your real path):
+Portable project entry (cwd = repo root):
 
 ```json
 {
   "mcpServers": {
     "iced": {
-      "command": "/ABS/PATH/TO/iced-mcp"
+      "command": "bash",
+      "args": ["scripts/run-iced-mcp.sh"]
     }
   }
 }
 ```
 
-This worktree’s `.mcp.json` includes an `iced` entry for Desktop.
+This worktree’s `.mcp.json` uses that launcher. For a global Agent CLI config,
+either point at this script with an absolute path, or set `command` to a
+resolved real binary path on that machine.
 
 After editing MCP config: restart the agent chat / reload MCP so tools appear.
 
@@ -203,11 +200,11 @@ Relevant paths:
 
 | Symptom | Fix |
 | --- | --- |
-| No `iced` tools in agent | Register real binary in the MCP config the host actually loads; restart chat |
-| Cursor Agent: tools missing after project `.mcp.json` only | Add the same entry to `~/.cursor/mcp.json` |
-| `iced` namespace `error` / discovery failed | Retry tool discovery; restart agent; confirm `iced-mcp --help` works |
+| No `iced` tools in agent | Register the launcher or a real binary in the MCP config the host loads; restart chat |
+| Cursor Agent: tools missing after project `.mcp.json` only | Add the same entry to `~/.cursor/mcp.json` (absolute path to `scripts/run-iced-mcp.sh` if needed) |
+| `iced` namespace `error` / discovery failed | Retry tool discovery; restart agent; run `bash scripts/run-iced-mcp.sh --help` |
 | `connect` fails | App must print `listening on 127.0.0.1:9339`; restart with `ICED_MCP=1` |
-| Shim path fails under Cursor | Point `command` at `asdf which iced-mcp` real path |
+| Shim path fails under Cursor | Use `scripts/run-iced-mcp.sh` or a real binary from `asdf which iced-mcp` / `~/.cargo/bin` |
 | Canvas missing from `snapshot` | Expected — use `screenshot` / `inspect_point` + x/y |
 
 ---

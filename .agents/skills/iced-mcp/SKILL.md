@@ -21,11 +21,11 @@ Full guide: `docs/ICED_MCP.md`.
 
 ## Setup checklist
 
-1. **Binary:** `cargo install iced-mcp --locked`. Point MCP `command` at the
-   **real** path (`asdf which iced-mcp`), never an asdf/mise shim.
+1. **Binary:** `cargo install iced-mcp --locked`. Prefer a real binary over
+   asdf/mise shims; `scripts/run-iced-mcp.sh` resolves one for the project MCP entry.
 2. **MCP config:**
    - Cursor Agent CLI → `~/.cursor/mcp.json` (project `.mcp.json` alone is not enough).
-   - Cursor Desktop / others → worktree `.mcp.json` and/or host MCP settings.
+   - Cursor Desktop / others → worktree `.mcp.json` (`bash` + `scripts/run-iced-mcp.sh`).
 3. **Reload** the agent chat after config changes until the `iced` tool namespace
    is ready (tools: `connect`, `snapshot`, `click`, `type_text`, …).
 
@@ -73,7 +73,7 @@ and agents only `connect`.
 
 | Problem | Fix |
 | --- | --- |
-| No `iced` tools | Wrong MCP config file or shim path; restart chat |
+| No `iced` tools | Wrong MCP config file; run `bash scripts/run-iced-mcp.sh --help`; restart chat |
 | `connect` fails | App not listening — restart with `ICED_MCP=1` |
 | Canvas missing from snapshot | Use `screenshot` / x,y |
 
