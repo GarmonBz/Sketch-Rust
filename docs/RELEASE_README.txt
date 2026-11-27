@@ -1,3 +1,16 @@
+Sketch Rust 0.3.17 - Windows x64
+
+0.3.17 opens and writes RapidSketch (.rs) and ACI Sketch (.acisketch) files:
+Menu > File > Import and Export, File > Open, or drop the file on the window.
+Walls and arcs, areas with their names, multipliers and fills, text notes,
+symbols (with their own drawings) and the subject property fields carry across.
+An imported file opens as a new sketch and is never saved back in place; check
+its area types, which are chosen from each area's name and "living area"
+switch. Export writes the current page, without background pictures, wall
+colours or hatching. This was worked out from one ACI Sketch file: no .rs file
+has been tried, and no exported file has yet been opened in RapidSketch or ACI
+Sketch.
+
 Sketch Rust 0.3.16 - Windows x64
 
 0.3.16 lines the area types up with the UAD 3.6 URAR's area breakdown. The

@@ -1,5 +1,24 @@
 # Sketch Rust — STATUS ledger
 
+0.3.17 adds RapidSketch (`.rs`) and ACI Sketch (`.acisketch`) import and
+export. The two are one format: an unencrypted .NET `BinaryFormatter` stream
+(MS-NRBF) of a `RapidSketch.Sketch`. `sketch_core::nrbf` is our own bounded
+reader and writer (no .NET objects are created, so a hostile file can only
+fail); `sketch_core::rapidsketch` holds the document, the writer and the
+mapping to the save model; `sketch-app/src/rapid_io.rs` the menus and opening.
+Layout, mapping and limits are in `docs/RAPIDSKETCH.md`. Verified: the one real
+sample (not committed: it is private; `RAPIDSKETCH_SAMPLE=<path> cargo test -p
+sketch-core rapidsketch` runs against it) imports with area totals matching its
+own labels and survives export and re-import; an export declares the same 28
+classes and members as the sample, and loads in .NET Framework's
+`BinaryFormatter` against stand-in classes. NOT verified: opening an export in
+RapidSketch or ACI Sketch, and any real `.rs` file (the extension is from
+public software listings). Gate (Windows): `cargo fmt --all --check` and
+`cargo clippy --workspace --all-targets -- -D warnings` clean, `cargo test
+--workspace` 788 passed / 0 failed / 3 ignored with the sample supplied, and the
+release build succeeds. The imported sample has not been checked by eye in the
+running app.
+
 UAD 3.6 F-1 area types (issue #19). The bundled area-code table now carries the
 six URAR Appendix F-1 area-breakdown fields. `GLA1`–`GLA10` keep their codes but
 describe themselves as "Finished Above Grade"; `BSMT` is "Finished Below Grade"

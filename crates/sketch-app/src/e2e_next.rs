@@ -1156,6 +1156,53 @@ fn axf_export_writes_a_file_that_reimports_as_areas() {
 }
 
 #[test]
+fn import_and_export_menus_offer_aci_sketch_and_rapidsketch() {
+    let mut h = harness_next_at(VIEWPORT);
+    h.send(Message::Ui(UiMsg::ToggleMenu));
+    h.send(Message::Ui(UiMsg::MenuSub(Some(MenuSub::Import))));
+    assert!(h.shows("ACI Sketch…"), "Import fly-out lists ACI Sketch");
+    assert!(h.shows("RapidSketch…"), "Import fly-out lists RapidSketch");
+    h.send(Message::Ui(UiMsg::MenuSub(Some(MenuSub::Export))));
+    assert!(h.shows("ACI Sketch"), "Export fly-out lists ACI Sketch");
+    assert!(h.shows("RapidSketch"), "Export fly-out lists RapidSketch");
+}
+
+#[test]
+fn rapidsketch_exports_reopen_as_new_sketches() {
+    use crate::rapid_io::Flavor;
+    for flavor in [Flavor::AciSketch, Flavor::RapidSketch] {
+        let mut h = harness_next_at(VIEWPORT);
+        draw_closed_square(&mut h);
+        let out = std::env::temp_dir().join(format!(
+            "sketch-rust-rapid-test-{}.{}",
+            std::process::id(),
+            flavor.extension()
+        ));
+        let _ = std::fs::remove_file(&out);
+        h.send(Message::DialogPicked(
+            crate::DialogRequest::ExportRapid(flavor),
+            Some(out.clone()),
+        ));
+        let bytes = std::fs::read(&out).expect("the export wrote the file");
+        assert!(sketch_core::rapidsketch::recognizes(&bytes));
+        // Import and File > Open both open it as a converted copy.
+        for request in [
+            crate::DialogRequest::ImportRapid,
+            crate::DialogRequest::OpenSketch,
+        ] {
+            let mut h2 = harness_next_at(VIEWPORT);
+            h2.send(Message::DialogPicked(request, Some(out.clone())));
+            let app = state(h2);
+            assert_eq!(app.drawing.polygons.len(), 1, "the area opened");
+            assert_eq!(app.drawing.lines.len(), 4);
+            assert!(app.current_file.is_none(), "never saved back in place");
+            assert!(app.save_as_sketchie, "Save asks for a new name");
+        }
+        let _ = std::fs::remove_file(&out);
+    }
+}
+
+#[test]
 fn drawn_list_shows_only_the_current_pages_areas() {
     // Layer ids are deterministic for a fixed message sequence, so a probe
     // harness can hand the real one its ids (tree_ids() does the same).

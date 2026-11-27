@@ -65,6 +65,7 @@ mod popup_menu;
 mod print;
 #[cfg(target_os = "macos")]
 mod print_macos;
+mod rapid_io;
 mod recent;
 mod reference_image;
 mod render;
@@ -325,6 +326,10 @@ pub enum Message {
     ImportAxf,
     /// Export › Apex AXF: write the current page as a legacy `.axf`.
     ExportAxf,
+    /// Import › ACI Sketch / RapidSketch: pick a file and open it converted.
+    ImportRapid(rapid_io::Flavor),
+    /// Export › ACI Sketch / RapidSketch: write the current page.
+    ExportRapid(rapid_io::Flavor),
     /// The Color dialog (screen 5d-3).
     Color(color_dialog::ColorMsg),
     /// Home › Draw Color: `toggleDrawColorPalette`.
@@ -500,6 +505,10 @@ pub enum DialogRequest {
     ImportAxf,
     /// File › Export › Apex AXF: write the current page as an `.axf`.
     ExportAxf,
+    /// Import › ACI Sketch / RapidSketch: the file names its own format.
+    ImportRapid,
+    /// Export › ACI Sketch / RapidSketch.
+    ExportRapid(rapid_io::Flavor),
     /// The Layers panel: import the picked layer file.
     #[cfg_attr(test, allow(dead_code))]
     ImportLayer,
@@ -537,8 +546,17 @@ pub enum DialogRequest {
 /// The QAT's history button (`list-bullets`): 28x28, at x 20 + 28*3, y 1 —
 /// the undo-history popup anchors under it.
 /// `#file-open-input` / `#file-import-input` `accept=".skx,.apx,.json,.sketch"`.
-const SKETCH_OPEN_EXTENSIONS: &[&str] =
-    &["skx", "apx", "json", "sketch", "sketchie", "sketchy", "axf"];
+const SKETCH_OPEN_EXTENSIONS: &[&str] = &[
+    "skx",
+    "apx",
+    "json",
+    "sketch",
+    "sketchie",
+    "sketchy",
+    "axf",
+    "acisketch",
+    "rs",
+];
 
 /// A sketch file named on the command line, opened once the window is up.
 static STARTUP_FILE: std::sync::Mutex<Option<std::path::PathBuf>> = std::sync::Mutex::new(None);
@@ -729,6 +747,15 @@ fn decode_sketch_file(path: &std::path::Path) -> Result<DecodedSketch, String> {
         let import = read_axf_path(path)?;
         return Ok(DecodedSketch {
             model: import.model,
+            format: SketchFileFormat::Json,
+            notice: None,
+            read_only: false,
+            omitted: false,
+        });
+    }
+    if rapid_io::Flavor::of(path).is_some() {
+        return Ok(DecodedSketch {
+            model: rapid_io::read_path(path)?.model,
             format: SketchFileFormat::Json,
             notice: None,
             read_only: false,
@@ -4180,6 +4207,8 @@ impl App {
                 ),
                 |path| Message::DialogPicked(DialogRequest::ExportAxf, path),
             ),
+            Message::ImportRapid(flavor) => self.pick_rapid_import(flavor),
+            Message::ExportRapid(flavor) => self.pick_rapid_export(flavor),
             Message::DialogPicked(request, path) => self.dialog_picked(request, path),
             #[cfg(target_arch = "wasm32")]
             Message::WebFileOpened(kind, file) => self.web_file_opened(kind, file),
@@ -10271,6 +10300,9 @@ impl App {
         if is_axf_path(&path) {
             return self.open_axf_path(&path);
         }
+        if rapid_io::Flavor::of(&path).is_some() {
+            return self.open_rapid_path(&path);
+        }
         let DecodedSketch {
             model,
             format,
@@ -10345,16 +10377,27 @@ impl App {
             Err(e) => return self.toasts.show(e),
         };
         let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-        let _ = self.apply_model(&import.model, stem);
+        let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("AXF");
+        self.open_converted(name, stem, &import.model, import.area_count, &import.notes)
+    }
+
+    /// Open a converted sketch as a new, unsaved one and say what came across.
+    fn open_converted(
+        &mut self,
+        name: &str,
+        stem: &str,
+        model: &serde_json::Value,
+        area_count: usize,
+        notes: &[String],
+    ) -> Task<Message> {
+        let _ = self.apply_model(model, stem);
         self.save_as_sketchie = true;
         self.view.center_and_fit(self.sketch_view_bounds());
         let mut message = format!(
-            "Opened {} as a new sketch with {} area{}. Save As to keep it as .sketchie.",
-            path.file_name().and_then(|s| s.to_str()).unwrap_or("AXF"),
-            import.area_count,
-            if import.area_count == 1 { "" } else { "s" },
+            "Opened {name} as a new sketch with {area_count} area{}. Save As to keep it as .sketchie.",
+            if area_count == 1 { "" } else { "s" },
         );
-        for note in &import.notes {
+        for note in notes {
             message.push(' ');
             message.push_str(note);
         }
@@ -10674,6 +10717,16 @@ impl App {
                         .toasts
                         .show("Sketchie SQLite stores are not supported in the web build.".into());
                 }
+                if rapid_io::Flavor::of(std::path::Path::new(&name)).is_some() {
+                    return match rapid_io::decode(&bytes, stem) {
+                        Ok(import) => {
+                            let task = self.apply_model(&import.model, stem);
+                            self.autosave_baseline();
+                            task
+                        }
+                        Err(e) => self.toasts.show(format!("Could not open {name}: {e}")),
+                    };
+                }
                 if name.to_ascii_lowercase().ends_with(".axf") {
                     return match sketch_core::axf::read(&bytes) {
                         Ok(doc) => {
@@ -10760,6 +10813,8 @@ impl App {
             DialogRequest::ImportSketch => self.import_sketch_path(&path),
             DialogRequest::ImportCad => self.import_cad_file(&path),
             DialogRequest::ImportAxf => self.open_axf_path(&path),
+            DialogRequest::ImportRapid => self.open_rapid_path(&path),
+            DialogRequest::ExportRapid(flavor) => self.export_rapid(flavor, &path),
             DialogRequest::ExportAxf => {
                 // Export › Apex AXF: the current page's areas (arc walls
                 // included) and text labels, written with the clean-room

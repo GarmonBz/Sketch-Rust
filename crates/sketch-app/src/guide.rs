@@ -147,6 +147,7 @@ pub const TOPICS: &[Topic] = &[
             Points(&[
                 "Top bar Export (or Menu > File > Export as PNG, SVG, DXF, PDF) saves images, CAD vectors, or formatted addenda.",
                 "Menu > File > Import CAD brings in a DXF or DWG floor plan.",
+                "Menu > File > Import and Export read and write RapidSketch (.rs) and ACI Sketch (.acisketch) files. An imported file opens as a new sketch; check its area types. Export writes the current page only.",
                 "Menu > Image loads a scanned floor plan or photo behind the sketch; use Set scale and Opacity in the Inspector to trace accurately.",
             ]),
         ],

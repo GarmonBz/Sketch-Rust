@@ -43,6 +43,10 @@ panel (`F4`).
 Sketches save as `.sketchy` files in the open Sketchy format, and every save is kept as
 a version. `.sketchy.json` files open too.
 
+RapidSketch (`.rs`) and ACI Sketch (`.acisketch`) files import and export from
+**File > Import** and **File > Export**. See [docs/RAPIDSKETCH.md](docs/RAPIDSKETCH.md)
+for what carries across and how far it has been tested.
+
 ### Appraise-It Pro reports
 
 On Windows, open a saved, editable report in Appraise-It Pro. In Sketch Rust,

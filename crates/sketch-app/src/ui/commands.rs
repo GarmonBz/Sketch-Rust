@@ -259,6 +259,24 @@ static COMMANDS: &[Command] = &[
         run: |_| Message::ImportAxf,
     },
     Command {
+        id: "import-acisketch",
+        label: "Import ACI Sketch...",
+        group: Group::File,
+        shortcut: "",
+        enabled: always,
+        checked: None,
+        run: |_| Message::ImportRapid(crate::rapid_io::Flavor::AciSketch),
+    },
+    Command {
+        id: "import-rapidsketch",
+        label: "Import RapidSketch...",
+        group: Group::File,
+        shortcut: "",
+        enabled: always,
+        checked: None,
+        run: |_| Message::ImportRapid(crate::rapid_io::Flavor::RapidSketch),
+    },
+    Command {
         id: "import-layer",
         label: "Import layer...",
         group: Group::File,
@@ -302,6 +320,24 @@ static COMMANDS: &[Command] = &[
         enabled: always,
         checked: None,
         run: |_| Message::ExportAxf,
+    },
+    Command {
+        id: "export-acisketch",
+        label: "Export as ACI Sketch",
+        group: Group::File,
+        shortcut: "",
+        enabled: always,
+        checked: None,
+        run: |_| Message::ExportRapid(crate::rapid_io::Flavor::AciSketch),
+    },
+    Command {
+        id: "export-rapidsketch",
+        label: "Export as RapidSketch",
+        group: Group::File,
+        shortcut: "",
+        enabled: always,
+        checked: None,
+        run: |_| Message::ExportRapid(crate::rapid_io::Flavor::RapidSketch),
     },
     Command {
         id: "export-pdf",
@@ -1643,7 +1679,8 @@ pub fn icon_for(id: &str) -> Option<(&'static str, bool)> {
         "import" => ("arrow-square-in", true),
         "import-layer" => ("arrow-square-in", false),
         "import-cad" | "export-dxf" => ("blueprint", true),
-        "import-axf" | "export-axf" => ("blueprint", true),
+        "import-axf" | "export-axf" | "import-acisketch" | "export-acisketch"
+        | "import-rapidsketch" | "export-rapidsketch" => ("blueprint", true),
         "export-png" => ("file-image", false),
         "export-svg" => ("arrow-square-out", true),
         "export-pdf" => ("file-pdf", true),
@@ -1799,11 +1836,15 @@ mod tests {
                 | "import"
                 | "import-cad"
                 | "import-axf"
+                | "import-acisketch"
+                | "import-rapidsketch"
                 | "import-layer"
                 | "export-png"
                 | "export-svg"
                 | "export-dxf"
                 | "export-axf"
+                | "export-acisketch"
+                | "export-rapidsketch"
                 | "export-pdf"
                 | "print"
                 | "print-preview"
