@@ -1,3 +1,13 @@
+Sketch Rust 0.3.18 - Windows x64
+
+0.3.18 fixes missing interior walls when importing ACI Sketch and RapidSketch
+files. They now arrive as interior walls, without dimension labels because the
+files store none; sketches imported with 0.3.17 need to be imported again. On
+export, straight solid interior walls are written the same way, so their
+dimension labels are not kept. An import now names any kind of object it leaves
+out, and an area named for its car count, such as "1 Car Attached", comes in as
+a garage.
+
 Sketch Rust 0.3.17 - Windows x64
 
 0.3.17 opens and writes RapidSketch (.rs) and ACI Sketch (.acisketch) files:

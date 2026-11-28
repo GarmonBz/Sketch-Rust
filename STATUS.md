@@ -1,5 +1,21 @@
 # Sketch Rust — STATUS ledger
 
+0.3.18 imports interior walls from RapidSketch / ACI Sketch files (user report:
+"The interior walls are missing"). They are `FreeformLine` objects on the sketch
+itself — two `SnappingHandle` ends, nothing else — which the first sample never
+contained, so 0.3.17 left them out. They map to `WallType::Interior` with the
+dimension hidden, and straight solid interior walls export as `FreeformLine`.
+The reader no longer drops unknown objects inside areas or symbol drawings
+silently: one warning names every kind left out. `code_for` also reads "N Car
+Attached/Detached/Built-In" as `GAR`. Verified on a second private sample (21
+interior walls in, 21 out at identical coordinates, matching member
+declarations, and the export loads in .NET Framework's `BinaryFormatter`
+against stand-in classes). Gate (Windows): `cargo fmt --all --check` and `cargo
+clippy --workspace --all-targets -- -D warnings` clean, `cargo test
+--workspace` 789 passed / 0 failed / 3 ignored with that sample supplied, and
+the release build succeeds. NOT verified: an export opened in RapidSketch or ACI
+Sketch, and the 0.3.18 import has not been checked by eye in the running app.
+
 0.3.17 adds RapidSketch (`.rs`) and ACI Sketch (`.acisketch`) import and
 export. The two are one format: an unencrypted .NET `BinaryFormatter` stream
 (MS-NRBF) of a `RapidSketch.Sketch`. `sketch_core::nrbf` is our own bounded

@@ -109,7 +109,7 @@ fn code_for(name: &str, living: bool) -> &'static str {
         }
     } else if has(&["carport", "car port"]) {
         "CPT"
-    } else if has(&["garage"]) {
+    } else if has(&["garage"]) || counts_cars(&name) {
         "GAR"
     } else if has(&["patio"]) {
         "PAT"
@@ -130,6 +130,13 @@ fn code_for(name: &str, living: bool) -> &'static str {
     } else {
         "OTH"
     }
+}
+
+/// A garage named by its size alone, such as "1 Car Attached".
+fn counts_cars(name: &str) -> bool {
+    let words: Vec<&str> = name.split(|c: char| !c.is_ascii_alphanumeric()).collect();
+    let has = |any: &[&str]| words.iter().any(|word| any.contains(word));
+    has(&["car", "cars"]) && has(&["attached", "detached", "built"])
 }
 
 fn hex_color(argb: u32) -> String {
@@ -394,6 +401,26 @@ impl Document {
             if outlines == 0 && !area.walls.is_empty() && area.label.visible {
                 unclosed.push(area.name.clone());
             }
+        }
+        for wall in &self.interior_walls {
+            lines.push(SketchLine {
+                id: take_id(),
+                start: to_world(wall.start),
+                end: to_world(wall.end),
+                kind: WallType::Interior,
+                color: None,
+                line_thickness: None,
+                thickness: None,
+                // The program draws no dimension on these.
+                dimension_hidden: true,
+                layer_id: None,
+                bow_angle: bow_of(wall),
+                arc_height: 0.0,
+                line_style: None,
+                dimension_position: None,
+                dimension_anchor: None,
+                extra: Default::default(),
+            });
         }
         if !unclosed.is_empty() {
             notes.push(format!(
@@ -905,9 +932,19 @@ pub fn from_page(
             })
         })
     };
+    // A straight, solid interior wall is the file's own `FreeformLine`. That
+    // can hold nothing more, so a curved or dashed one goes with the others.
+    let freeform = |l: &SketchLine| {
+        l.kind == WallType::Interior && l.bow_angle.abs() <= 0.5 && l.line_style.is_none()
+    };
+    doc.interior_walls = lines
+        .iter()
+        .filter(|l| !used.contains(&l.id) && freeform(l))
+        .map(|l| file_segment(l.start, l.end, 0.0))
+        .collect();
     let loose: Vec<(&SketchLine, Segment)> = lines
         .iter()
-        .filter(|l| !used.contains(&l.id) && !same_span(l))
+        .filter(|l| !used.contains(&l.id) && !freeform(l) && !same_span(l))
         .map(|l| (l, file_segment(l.start, l.end, l.bow_angle)))
         .collect();
     let segments: Vec<Segment> = loose.iter().map(|(_, s)| *s).collect();
@@ -977,7 +1014,7 @@ pub fn from_page(
         doc.warnings
             .push("Text inside symbols was not exported.".into());
     }
-    if doc.areas.is_empty() && doc.open_walls.is_empty() {
+    if doc.areas.is_empty() && doc.open_walls.is_empty() && doc.interior_walls.is_empty() {
         return Err("The page has no walls or areas to export.".into());
     }
     Ok(doc)

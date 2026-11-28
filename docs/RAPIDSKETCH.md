@@ -10,19 +10,21 @@ files. They are one format under two names.
 
 ## How far this has been tested
 
-The layout below was worked out from **one real `.acisketch` file**, written by
-version 2.8.0.250.
+The layout below was worked out from **two real `.acisketch` files**, both
+written by version 2.8.0.250.
 
-- That file reads completely and survives export and re-import with the same
-  area totals.
+- Both read with nothing skipped and survive export and re-import with the same
+  area totals, and the same numbers of walls, notes and symbols.
 - Exported files load in Microsoft's .NET Framework `BinaryFormatter` against
   stand-in classes with the same names and members. That checks the stream and
   the object graph, **not** how RapidSketch or ACI Sketch behaves with them:
   no exported file has been opened in either program.
 - No `.rs` file has been tried. The shared format is inferred from the class
-  names in the `.acisketch` file, which are all `RapidSketch.*`; the `.rs`
+  names in the `.acisketch` files, which are all `RapidSketch.*`; the `.rs`
   extension comes from public software listings.
-- Other program versions may declare other members.
+- Other program versions, or features neither file uses, may add objects or
+  members. An import names any kind of object it leaves out. The first
+  file had no interior walls, so `FreeformLine` was not supported until 0.3.18.
 
 ## The format
 
@@ -36,7 +38,8 @@ sketch files with `BinaryFormatter`: it can be made to run code.
 
 | Object | Holds |
 |---|---|
-| `Sketch` | `Controls` (areas, notes, symbols), `Areas`, `SketchInformation` |
+| `Sketch` | `Controls` (areas, interior walls, notes, symbols), `Areas`, `SketchInformation` |
+| `FreeformLine` | an interior wall: `Start` and `End`, each a `SnappingHandle` with a `Location`; no arc, pen or dimension |
 | `Area` | `Name`, `LivingArea`, `Multiplier`, `FillColor`; `Controls` = size label, walls, name label |
 | `Line` | `Start`, `End` (each a `Point` joined by `ConnectedPoint`), `ArcHeight`, `ArcHandle`, `DashStyle`, dimension `Label` |
 | `Note`, `Label` | `Lines` of text, centre `X`/`Y`, `Rotation`, `Font`, `Color`, `Visible` |
@@ -60,7 +63,8 @@ sketch files with `BinaryFormatter`: it can be made to run code.
 | Text notes with font and style | yes | yes |
 | Symbols | with their own drawing, as custom symbols | drawing only, without text |
 | Subject property fields | yes | yes |
-| Walls outside any area | yes | as an open, unlabelled area |
+| Interior walls (`FreeformLine`) | as interior walls, without dimensions | straight, solid interior walls; their dimensions are not kept |
+| Other walls outside any area | yes | as an open, unlabelled area |
 | Background picture | no | no |
 | Wall colours, hatching | no | no |
 | Dimension placement and font size | regenerated | regenerated |

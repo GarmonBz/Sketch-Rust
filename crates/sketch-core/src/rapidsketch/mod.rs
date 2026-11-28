@@ -215,6 +215,9 @@ pub struct Document {
     pub areas: Vec<Area>,
     /// Walls to be written that belong to no closed area, as open runs.
     pub open_walls: Vec<Vec<Wall>>,
+    /// `FreeformLine`s: the interior walls, drawn on the sketch itself and
+    /// part of no area. They are straight and carry no pen or dimension.
+    pub interior_walls: Vec<Segment>,
     pub notes: Vec<TextBlock>,
     pub symbols: Vec<Symbol>,
     pub information: Information,
@@ -467,20 +470,54 @@ pub(crate) fn chains(segments: &[Segment]) -> Vec<Chain> {
     out
 }
 
-fn lines_of<'a>(area: Node<'a>) -> Result<Vec<Node<'a>>, RapidError> {
-    let lines: Vec<_> = area
-        .children("Controls")
-        .into_iter()
-        .filter(|c| c.short_class() == "Line")
-        .collect();
+/// Items left out of an import, so the user is told rather than left to notice.
+#[derive(Default)]
+struct Skipped {
+    count: usize,
+    kinds: std::collections::BTreeSet<String>,
+}
+
+impl Skipped {
+    fn add(&mut self, kind: &str) {
+        self.count += 1;
+        // A file chooses these names, so both their number and length are cut.
+        if self.kinds.len() < 8 {
+            self.kinds.insert(kind.chars().take(40).collect());
+        }
+    }
+
+    fn warning(&self) -> Option<String> {
+        let kinds: Vec<&str> = self.kinds.iter().map(String::as_str).collect();
+        (self.count > 0).then(|| {
+            format!(
+                "{} item{} Sketch Rust does not support {} not imported: {}.",
+                self.count,
+                if self.count == 1 { "" } else { "s" },
+                if self.count == 1 { "was" } else { "were" },
+                kinds.join(", "),
+            )
+        })
+    }
+}
+
+/// An area's walls. Besides them it holds only its pieces of text.
+fn lines_of<'a>(area: Node<'a>, skipped: &mut Skipped) -> Result<Vec<Node<'a>>, RapidError> {
+    let mut lines = Vec::new();
+    for control in area.children("Controls") {
+        match control.short_class() {
+            "Line" => lines.push(control),
+            "Label" | "Note" => {}
+            other => skipped.add(other),
+        }
+    }
     if lines.len() > MAX_AREA_LINES {
         return Err(RapidError::Damaged("an area has too many walls".into()));
     }
     Ok(lines)
 }
 
-fn area(node: Node) -> Result<Area, RapidError> {
-    let walls = lines_of(node)?
+fn area(node: Node, skipped: &mut Skipped) -> Result<Area, RapidError> {
+    let walls = lines_of(node, skipped)?
         .into_iter()
         .map(wall)
         .collect::<Result<Vec<_>, _>>()?;
@@ -580,6 +617,7 @@ fn graphic_shapes(
     height: f64,
     depth: usize,
     budget: &mut usize,
+    skipped: &mut Skipped,
 ) -> Result<Vec<Shape>, RapidError> {
     if depth > MAX_SYMBOL_DEPTH {
         return Err(RapidError::Damaged("symbols are nested too deeply".into()));
@@ -589,7 +627,7 @@ fn graphic_shapes(
     for control in graphic.children("Controls") {
         match control.short_class() {
             "Area" => {
-                let lines = lines_of(control)?;
+                let lines = lines_of(control, skipped)?;
                 let mut segments = Vec::with_capacity(lines.len());
                 for line in lines {
                     *budget = budget
@@ -631,10 +669,11 @@ fn graphic_shapes(
                 for corner in place.corners() {
                     bounds.add(corner, 0.0);
                 }
-                let inner = graphic_shapes(inner, place.width, place.height, depth + 1, budget)?;
+                let inner =
+                    graphic_shapes(inner, place.width, place.height, depth + 1, budget, skipped)?;
                 shapes.extend(map_shapes(inner, |p| place.place(p)));
             }
-            _ => {}
+            other => skipped.add(other),
         }
     }
     if shapes.is_empty() {
@@ -673,7 +712,7 @@ fn decode(graph: &Graph) -> Result<Document, RapidError> {
         .ok_or(RapidError::NotRapidSketch)?;
     let mut doc = Document::default();
     let mut budget = MAX_TOTAL_SYMBOL_SEGMENTS;
-    let mut unknown = 0usize;
+    let mut skipped = Skipped::default();
     let (mut walls, mut text) = (0usize, 0usize);
     let controls = sketch.children("Controls");
     if controls.len() > MAX_CONTROLS {
@@ -685,7 +724,7 @@ fn decode(graph: &Graph) -> Result<Document, RapidError> {
         }
         match control.short_class() {
             "Area" => {
-                let area = area(control)?;
+                let area = area(control, &mut skipped)?;
                 walls += area.walls.len();
                 text += area
                     .walls
@@ -693,6 +732,14 @@ fn decode(graph: &Graph) -> Result<Document, RapidError> {
                     .map(|w| w.dimension.text.len())
                     .sum::<usize>();
                 doc.areas.push(area);
+            }
+            // An interior wall: two ends and nothing else.
+            "FreeformLine" => {
+                walls += 1;
+                let wall = segment(control)?;
+                if (wall.start.x - wall.end.x).hypot(wall.start.y - wall.end.y) > 1e-6 {
+                    doc.interior_walls.push(wall);
+                }
             }
             "Note" | "Label" => {
                 let note = text_block(control)?;
@@ -703,16 +750,23 @@ fn decode(graph: &Graph) -> Result<Document, RapidError> {
             }
             "ContainerControl" => {
                 let Some(graphic) = control.child("Graphic") else {
-                    unknown += 1;
+                    skipped.add("symbol without a drawing");
                     continue;
                 };
                 let place = placement(control)?;
                 let mut one = MAX_SYMBOL_SEGMENTS.min(budget);
                 let allowed = one;
-                let shapes = graphic_shapes(graphic, place.width, place.height, 0, &mut one)?;
+                let shapes = graphic_shapes(
+                    graphic,
+                    place.width,
+                    place.height,
+                    0,
+                    &mut one,
+                    &mut skipped,
+                )?;
                 budget -= allowed - one;
                 if shapes.is_empty() {
-                    unknown += 1;
+                    skipped.add("symbol without a drawing");
                     continue;
                 }
                 doc.symbols.push(Symbol {
@@ -727,16 +781,10 @@ fn decode(graph: &Graph) -> Result<Document, RapidError> {
                     shapes,
                 });
             }
-            _ => unknown += 1,
+            other => skipped.add(other),
         }
     }
-    if unknown > 0 {
-        doc.warnings.push(format!(
-            "{unknown} item{} of a kind Sketch Rust does not know {} not imported.",
-            if unknown == 1 { "" } else { "s" },
-            if unknown == 1 { "was" } else { "were" },
-        ));
-    }
+    doc.warnings.extend(skipped.warning());
     if sketch.child("PhotoMetricsImage").is_some() {
         doc.warnings
             .push("The background picture was not imported.".into());
@@ -758,7 +806,11 @@ fn decode(graph: &Graph) -> Result<Document, RapidError> {
             appraiser_address: text("AppraiserAddress"),
         };
     }
-    if doc.areas.is_empty() && doc.notes.is_empty() && doc.symbols.is_empty() {
+    if doc.areas.is_empty()
+        && doc.interior_walls.is_empty()
+        && doc.notes.is_empty()
+        && doc.symbols.is_empty()
+    {
         return Err(RapidError::Empty);
     }
     Ok(doc)

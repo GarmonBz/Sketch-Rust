@@ -11,7 +11,7 @@ fn near_pt(a: Pt, b: Pt, tolerance: f64) -> bool {
 }
 
 /// A 20 x 10 ft room whose far wall bows out, stored with its walls out of
-/// order and one reversed, plus an unfinished basement, an interior wall, a
+/// order and one reversed, plus a loose exterior wall, an interior wall, a
 /// note and a symbol.
 fn sample_page() -> serde_json::Value {
     let line = |id: i64, a: (f64, f64), b: (f64, f64), bow: f64| {
@@ -27,6 +27,8 @@ fn sample_page() -> serde_json::Value {
             line(3, (20.0, 10.0), (0.0, 10.0), -90.0),
             line(4, (0.0, 10.0), (0.0, 0.0), 0.0),
             line(9, (5.0, 0.0), (5.0, 6.0), 0.0),
+            {"id": 10, "start": {"x": 12.0, "y": 0.0}, "end": {"x": 12.0, "y": 7.0},
+             "type": "interior"},
         ],
         "polygons": [{
             "id": 20,
@@ -83,8 +85,20 @@ fn a_written_file_reads_back() {
     let back = read(&bytes).unwrap();
 
     assert_eq!(back.information, doc.information);
-    // The interior wall travels as an open area.
+    // The loose exterior wall travels as an open area, the interior wall as the
+    // file's own kind of interior wall.
     assert_eq!(back.areas.len(), 2);
+    assert_eq!(back.interior_walls.len(), 1);
+    assert!(near_pt(
+        back.interior_walls[0].start,
+        Pt::new(84.0, 0.0),
+        1e-3
+    ));
+    assert!(near_pt(
+        back.interior_walls[0].end,
+        Pt::new(84.0, -49.0),
+        1e-3
+    ));
     let area = &back.areas[0];
     assert_eq!((area.name.as_str(), area.living), ("Second Floor", true));
     assert_eq!(area.multiplier, 0.5);
@@ -152,7 +166,11 @@ fn a_round_trip_keeps_areas_arcs_and_symbols() {
     let bows: Vec<f64> = bowed.map(|e| e.bow_angle).collect();
     assert_eq!(bows.len(), 1);
     assert!((bows[0] + 90.0).abs() < 0.05, "{bows:?}");
-    assert_eq!(page["lines"].as_array().unwrap().len(), 5);
+    let lines = page["lines"].as_array().unwrap();
+    assert_eq!(lines.len(), 6);
+    let interior: Vec<_> = lines.iter().filter(|l| l["type"] == "interior").collect();
+    assert_eq!(interior.len(), 1);
+    assert_eq!(interior[0]["dimensionHidden"], true);
     assert_eq!(page["labels"][0]["text"], "½ Bath");
 
     // The symbol's corners land where they were.
@@ -195,6 +213,33 @@ fn a_positive_arc_height_stands_left_of_travel_with_y_up() {
     assert!(near_pt(s.apex(), Pt::new(7.0, -3.0), 1e-9));
     let back = Segment::through(s.start, s.apex(), s.end);
     assert!((back.arc - 3.0).abs() < 1e-9);
+}
+
+#[test]
+fn a_garage_named_by_its_size_is_a_garage() {
+    let named = |name: &str| {
+        let wall = serde_json::json!({
+            "lines": [], "labels": [], "symbols": [],
+            "polygons": [{
+                "id": 1, "name": name, "type": "UND",
+                "points": [{"x":0,"y":0},{"x":20,"y":0},{"x":20,"y":11},{"x":0,"y":11}]
+            }]
+        });
+        let codes = area_codes::default_area_codes();
+        let doc = from_page(&wall, &codes, &serde_json::json!({}), &|_| None).unwrap();
+        let import = doc.to_model("garage");
+        import.model["pages"][0]["polygons"][0]["type"].clone()
+    };
+    for name in [
+        "1 Car Attached",
+        "2 Car Detached",
+        "2-Car Built-In",
+        "Garage",
+    ] {
+        assert_eq!(named(name), "GAR", "{name}");
+    }
+    assert_eq!(named("2 Car Attached Carport"), "CPT");
+    assert_eq!(named("Carpet Room"), "OTH");
 }
 
 #[test]
@@ -275,8 +320,19 @@ fn a_real_sample_round_trips_when_one_is_given() {
     if let Ok(out) = std::env::var("RAPIDSKETCH_OUT") {
         std::fs::write(out, &bytes).unwrap();
     }
-    let back = read(&bytes).unwrap().to_model("sample");
+    let reread = read(&bytes).unwrap();
+    println!(
+        "interior walls {} -> {} after export",
+        doc.interior_walls.len(),
+        reread.interior_walls.len()
+    );
+    assert_eq!(reread.interior_walls.len(), doc.interior_walls.len());
+    assert_eq!(reread.symbols.len(), doc.symbols.len());
+    assert_eq!(reread.notes.len(), doc.notes.len());
+    let back = reread.to_model("sample");
     assert_eq!(back.area_count, import.area_count);
+    let walls_back = back.model["pages"][0]["lines"].as_array().unwrap().len();
+    assert_eq!(walls_back, count("lines"));
     let totals = |m: &serde_json::Value| -> f64 {
         m["pages"][0]["polygons"]
             .as_array()

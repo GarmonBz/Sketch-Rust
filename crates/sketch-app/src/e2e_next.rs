@@ -1185,6 +1185,20 @@ fn rapidsketch_exports_reopen_as_new_sketches() {
         ));
         let bytes = std::fs::read(&out).expect("the export wrote the file");
         assert!(sketch_core::rapidsketch::recognizes(&bytes));
+        // Add an interior wall clean across the room: it must arrive as an
+        // interior wall and neither split the area nor make another.
+        let mut doc = sketch_core::rapidsketch::read(&bytes).expect("reads back");
+        let middle = |i: usize| {
+            let s = doc.areas[0].walls[i].segment;
+            sketch_core::geometry::Pt::new((s.start.x + s.end.x) / 2.0, (s.start.y + s.end.y) / 2.0)
+        };
+        let wall = sketch_core::rapidsketch::Segment {
+            start: middle(0),
+            end: middle(2),
+            arc: 0.0,
+        };
+        doc.interior_walls.push(wall);
+        std::fs::write(&out, sketch_core::rapidsketch::write(&doc)).unwrap();
         // Import and File > Open both open it as a converted copy.
         for request in [
             crate::DialogRequest::ImportRapid,
@@ -1194,7 +1208,13 @@ fn rapidsketch_exports_reopen_as_new_sketches() {
             h2.send(Message::DialogPicked(request, Some(out.clone())));
             let app = state(h2);
             assert_eq!(app.drawing.polygons.len(), 1, "the area opened");
-            assert_eq!(app.drawing.lines.len(), 4);
+            assert_eq!(app.drawing.lines.len(), 5);
+            let interior = app
+                .drawing
+                .lines
+                .iter()
+                .filter(|l| l.kind == sketch_core::model::WallType::Interior);
+            assert_eq!(interior.count(), 1, "the interior wall opened");
             assert!(app.current_file.is_none(), "never saved back in place");
             assert!(app.save_as_sketchie, "Save asks for a new name");
         }

@@ -114,6 +114,23 @@ sketch_object!(
     ]
 );
 
+sketch_object!(
+    FREEFORM_LINE,
+    "RapidSketch.FreeformLine",
+    "RapidSketch.Sketch",
+    [
+        ("Start", rapid("RapidSketch.SnappingHandle")),
+        ("End", rapid("RapidSketch.SnappingHandle")),
+    ]
+);
+
+sketch_object!(
+    SNAPPING_HANDLE,
+    "RapidSketch.SnappingHandle",
+    "RapidSketch.FreeformLine",
+    [("Location", drawing("System.Drawing.PointF"))]
+);
+
 /// `Note` and `Label` declare the same members.
 macro_rules! text_class {
     ($id:ident, $name:literal, $parent:literal) => {
@@ -562,6 +579,20 @@ impl Builder {
         self.heap.set(id, &LINE, fields);
     }
 
+    /// Fill a reserved `FreeformLine`, an interior wall.
+    fn freeform(&mut self, id: usize, sketch: usize, wall: &Segment) {
+        let ends = [wall.start, wall.end].map(|at| {
+            let handle = self.heap.reserve();
+            let mut fields = self.base(&[], Some(id));
+            fields.push(point_f(at));
+            self.heap.set(handle, &SNAPPING_HANDLE, fields);
+            handle
+        });
+        let mut fields = self.base(&ends, Some(sketch));
+        fields.extend(ends.map(Field::Ref));
+        self.heap.set(id, &FREEFORM_LINE, fields);
+    }
+
     /// The walls of one area, joined where their ends meet.
     fn walls(&mut self, parent: usize, walls: &[Wall], closed: bool, pen: Pen) -> Vec<usize> {
         let ids: Vec<_> = walls
@@ -841,6 +872,11 @@ pub fn write(doc: &Document) -> Vec<u8> {
         let id = b.heap.reserve();
         b.area(id, sketch, number as i32 + 1, &area, closed, WALL_PEN);
         areas.push(id);
+        children.push(id);
+    }
+    for wall in &doc.interior_walls {
+        let id = b.heap.reserve();
+        b.freeform(id, sketch, wall);
         children.push(id);
     }
     for note in &doc.notes {
