@@ -141,6 +141,13 @@ pub enum Drag {
         last_snap: (f64, f64),
         moved: bool,
     },
+    /// A tape measurement being reshaped or moved.
+    Measure {
+        run: usize,
+        grab: crate::measure_edit::Grab,
+        from: World,
+        original: Vec<sketch_core::geometry::Pt>,
+    },
     /// Move a selected wall endpoint or an area corner.
     Vertex {
         handle: crate::handles::VertexHandle,
@@ -539,7 +546,7 @@ impl View {
                 *last = world;
                 Some((dx, dy))
             }
-            Drag::Vertex { .. } => None,
+            Drag::Vertex { .. } | Drag::Measure { .. } => None,
             Drag::Freeform { .. } | Drag::Erase { .. } => None,
             Drag::Curve { .. } => None,
             Drag::RotateArea { .. } => None,

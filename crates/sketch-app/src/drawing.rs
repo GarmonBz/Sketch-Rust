@@ -428,6 +428,7 @@ impl Drawing {
             north_angle: None,
             area_codes: None,
             pages: None,
+            measure_runs: None,
         }
     }
 
@@ -2552,6 +2553,7 @@ mod edit_tools_tests {
             area_sizes: Default::default(),
             dimensions: Default::default(),
             chains: Default::default(),
+            measure: None,
             active_endpoint: Some((1, at_start)),
         }
     }

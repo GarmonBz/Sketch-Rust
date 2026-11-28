@@ -87,6 +87,8 @@ impl MenuSub {
                 ("import", "Sketch file…"),
                 ("import-cad", "CAD drawing (DXF)…"),
                 ("import-axf", "Apex AXF sketch…"),
+                ("import-acisketch", "ACI Sketch…"),
+                ("import-rapidsketch", "RapidSketch…"),
                 ("import-layer", "Layer from another sketch…"),
             ],
             MenuSub::Export => &[
@@ -95,6 +97,8 @@ impl MenuSub {
                 ("export-svg", "SVG drawing"),
                 ("export-dxf", "DXF for CAD"),
                 ("export-axf", "Apex AXF"),
+                ("export-acisketch", "ACI Sketch"),
+                ("export-rapidsketch", "RapidSketch"),
             ],
             MenuSub::Print => &[
                 ("print", "Print…"),

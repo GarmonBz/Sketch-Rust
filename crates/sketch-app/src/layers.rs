@@ -381,6 +381,58 @@ impl Layers {
         rows
     }
 
+    /// The Areas list's rows, the front of the stack first. Layers paint in
+    /// list order, so each level reads in reverse, with a folder still above
+    /// its own rows.
+    pub fn panel_rows(&self) -> Vec<Row> {
+        fn front_first(rows: &[Row]) -> Vec<Row> {
+            let Some(level) = rows.first().map(|r| r.depth) else {
+                return vec![];
+            };
+            // Each row at this level, with the rows nested under it.
+            let mut starts: Vec<usize> = (0..rows.len())
+                .filter(|&i| rows[i].depth <= level)
+                .collect();
+            starts.push(rows.len());
+            starts
+                .windows(2)
+                .rev()
+                .flat_map(|w| {
+                    let head = std::iter::once(rows[w[0]].clone());
+                    head.chain(front_first(&rows[w[0] + 1..w[1]]))
+                })
+                .collect()
+        }
+        front_first(&self.visible_rows(|_| true))
+    }
+
+    /// Which side of `target` a drag of `id` over it means: the side asked
+    /// for, unless the row would stay where it is, as on the near half of a
+    /// neighbour, and the other side would move it.
+    pub fn drop_side(&self, id: &str, target: &str, asked: DragPos) -> DragPos {
+        let other = match asked {
+            DragPos::Before => DragPos::After,
+            DragPos::After => DragPos::Before,
+            DragPos::Inside => return asked,
+        };
+        let places = |l: &Layers| -> Vec<(String, Option<String>)> {
+            l.flatten_layer_order()
+                .iter()
+                .map(|x| (x.id.clone(), x.parent_id.clone()))
+                .collect()
+        };
+        let now = places(self);
+        let moves = |side: DragPos| {
+            let mut after = self.clone();
+            after.move_layer(id, target, side) && places(&after) != now
+        };
+        if !moves(asked) && moves(other) {
+            other
+        } else {
+            asked
+        }
+    }
+
     /// `moveLayer(id, targetId, position)` (S10-031): before / after / into
     /// a group. Refused (false) when either id is unknown, identical, or
     /// the target sits inside the moving branch. The `Move Layer` undo push
@@ -584,6 +636,30 @@ mod tests {
         ];
         l.active = "kitchen".to_string();
         l
+    }
+
+    #[test]
+    fn a_neighbours_near_half_moves_the_row_past_it() {
+        use DragPos::{After, Before, Inside};
+        let l = tree();
+        // Room A is just before Room B: both halves of Room B swap them.
+        assert_eq!(l.drop_side("room-a", "room-b", Before), After);
+        assert_eq!(l.drop_side("room-a", "room-b", After), After);
+        assert_eq!(l.drop_side("room-b", "room-a", After), Before);
+        // Elsewhere each half means what it says.
+        assert_eq!(l.drop_side("kitchen", "room-a", Before), Before);
+        assert_eq!(l.drop_side("kitchen", "room-a", After), After);
+        assert_eq!(l.drop_side("room-a", "grp", Inside), Inside);
+    }
+
+    #[test]
+    fn panel_rows_read_front_first_with_folders_above_their_rows() {
+        let ids =
+            |l: &Layers| -> Vec<String> { l.panel_rows().into_iter().map(|r| r.id).collect() };
+        let mut l = tree();
+        assert_eq!(ids(&l), ["kitchen", "grp", "room-b", "room-a", "layer-1"]);
+        l.set_collapsed("grp", true);
+        assert_eq!(ids(&l), ["kitchen", "grp", "layer-1"]);
     }
 
     #[test]

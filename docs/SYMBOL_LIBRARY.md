@@ -5,7 +5,7 @@
 The default `symbols.json` no longer carries the older Arrows, Doors,
 Windows and Miscellaneous categories or the 73 symbols in them. The
 Doors & windows category (the CADdillo doors and windows) stays, and so do all
-other categories. `symbols.json` now holds 499 symbols. They can be added back
+other categories. `symbols.json` now holds 503 symbols. They can be added back
 to the library later if they are needed.
 
 Doors & windows has two garage doors: **Door Garage 108** (9 ft, CADdillo) and
@@ -14,6 +14,22 @@ CADdillo 108-inch door with its width doubled (id `custom/door-garage-216`), so
 it is not one of CADdillo's own blocks. It replaces the older Favorites symbol
 Door - Garage-Dbl; sketches that used that symbol open with Door Garage 216 in
 its place.
+
+Fireplaces & structure has **Corner Fireplace 36** (id
+`custom/fireplace-corner-36`): 48 in along each wall, with the firebox and
+hearth of the CADdillo Fireplace 36 turned onto the slanted face, so it is not
+one of CADdillo's own blocks. It is drawn for the top left corner of a room;
+rotate it in 90-degree steps for the other corners. The older **Corner** symbol,
+a 6 ft triangle, is still there.
+
+A RapidSketch or ACI Sketch file brings its own corner fireplace, stored
+stretched out of square. Opening one, or a sketch imported from one, swaps it for
+Corner Fireplace 36, facing the same way, in its wall corner.
+
+Doors & windows has **Sliding Closet Door** in 48, 60, 72 and 96 in. The 72 is
+CADdillo's Door Bypass 72; the other three are resized from it, with the same
+jambs. Kitchen has **Double Kitchen Sink 33**, CADdillo's 33 x 22 in sink, moved
+there from Bath & plumbing. Both kept their ids, so saved sketches are unchanged.
 
 ## Plain category names and fewer duplicates (0.2.2)
 

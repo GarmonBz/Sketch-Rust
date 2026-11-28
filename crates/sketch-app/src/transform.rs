@@ -516,6 +516,15 @@ fn transform_sketch(d: &mut Drawing, f: impl Fn(Pt) -> Pt, rotation_delta: f64) 
         s.y = p.y;
         s.rotation += rotation_delta;
     }
+    // Tape measurements stay on what they measured.
+    for p in d
+        .measure_runs
+        .iter_mut()
+        .flatten()
+        .chain(&mut d.measure_points)
+    {
+        *p = f(*p);
+    }
 }
 
 /// `rotateSketch(degrees)`: the whole sketch about its own centre, north

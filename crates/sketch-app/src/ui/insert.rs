@@ -1,16 +1,18 @@
 //! Insert drawer for Symbols and Room labels (`docs/ui-redesign/01-design-spec.md` §5.5, P8).
 //!
-//! Renders as a floating card (`~420px`) on Wide and Medium screens and as a
-//! full-screen sheet on Compact screens. Uses theme tokens exclusively (`tokens::*`,
-//! `kit::*`, `icons::mono`) and `symlib::render_fitted` vector previews.
+//! Renders as a floating card on Wide (`~540px`) and Medium (`~420px`) screens
+//! and as a full-screen sheet on Compact screens. A Wide drawer lists the symbol
+//! categories down its side; the narrower ones pick them from a drop-down. Uses
+//! theme tokens exclusively (`tokens::*`, `kit::*`, `icons::mono`) and
+//! `symlib::render_fitted` vector previews.
 
 use std::collections::HashSet;
 
 use iced::widget::scrollable::{Direction, Scrollbar};
 use iced::widget::text::Wrapping;
 use iced::widget::{
-    button, canvas, column, container, mouse_area, opaque, row, scrollable as scroll_box, stack,
-    text, text_input, Column, Row, Space,
+    button, canvas, column, container, mouse_area, opaque, pick_list, row,
+    scrollable as scroll_box, stack, text, text_input, Column, Row, Space,
 };
 use iced::{alignment, Alignment, Background, Border, Color, Element, Length, Padding, Rectangle};
 use sketch_core::symbols::Symbol;
@@ -21,6 +23,7 @@ use crate::symlib::{self, SymIndex, SymItem};
 use crate::ui::fonts::{BARLOW, BARLOW_MEDIUM, BARLOW_SEMIBOLD};
 use crate::ui::kit::{self, Segment};
 use crate::ui::layout::SizeClass;
+use crate::ui::symbol_library::ALL_KEY;
 use crate::ui::tokens::{
     self, Density, FOCUS_RING_WIDTH, RADIUS_CONTROL, RADIUS_SHEET, RADIUS_TILE, SPACE_1, SPACE_2,
     SPACE_3, TEXT_11, TEXT_12, TEXT_13,
@@ -31,7 +34,22 @@ use crate::{symbol_manager, App, Message};
 
 const SYMBOL_COLS: usize = 3;
 const DRAWER_MAX_W: f32 = 420.0;
+/// A Wide window has room for the category list beside the symbols.
+const DRAWER_WIDE_W: f32 = 540.0;
 const DRAWER_MAX_H: f32 = 560.0;
+const CATEGORY_LIST_W: f32 = 164.0;
+const FAVORITES_KEY: &str = "favorites";
+pub(crate) const PINNED_HINT: &str = "Pinned: stays open until you close it";
+
+/// The floating card's width on Wide and Medium screens.
+fn card_width(window_w: f32) -> f32 {
+    let max = if matches!(SizeClass::of(window_w), SizeClass::Wide) {
+        DRAWER_WIDE_W
+    } else {
+        DRAWER_MAX_W
+    };
+    (window_w - 32.0).clamp(280.0, max)
+}
 
 /// Overlay layer for the Insert drawer (Symbols or Room labels).
 pub fn layer<'a>(app: &'a App) -> Option<Element<'a, Message>> {
@@ -41,13 +59,11 @@ pub fn layer<'a>(app: &'a App) -> Option<Element<'a, Message>> {
 
     let inner_w = match sc {
         SizeClass::Compact => (app.window_size.width - SPACE_3 * 2.0).max(260.0),
-        SizeClass::Medium | SizeClass::Wide => {
-            (app.window_size.width - 32.0).clamp(280.0, DRAWER_MAX_W) - SPACE_3 * 2.0
-        }
+        SizeClass::Medium | SizeClass::Wide => card_width(app.window_size.width) - SPACE_3 * 2.0,
     };
 
     let body: Element<'a, Message> = match tab {
-        DrawerTab::Symbols => symbols_body(app, d, inner_w, sc),
+        DrawerTab::Symbols => symbols_body(app, d, sc),
         DrawerTab::Labels => labels_body(app, d, inner_w),
     };
 
@@ -68,7 +84,7 @@ pub fn layer<'a>(app: &'a App) -> Option<Element<'a, Message>> {
                 }),
         ),
         SizeClass::Medium | SizeClass::Wide => {
-            let card_w = (app.window_size.width - 32.0).clamp(280.0, DRAWER_MAX_W);
+            let card_w = card_width(app.window_size.width);
             let card_h = (app.window_size.height - 160.0).clamp(320.0, DRAWER_MAX_H);
             let card = opaque(
                 container(content)
@@ -149,6 +165,15 @@ fn header<'a>(app: &'a App, tab: DrawerTab, d: Density) -> Element<'a, Message> 
         .into()
 }
 
+/// The line under the list. While pinned it says what that means.
+fn footer_hint(app: &App, unpinned: &'static str) -> &'static str {
+    if app.ui.drawer_pinned {
+        PINNED_HINT
+    } else {
+        unpinned
+    }
+}
+
 fn pin_button<'a>(label: &'a str, pinned: bool, d: Density) -> Element<'a, Message> {
     let fg = if pinned {
         tokens::accent()
@@ -212,10 +237,10 @@ fn pin_button<'a>(label: &'a str, pinned: bool, d: Density) -> Element<'a, Messa
 // Symbols mode
 // ---------------------------------------------------------------------------
 
-fn symbols_body<'a>(app: &'a App, d: Density, inner_w: f32, sc: SizeClass) -> Element<'a, Message> {
+fn symbols_body<'a>(app: &'a App, d: Density, sc: SizeClass) -> Element<'a, Message> {
     let ix = app.symbols_lib();
     let search = search_row(
-        "Find symbols…",
+        "Find in all symbols…",
         &app.dock.symbol_search,
         |s| Message::Dock(DockMsg::SymbolSearch(s)),
         None,
@@ -229,23 +254,18 @@ fn symbols_body<'a>(app: &'a App, d: Density, inner_w: f32, sc: SizeClass) -> El
     };
     let total_count: usize = ix.categories.iter().map(|c| c.items.len()).sum();
 
-    let mut cats: Vec<(String, String)> = Vec::with_capacity(ix.categories.len() + 2);
-    cats.push(("favorites".into(), format!("Favorites ({fav_count})")));
-    cats.push(("__all__".into(), format!("All {total_count}")));
+    let mut cats = Vec::with_capacity(ix.categories.len() + 2);
+    cats.push(CategoryEntry::new(FAVORITES_KEY, "Favorites", fav_count));
+    cats.push(CategoryEntry::new(ALL_KEY, "All symbols", total_count));
     for cat in &ix.categories {
-        cats.push((
-            cat.key.clone(),
-            format!("{} ({})", cat.name, cat.items.len()),
-        ));
+        cats.push(CategoryEntry::new(&cat.key, &cat.name, cat.items.len()));
     }
-
-    let chip_bar_h = if matches!(sc, SizeClass::Compact) {
-        104.0
+    // A search covers every category, so while one runs "All symbols" is lit.
+    let active = if app.dock.symbol_search.trim().is_empty() {
+        app.dock.symbol_category.as_str()
     } else {
-        92.0
+        ALL_KEY
     };
-    let category_chips =
-        wrapped_category_chips(&cats, &app.dock.symbol_category, inner_w, chip_bar_h, d);
 
     let items = app.dock.symbol_items(ix, app.symbol_favorites.as_deref());
     let fav_ids: HashSet<String> = match app.symbol_favorites.as_deref() {
@@ -262,10 +282,7 @@ fn symbols_body<'a>(app: &'a App, d: Density, inner_w: f32, sc: SizeClass) -> El
             row![
                 kit::text_button(
                     "Show all symbols",
-                    Some(Message::Dock(DockMsg::SymbolCategory(CategoryOption {
-                        key: "__all__".into(),
-                        name: format!("All {total_count}"),
-                    }))),
+                    Some(choose_category(ALL_KEY, "All symbols")),
                     d,
                 ),
                 kit::text_button(
@@ -314,7 +331,7 @@ fn symbols_body<'a>(app: &'a App, d: Density, inner_w: f32, sc: SizeClass) -> El
     .height(Length::Fill);
 
     let mut footer = row![
-        text("Tap to arm, or drag onto plan")
+        text(footer_hint(app, "Tap to arm, or drag onto plan"))
             .font(BARLOW)
             .size(TEXT_11)
             .color(tokens::muted()),
@@ -337,61 +354,80 @@ fn symbols_body<'a>(app: &'a App, d: Density, inner_w: f32, sc: SizeClass) -> El
         d,
     ));
 
-    column![
-        search,
-        category_chips,
-        kit::divider(),
-        list_scroll,
-        kit::divider(),
-        footer
-    ]
-    .spacing(SPACE_2)
-    .width(Length::Fill)
-    .height(Length::Fill)
-    .into()
+    let browse: Element<'a, Message> = if matches!(sc, SizeClass::Wide) {
+        row![
+            category_list(&cats, active, d),
+            container(Space::new())
+                .width(Length::Fixed(1.0))
+                .height(Length::Fill)
+                .style(|_| container::Style {
+                    background: Some(Background::Color(tokens::rule())),
+                    ..container::Style::default()
+                }),
+            list_scroll,
+        ]
+        .spacing(SPACE_2)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
+    } else {
+        column![
+            category_picker(&cats, active, d),
+            kit::divider(),
+            list_scroll
+        ]
+        .spacing(SPACE_2)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
+    };
+
+    column![search, browse, kit::divider(), footer]
+        .spacing(SPACE_2)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
 }
 
-fn wrapped_category_chips<'a>(
-    cats: &[(String, String)],
-    active_key: &str,
-    inner_w: f32,
-    max_h: f32,
-    d: Density,
-) -> Element<'a, Message> {
-    let available = (inner_w - 14.0).max(200.0);
-    let mut rows_col = Column::new().spacing(SPACE_1).width(Length::Fill);
-    let mut current_row = Row::new().spacing(SPACE_1).align_y(Alignment::Center);
-    let mut used = 0.0_f32;
-    let mut has_item = false;
+/// One entry of the category list or drop-down: a view (Favorites, All) or one
+/// of the library's categories.
+struct CategoryEntry {
+    key: String,
+    name: String,
+    count: usize,
+}
 
-    for (key, name) in cats {
-        let est_w = name.chars().count() as f32 * 6.8 + 24.0;
-        if has_item && used + est_w > available {
-            rows_col = rows_col.push(current_row);
-            current_row = Row::new().spacing(SPACE_1).align_y(Alignment::Center);
-            used = 0.0;
+impl CategoryEntry {
+    fn new(key: &str, name: &str, count: usize) -> Self {
+        CategoryEntry {
+            key: key.to_owned(),
+            name: name.to_owned(),
+            count,
         }
-        let chip = kit::chip(
-            name.clone(),
-            active_key == key.as_str(),
-            Some(Message::Dock(DockMsg::SymbolCategory(CategoryOption {
-                key: key.clone(),
-                name: name.clone(),
-            }))),
-            d,
-        );
-        current_row = current_row.push(chip);
-        used += est_w + SPACE_1;
-        has_item = true;
     }
-    if has_item {
-        rows_col = rows_col.push(current_row);
-    }
+}
 
+fn choose_category(key: &str, name: &str) -> Message {
+    Message::Dock(DockMsg::SymbolCategory(CategoryOption {
+        key: key.to_owned(),
+        name: name.to_owned(),
+    }))
+}
+
+/// The categories down the side of the Wide drawer, each one click away.
+fn category_list<'a>(cats: &[CategoryEntry], active: &str, d: Density) -> Element<'a, Message> {
+    let mut list = Column::new().spacing(1.0).width(Length::Fill);
+    for (i, entry) in cats.iter().enumerate() {
+        // Favorites and All come first, apart from the library's categories.
+        if i == 2 {
+            list = list.push(container(kit::divider()).padding([2, 0]));
+        }
+        list = list.push(category_line(entry, active == entry.key, d));
+    }
     scroll_box(
-        container(rows_col)
+        container(list)
             .padding(Padding {
-                right: 12.0,
+                right: SPACE_2,
                 ..Padding::ZERO
             })
             .width(Length::Fill),
@@ -399,8 +435,153 @@ fn wrapped_category_chips<'a>(
     .direction(Direction::Vertical(
         Scrollbar::new().width(5).scroller_width(5),
     ))
+    .width(Length::Fixed(CATEGORY_LIST_W))
+    .height(Length::Fill)
+    .into()
+}
+
+fn category_line<'a>(entry: &CategoryEntry, selected: bool, d: Density) -> Element<'a, Message> {
+    let fg = if selected {
+        tokens::accent()
+    } else {
+        tokens::text()
+    };
+    let count_fg = if selected {
+        tokens::accent()
+    } else {
+        tokens::muted()
+    };
+    let h = if matches!(d, Density::Touch) {
+        36.0
+    } else {
+        26.0
+    };
+    let mut line = Row::new().spacing(SPACE_1).align_y(Alignment::Center);
+    if entry.key == FAVORITES_KEY {
+        line = line.push(icons::mono("star", 11.0, fg));
+    }
+    line = line
+        .push(
+            container(
+                text(entry.name.clone())
+                    .font(if selected {
+                        BARLOW_SEMIBOLD
+                    } else {
+                        BARLOW_MEDIUM
+                    })
+                    .size(TEXT_12)
+                    .color(fg)
+                    .wrapping(Wrapping::None),
+            )
+            .width(Length::Fill)
+            .clip(true),
+        )
+        .push(
+            text(entry.count.to_string())
+                .font(BARLOW)
+                .size(TEXT_11)
+                .color(count_fg),
+        );
+    button(
+        container(line)
+            .width(Length::Fill)
+            .height(Length::Fixed(h))
+            .padding([0, 6])
+            .align_y(Alignment::Center),
+    )
     .width(Length::Fill)
-    .height(Length::Fixed(max_h))
+    .padding(0)
+    .on_press(choose_category(&entry.key, &entry.name))
+    .style(move |_, status| {
+        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        button::Style {
+            background: if selected {
+                Some(Background::Color(tokens::accent_soft()))
+            } else if hovered {
+                Some(Background::Color(tokens::hover()))
+            } else {
+                None
+            },
+            text_color: fg,
+            border: Border {
+                radius: RADIUS_CONTROL.into(),
+                ..Border::default()
+            },
+            ..button::Style::default()
+        }
+    })
+    .into()
+}
+
+/// The narrower drawers keep Favorites and All as buttons and put the library's
+/// categories in one drop-down.
+fn category_picker<'a>(cats: &[CategoryEntry], active: &str, d: Density) -> Element<'a, Message> {
+    let fav_count = cats.first().map_or(0, |c| c.count);
+    let total_count = cats.get(1).map_or(0, |c| c.count);
+    let options: Vec<CategoryOption> = cats
+        .iter()
+        .skip(2)
+        .map(|c| CategoryOption {
+            key: c.key.clone(),
+            name: format!("{} ({})", c.name, c.count),
+        })
+        .collect();
+    let selected = options.iter().find(|o| o.key == active).cloned();
+    let pad = ((d.field_h() - 16.0).max(4.0)) * 0.5;
+    let drop_down = pick_list(options, selected, |o: CategoryOption| {
+        Message::Dock(DockMsg::SymbolCategory(o))
+    })
+    .placeholder("Choose a category")
+    .width(Length::Fill)
+    .text_size(TEXT_12)
+    .font(BARLOW)
+    .padding(Padding {
+        top: pad,
+        bottom: pad,
+        left: 8.0,
+        right: 8.0,
+    })
+    .menu_style(|_| iced::overlay::menu::Style {
+        background: Background::Color(tokens::panel()),
+        border: Border {
+            color: tokens::rule(),
+            width: 1.0,
+            radius: RADIUS_CONTROL.into(),
+        },
+        text_color: tokens::text(),
+        selected_text_color: tokens::on_accent(),
+        selected_background: Background::Color(tokens::accent()),
+        shadow: tokens::floating_shadow(),
+    })
+    .style(|_, _| pick_list::Style {
+        text_color: tokens::text(),
+        placeholder_color: tokens::muted(),
+        handle_color: tokens::muted(),
+        background: Background::Color(tokens::input_bg()),
+        border: Border {
+            color: tokens::rule(),
+            width: 1.0,
+            radius: RADIUS_CONTROL.into(),
+        },
+    });
+    row![
+        kit::chip(
+            format!("Favorites ({fav_count})"),
+            active == FAVORITES_KEY,
+            Some(choose_category(FAVORITES_KEY, "Favorites")),
+            d,
+        ),
+        kit::chip(
+            format!("All {total_count}"),
+            active == ALL_KEY,
+            Some(choose_category(ALL_KEY, "All symbols")),
+            d,
+        ),
+        drop_down,
+    ]
+    .spacing(SPACE_1)
+    .align_y(Alignment::Center)
+    .width(Length::Fill)
     .into()
 }
 
@@ -632,7 +813,7 @@ fn labels_body<'a>(app: &'a App, d: Density, inner_w: f32) -> Element<'a, Messag
     .height(Length::Fill);
 
     let footer = row![
-        text("Tap a label or type your own")
+        text(footer_hint(app, "Tap a label or type your own"))
             .font(BARLOW)
             .size(TEXT_11)
             .color(tokens::muted()),

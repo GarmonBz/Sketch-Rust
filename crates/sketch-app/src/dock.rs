@@ -329,36 +329,29 @@ impl DockState {
         favorites: Option<&[String]>,
     ) -> Vec<crate::symlib::SymItem> {
         let q = self.symbol_search.trim().to_lowercase();
-        let matches_query = |item: &crate::symlib::SymItem| {
-            q.is_empty()
-                || item.label.to_lowercase().contains(&q)
-                || item.id.to_lowercase().contains(&q)
+        let favorite_items = || -> Vec<crate::symlib::SymItem> {
+            match favorites {
+                Some(list) => list.iter().filter_map(|id| ix.by_id(id)).collect(),
+                None => ix.favorites.clone(),
+            }
         };
-        match (self.symbol_category.as_str(), favorites) {
-            ("favorites", Some(list)) => list
-                .iter()
-                .filter_map(|id| ix.by_id(id))
-                .filter(matches_query)
-                .collect(),
-            ("favorites", None) => ix
-                .favorites
-                .iter()
-                .filter(|item| matches_query(item))
-                .cloned()
-                .collect(),
-            ("__all__", _) => ix
-                .categories
-                .iter()
-                .flat_map(|c| c.items.iter())
-                .filter(|item| matches_query(item))
-                .cloned()
-                .collect(),
-            (key, _) => ix
-                .items(key)
-                .iter()
-                .filter(|item| matches_query(item))
-                .cloned()
-                .collect(),
+        let every_category = || ix.categories.iter().flat_map(|c| c.items.iter()).cloned();
+        if !q.is_empty() {
+            // A search looks everywhere, whichever category is open. A
+            // favorite can be in no category, so those are searched too.
+            let mut seen = std::collections::HashSet::new();
+            return every_category()
+                .chain(favorite_items())
+                .filter(|item| {
+                    (item.label.to_lowercase().contains(&q) || item.id.to_lowercase().contains(&q))
+                        && seen.insert(item.id.clone())
+                })
+                .collect();
+        }
+        match self.symbol_category.as_str() {
+            "favorites" => favorite_items(),
+            "__all__" => every_category().collect(),
+            key => ix.items(key).to_vec(),
         }
     }
 
@@ -416,7 +409,11 @@ impl DockState {
             }
             // startTextPlacement(label) arrives with screen 9.
             DockMsg::TextPick(label) => self.text_active = Some(label),
-            DockMsg::SymbolCategory(opt) => self.symbol_category = opt.key,
+            // Choosing a category ends a search, which covers all of them.
+            DockMsg::SymbolCategory(opt) => {
+                self.symbol_category = opt.key;
+                self.symbol_search.clear();
+            }
             DockMsg::SymbolSearch(q) => self.symbol_search = q,
             // startSymbolPlacement(id) arrives with screen 8; it re-renders the
             // list, so no row keeps `.active` — only the preview stays.
@@ -540,6 +537,58 @@ pub fn paint_palette(codes: &[sketch_core::geometry::AreaCode]) -> Palette {
         clear_color,
     ));
     model
+}
+
+#[cfg(test)]
+mod symbol_search_tests {
+    use super::*;
+
+    #[test]
+    fn a_search_looks_in_every_category_and_picking_one_ends_it() {
+        let lib = crate::symlib::library();
+        let ix = (*lib).as_ref().expect("symbol library loads");
+        let (open, other) = (&ix.categories[0], &ix.categories[1]);
+        let wanted = &other.items[0];
+        let mut st = DockState {
+            symbol_category: open.key.clone(),
+            symbol_search: wanted.label.clone(),
+            ..DockState::default()
+        };
+        let ids = |st: &DockState, favorites: Option<&[String]>| -> Vec<String> {
+            st.symbol_items(ix, favorites)
+                .into_iter()
+                .map(|i| i.id)
+                .collect()
+        };
+        let found = ids(&st, None);
+        assert!(found.contains(&wanted.id), "found from another category");
+        let unique: std::collections::HashSet<&String> = found.iter().collect();
+        assert_eq!(unique.len(), found.len(), "each symbol listed once");
+
+        // A favorite that no category lists is still found.
+        let loose = ix
+            .library
+            .symbols
+            .values()
+            .find(|s| {
+                !ix.categories
+                    .iter()
+                    .any(|c| c.items.iter().any(|i| i.id == s.id))
+            })
+            .expect("a symbol outside the categories");
+        st.symbol_search = loose.id.clone();
+        assert!(!ids(&st, Some(&[])).contains(&loose.id));
+        let favorites = [loose.id.clone()];
+        assert!(ids(&st, Some(&favorites)).contains(&loose.id));
+
+        // Without a search the open category shows alone.
+        st.update(DockMsg::SymbolCategory(CategoryOption {
+            key: other.key.clone(),
+            name: other.name.clone(),
+        }));
+        assert_eq!(st.symbol_search, "");
+        assert_eq!(ids(&st, None).len(), other.items.len());
+    }
 }
 
 #[cfg(test)]

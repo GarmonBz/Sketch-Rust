@@ -49,6 +49,7 @@ mod layers;
 mod localtime;
 #[cfg(test)]
 mod management_tests;
+mod measure_edit;
 mod minimap;
 mod new_code_dialog;
 mod options;
@@ -65,6 +66,7 @@ mod popup_menu;
 mod print;
 #[cfg(target_os = "macos")]
 mod print_macos;
+mod rapid_io;
 mod recent;
 mod reference_image;
 mod render;
@@ -325,6 +327,10 @@ pub enum Message {
     ImportAxf,
     /// Export › Apex AXF: write the current page as a legacy `.axf`.
     ExportAxf,
+    /// Import › ACI Sketch / RapidSketch: pick a file and open it converted.
+    ImportRapid(rapid_io::Flavor),
+    /// Export › ACI Sketch / RapidSketch: write the current page.
+    ExportRapid(rapid_io::Flavor),
     /// The Color dialog (screen 5d-3).
     Color(color_dialog::ColorMsg),
     /// Home › Draw Color: `toggleDrawColorPalette`.
@@ -500,6 +506,10 @@ pub enum DialogRequest {
     ImportAxf,
     /// File › Export › Apex AXF: write the current page as an `.axf`.
     ExportAxf,
+    /// Import › ACI Sketch / RapidSketch: the file names its own format.
+    ImportRapid,
+    /// Export › ACI Sketch / RapidSketch.
+    ExportRapid(rapid_io::Flavor),
     /// The Layers panel: import the picked layer file.
     #[cfg_attr(test, allow(dead_code))]
     ImportLayer,
@@ -537,8 +547,17 @@ pub enum DialogRequest {
 /// The QAT's history button (`list-bullets`): 28x28, at x 20 + 28*3, y 1 —
 /// the undo-history popup anchors under it.
 /// `#file-open-input` / `#file-import-input` `accept=".skx,.apx,.json,.sketch"`.
-const SKETCH_OPEN_EXTENSIONS: &[&str] =
-    &["skx", "apx", "json", "sketch", "sketchie", "sketchy", "axf"];
+const SKETCH_OPEN_EXTENSIONS: &[&str] = &[
+    "skx",
+    "apx",
+    "json",
+    "sketch",
+    "sketchie",
+    "sketchy",
+    "axf",
+    "acisketch",
+    "rs",
+];
 
 /// A sketch file named on the command line, opened once the window is up.
 static STARTUP_FILE: std::sync::Mutex<Option<std::path::PathBuf>> = std::sync::Mutex::new(None);
@@ -729,6 +748,15 @@ fn decode_sketch_file(path: &std::path::Path) -> Result<DecodedSketch, String> {
         let import = read_axf_path(path)?;
         return Ok(DecodedSketch {
             model: import.model,
+            format: SketchFileFormat::Json,
+            notice: None,
+            read_only: false,
+            omitted: false,
+        });
+    }
+    if rapid_io::Flavor::of(path).is_some() {
+        return Ok(DecodedSketch {
+            model: rapid_io::read_path(path)?.model,
             format: SketchFileFormat::Json,
             notice: None,
             read_only: false,
@@ -1736,6 +1764,134 @@ impl App {
         handles::hit_dimension(&self.dim_view(), world, &selectable)
     }
 
+    /// The areas in the order they paint, the back one first, so a click finds
+    /// the one on top even after the layers have been reordered.
+    fn areas_as_painted(
+        &self,
+        gates: &crate::layers::LayerGates,
+    ) -> Vec<sketch_core::model::Polygon> {
+        let mut areas = self.drawing.polygons.clone();
+        areas.sort_by_key(|p| gates.z_of(p.id));
+        areas
+    }
+
+    /// The placed symbol under the point.
+    fn symbol_at(&self, world: sketch_core::geometry::Pt) -> Option<i64> {
+        self.drawing
+            .symbols
+            .iter()
+            .find(|sym| {
+                let bounds = self.symbols_lib().symbol(&sym.symbol_type).map(|d| {
+                    (
+                        d.bounds.min_x,
+                        d.bounds.min_y,
+                        d.bounds.max_x,
+                        d.bounds.max_y,
+                    )
+                });
+                placed_symbol::point_in_symbol(sym, bounds, world, self.view.zoom)
+            })
+            .map(|sym| sym.id)
+    }
+
+    /// The tape measurement under the point, for the Select arrow.
+    fn measure_at(&self, world: sketch_core::geometry::Pt) -> Option<(usize, measure_edit::Grab)> {
+        if self.view.mode != view_state::Mode::Select {
+            return None;
+        }
+        let touch = matches!(self.ui.density, ui::tokens::Density::Touch);
+        let reach = |mouse: f64, finger: f64| {
+            selection::tolerance(self.view.zoom, if touch { finger } else { mouse })
+        };
+        measure_edit::hit(
+            &self.drawing.measure_runs,
+            world,
+            reach(9.0, 24.0),
+            reach(6.0, 14.0),
+        )
+    }
+
+    /// Selects one measurement, and nothing else with it.
+    fn pick_measure(&mut self, run: usize) {
+        if self.selection.measure != Some(run) {
+            self.selection.clear();
+            self.selection.measure = Some(run);
+            self.sync_edit_tools();
+            self.sync_canvas();
+        }
+    }
+
+    /// An undo step for a change to the measurements.
+    fn push_measure_undo(&mut self, label: &str) {
+        let mut snap = self.snapshot_model(label);
+        snap.measure_runs = Some(self.drawing.measure_runs.clone());
+        self.undo.push(snap);
+    }
+
+    /// An undo step for a change to the whole sketch, which carries the
+    /// measurements with it.
+    fn push_whole_sketch_undo(&mut self, label: &str) {
+        if self.drawing.measure_runs.is_empty() {
+            self.push_undo(label);
+        } else {
+            self.push_measure_undo(label);
+        }
+    }
+
+    /// Ends the measurement being taped, if there is one.
+    fn finish_measure_run(&mut self) {
+        let run = std::mem::take(&mut self.drawing.measure_points);
+        // A single point measures nothing.
+        if run.len() >= 2 {
+            self.undo.add_measure(&run);
+            self.drawing.measure_runs.push(run);
+        }
+    }
+
+    /// Selects whatever a left click would take ahead of the walls and areas
+    /// (an area's text, a dimension chain, a label, a symbol, a measurement),
+    /// keeping the selection when it is already part of it. False when there
+    /// is nothing of the kind under the point.
+    fn select_object_for_menu(&mut self, world: sketch_core::geometry::Pt) -> bool {
+        if let Some((run, _)) = self.measure_at(world) {
+            self.pick_measure(run);
+            return true;
+        }
+        self.selection.measure = None;
+        type Set = fn(&mut selection::Selection) -> &mut std::collections::HashSet<i64>;
+        let found: Option<(Set, i64)> = if let Some((kind, id)) = self.area_text_at(world) {
+            let set: Set = if kind == handles::TextKind::AreaSize {
+                |s| &mut s.area_sizes
+            } else {
+                |s| &mut s.area_labels
+            };
+            Some((set, id))
+        } else if let Some(id) = self.drawing.chain_hit(world, self.view.zoom) {
+            Some((|s| &mut s.chains, id))
+        } else if let Some(t) = self
+            .drawing
+            .texts
+            .iter()
+            .find(|t| placed_text::point_in_text(t, world, self.view.zoom))
+        {
+            Some((|s| &mut s.texts, t.id))
+        } else if let Some(id) = self.symbol_at(world) {
+            Some((|s| &mut s.symbols, id))
+        } else {
+            let dimension = self.dimension_hit_at(world);
+            dimension.map(|id| -> (Set, i64) { (|s| &mut s.dimensions, id) })
+        };
+        let Some((set, id)) = found else {
+            return false;
+        };
+        if !set(&mut self.selection).contains(&id) {
+            self.selection.clear();
+            set(&mut self.selection).insert(id);
+            self.sync_edit_tools();
+        }
+        true
+    }
+
     /// What a fence or lasso picks by position.
     fn pickable(&self) -> selection::Pickable<'_> {
         let gates = self.layer_gates();
@@ -2580,7 +2736,7 @@ impl App {
                     self.ui.menu_sub = None;
                     self.ui.page_menu = None;
                     self.ui.export_menu = false;
-                    self.ui.drawer = None;
+                    self.ui.close_unpinned_drawer();
                     self.ui.controls_popover = None;
                     self.view.filter_open = false;
                     self.history.close();
@@ -2645,10 +2801,7 @@ impl App {
                 }
                 ui::Msg::MeasureFinish => {
                     if !self.drawing.measure_points.is_empty() {
-                        self.drawing
-                            .measure_runs
-                            .push(self.drawing.measure_points.clone());
-                        self.drawing.measure_points.clear();
+                        self.finish_measure_run();
                         self.sync_canvas();
                     }
                     Task::none()
@@ -2657,10 +2810,7 @@ impl App {
                     if self.drawing.measure_points.len() >= 2 {
                         let first = self.drawing.measure_points[0];
                         self.drawing.measure_points.push(first);
-                        self.drawing
-                            .measure_runs
-                            .push(self.drawing.measure_points.clone());
-                        self.drawing.measure_points.clear();
+                        self.finish_measure_run();
                         self.sync_canvas();
                     }
                     Task::none()
@@ -2671,8 +2821,12 @@ impl App {
                     Task::none()
                 }
                 ui::Msg::MeasureClear => {
+                    if !self.drawing.measure_runs.is_empty() {
+                        self.push_measure_undo("Clear Measurements");
+                        self.drawing.measure_runs.clear();
+                    }
                     self.drawing.measure_points.clear();
-                    self.drawing.measure_runs.clear();
+                    self.selection.measure = None;
                     self.sync_canvas();
                     Task::none()
                 }
@@ -3428,6 +3582,28 @@ impl App {
                         self.drag_banked = false;
                         return Task::none();
                     }
+                    // A tape measurement lies over the drawing: its ends
+                    // stretch it and its legs move it. A selected symbol's
+                    // own handles still come first.
+                    let measure = match self.symbol_handle_at(world) {
+                        Some(_) => None,
+                        None => self.measure_at(world),
+                    };
+                    if let Some((run, grab)) = measure {
+                        self.pick_measure(run);
+                        self.view.drag = Some(view_state::Drag::Measure {
+                            run,
+                            grab,
+                            from: view_state::World {
+                                x: world.x,
+                                y: world.y,
+                            },
+                            original: self.drawing.measure_runs[run].clone(),
+                        });
+                        self.drag_banked = false;
+                        return Task::none();
+                    }
+                    self.selection.measure = None;
                     // Pressing an area's label / size text or a free text label
                     // picks it (unless it is already part of the selection) and
                     // starts moving the selection (`hitTestAt`'s first passes,
@@ -3484,10 +3660,11 @@ impl App {
                 if self.view.mode == view_state::Mode::Curve {
                     let gates = self.layer_gates();
                     let selectable = |id: i64| gates.selectable(id);
+                    let areas = self.areas_as_painted(&gates);
                     let hit = selection::hit_test_at(
                         world,
                         &self.drawing.lines,
-                        &self.drawing.polygons,
+                        &areas,
                         self.view.zoom,
                         &selectable,
                     );
@@ -3495,7 +3672,7 @@ impl App {
                         &mut self.selection,
                         world,
                         &self.drawing.lines,
-                        &self.drawing.polygons,
+                        &areas,
                         self.view.zoom,
                         false,
                         &selectable,
@@ -3608,10 +3785,11 @@ impl App {
                     );
                     return Task::none();
                 }
+                let areas = self.areas_as_painted(&gates);
                 let hit = selection::hit_test_at(
                     world,
                     &self.drawing.lines,
-                    &self.drawing.polygons,
+                    &areas,
                     self.view.zoom,
                     &selectable,
                 );
@@ -3633,7 +3811,7 @@ impl App {
                                 &mut self.selection,
                                 world,
                                 &self.drawing.lines,
-                                &self.drawing.polygons,
+                                &areas,
                                 self.view.zoom,
                                 false,
                                 &selectable,
@@ -3683,6 +3861,30 @@ impl App {
                 };
                 match self.view.drag.clone() {
                     Some(view_state::Drag::Freeform { .. } | view_state::Drag::Erase { .. }) => {}
+                    Some(view_state::Drag::Measure {
+                        run,
+                        grab,
+                        from,
+                        original,
+                    }) => {
+                        let (dx, dy) = (w.x - from.x, w.y - from.y);
+                        // A click that wobbles moves nothing.
+                        let slack = selection::tolerance(self.view.zoom, 3.0);
+                        if (self.drag_banked || dx.hypot(dy) > slack)
+                            && run < self.drawing.measure_runs.len()
+                        {
+                            if !self.drag_banked {
+                                self.push_measure_undo(match grab {
+                                    measure_edit::Grab::Line => "Move Measurement",
+                                    measure_edit::Grab::Point(_) => "Change Measurement",
+                                });
+                                self.drag_banked = true;
+                            }
+                            self.drawing.measure_runs[run] =
+                                measure_edit::reshape(&original, grab, dx, dy);
+                            self.sync_canvas();
+                        }
+                    }
                     Some(view_state::Drag::Vertex {
                         handle,
                         origin,
@@ -3954,7 +4156,9 @@ impl App {
                 }
                 let moved = match &self.view.drag {
                     Some(view_state::Drag::Move { .. }) => self.drag_banked,
-                    Some(view_state::Drag::Vertex { .. }) => false,
+                    Some(view_state::Drag::Vertex { .. } | view_state::Drag::Measure { .. }) => {
+                        false
+                    }
                     Some(view_state::Drag::Freeform { .. } | view_state::Drag::Erase { .. }) => {
                         false
                     }
@@ -4180,6 +4384,8 @@ impl App {
                 ),
                 |path| Message::DialogPicked(DialogRequest::ExportAxf, path),
             ),
+            Message::ImportRapid(flavor) => self.pick_rapid_import(flavor),
+            Message::ExportRapid(flavor) => self.pick_rapid_export(flavor),
             Message::DialogPicked(request, path) => self.dialog_picked(request, path),
             #[cfg(target_arch = "wasm32")]
             Message::WebFileOpened(kind, file) => self.web_file_opened(kind, file),
@@ -4276,7 +4482,7 @@ impl App {
                 if self.drawing.lines.is_empty() && self.drawing.polygons.is_empty() {
                     return Task::none();
                 }
-                self.push_undo("Rotate Sketch");
+                self.push_whole_sketch_undo("Rotate Sketch");
                 let mut north = self.pages.page().north_angle;
                 transform::rotate_sketch(&mut self.drawing, degrees, &mut north);
                 let current = self.pages.current;
@@ -4393,10 +4599,13 @@ impl App {
                 Task::none()
             }
             Message::LayerZoneHover(id, pos) => {
-                // dragover: mark the hovered drop row (never the drag source).
-                let armed = self.dock.layer_drag.clone();
-                if armed.as_deref() != Some(id.as_str()) {
-                    self.dock.layer_over = Some((id, pos));
+                // Mark where a release would put the row. Back over the row
+                // being carried there is nowhere to put it.
+                if let Some(drag) = &self.dock.layer_drag {
+                    self.dock.layer_over = (*drag != id).then(|| {
+                        let pos = self.layers.drop_side(drag, &id, pos);
+                        (id, pos)
+                    });
                 }
                 Task::none()
             }
@@ -4410,7 +4619,12 @@ impl App {
             }
             Message::LayerDrop(row, pos) => {
                 match self.dock.layer_drag.take() {
-                    Some(drag) => self.commit_layer_drop(drag, Some((row, pos))),
+                    Some(drag) => {
+                        // Drop where the mark showed.
+                        let over = self.dock.layer_over.take();
+                        let over = over.filter(|(target, _)| *target == row);
+                        self.commit_layer_drop(drag, over.or(Some((row, pos))))
+                    }
                     // A release with no armed press is a plain row click.
                     None => {
                         self.layers.set_active(row);
@@ -5414,6 +5628,9 @@ impl App {
                     self.save_current_page();
                 }
                 let mut current = self.snapshot_model("Edit");
+                if self.undo.undo_range_has_measures(index) {
+                    current.measure_runs = Some(self.drawing.measure_runs.clone());
+                }
                 if include_types {
                     current.area_codes = Some(self.area_codes.clone());
                     current.pages = Some(self.pages.pages.clone());
@@ -5433,6 +5650,10 @@ impl App {
                     }
                     if final_snap.pages.is_none() {
                         final_snap.pages = earliest_pages;
+                    }
+                    if final_snap.measure_runs.is_none() {
+                        final_snap.measure_runs =
+                            states.iter().rev().find_map(|s| s.measure_runs.clone());
                     }
                     self.restore_snapshot(&final_snap);
                     self.selection.clear();
@@ -5751,17 +5972,25 @@ impl App {
                     // `contextmenu` on the canvas: end the pen, select what
                     // was clicked so the menu acts on it, then open the menu.
                     self.drawing.pen_up();
-                    if self.view.mode == view_state::Mode::Select {
+                    // A symbol or label under the pointer is what the menu acts
+                    // on, not the area beneath it.
+                    let on_object = self.view.mode == view_state::Mode::Select && {
+                        let (x, y) = self.canvas_point(at).unwrap_or((at.x, at.y));
+                        let world = self.world(x, y);
+                        self.select_object_for_menu(world)
+                    };
+                    if self.view.mode == view_state::Mode::Select && !on_object {
                         // `isHitSelected(hit)`: only a hit that is not already
                         // selected re-selects; empty space keeps the selection.
                         let gates = self.layer_gates();
                         let selectable = |id: i64| gates.selectable(id);
                         let (x, y) = self.canvas_point(at).unwrap_or((at.x, at.y));
                         let world = self.world(x, y);
+                        let areas = self.areas_as_painted(&gates);
                         let hit = selection::hit_test_at(
                             world,
                             &self.drawing.lines,
-                            &self.drawing.polygons,
+                            &areas,
                             self.view.zoom,
                             &selectable,
                         );
@@ -5775,7 +6004,7 @@ impl App {
                                 &mut self.selection,
                                 world,
                                 &self.drawing.lines,
-                                &self.drawing.polygons,
+                                &areas,
                                 self.view.zoom,
                                 false,
                                 &selectable,
@@ -5789,10 +6018,15 @@ impl App {
                     let (x, y) = self.canvas_point(at).unwrap_or((at.x, at.y));
                     let world = self.world(x, y);
                     let gates = self.layer_gates();
-                    if let Some(define_area::Region::Area(id)) =
-                        define_area::resolve(&self.drawing, &gates, &mut self.region_cache, world)
-                    {
-                        self.context.area_target = Some(id);
+                    if !on_object {
+                        if let Some(define_area::Region::Area(id)) = define_area::resolve(
+                            &self.drawing,
+                            &gates,
+                            &mut self.region_cache,
+                            world,
+                        ) {
+                            self.context.area_target = Some(id);
+                        }
                     }
                     self.context.has_selection = !self.selection.is_empty();
                     self.context.areas_selected =
@@ -5916,6 +6150,11 @@ impl App {
                     return Task::none();
                 }
             }
+            if let Some((run, _)) = self.measure_at(world) {
+                self.pick_measure(run);
+                return Task::none();
+            }
+            self.selection.measure = None;
             // Double-clicking a text label edits its wording.
             if double {
                 if let Some(t) = self
@@ -6018,22 +6257,7 @@ impl App {
                 return Task::none();
             }
             // Symbol hit-test takes priority (P4: symbols before walls).
-            let mut symbol_hit: Option<i64> = None;
-            for sym in &self.drawing.symbols {
-                let bounds = self.symbols_lib().symbol(&sym.symbol_type).map(|d| {
-                    (
-                        d.bounds.min_x,
-                        d.bounds.min_y,
-                        d.bounds.max_x,
-                        d.bounds.max_y,
-                    )
-                });
-                if placed_symbol::point_in_symbol(sym, bounds, world, self.view.zoom) {
-                    symbol_hit = Some(sym.id);
-                    break;
-                }
-            }
-            if let Some(id) = symbol_hit {
+            if let Some(id) = self.symbol_at(world) {
                 if !additive {
                     self.selection.clear();
                 }
@@ -6059,11 +6283,12 @@ impl App {
                     self.selection.symbols.clear();
                 }
                 let gates = self.layer_gates();
+                let areas = self.areas_as_painted(&gates);
                 selection::select_at(
                     &mut self.selection,
                     world,
                     &self.drawing.lines,
-                    &self.drawing.polygons,
+                    &areas,
                     self.view.zoom,
                     additive,
                     &|id| gates.selectable(id),
@@ -6449,18 +6674,17 @@ impl App {
             self.workflow_close();
             self.workflow.hover = None;
             self.ui.tray_flyout = None;
-            if (!matches!(
+            if self.view.mode == view_state::Mode::Measure {
+                self.finish_measure_run();
+            }
+            if mode != view_state::Mode::Select {
+                self.selection.measure = None;
+            }
+            if !matches!(
                 mode,
-                view_state::Mode::PlaceText
-                    | view_state::Mode::PlaceSymbol
-                    | view_state::Mode::Select
-            ) || !self.ui.drawer_pinned)
-                && !matches!(
-                    mode,
-                    view_state::Mode::PlaceText | view_state::Mode::PlaceSymbol
-                )
-            {
-                self.ui.drawer = None;
+                view_state::Mode::PlaceText | view_state::Mode::PlaceSymbol
+            ) {
+                self.ui.close_unpinned_drawer();
             }
         }
         if mode != view_state::Mode::DefineArea {
@@ -6820,7 +7044,7 @@ impl App {
             return self.pages_nav_msg(pages_nav::NavMsg::Toggle);
         }
         if tool == T::Shapes {
-            self.ui.drawer = None;
+            self.ui.close_unpinned_drawer();
             return self.update(Message::RoomShapeOpen);
         }
         let panel = match tool {
@@ -6937,8 +7161,9 @@ impl App {
                     return Task::none();
                 }
                 if self.view.mode == Mode::Measure {
+                    // Finished measurements are part of the sketch: Escape
+                    // drops only the one being taped.
                     self.drawing.measure_points.clear();
-                    self.drawing.measure_runs.clear();
                     return self.set_mode(Mode::Select);
                 }
                 if self.drawing.pen_down {
@@ -6958,7 +7183,6 @@ impl App {
             K::Delete => {
                 if self.view.mode == Mode::Measure {
                     self.drawing.measure_points.clear();
-                    self.drawing.measure_runs.clear();
                     self.sync_canvas();
                     return Task::none();
                 }
@@ -7002,6 +7226,16 @@ impl App {
             }
             K::RotateSketch(degrees) => return self.update(Message::RotateSketchBy(degrees)),
             K::Nudge(dx, dy) => {
+                if let Some(run) = self.selection.measure {
+                    let (dx, dy) = self.nudge_step(dx, dy);
+                    if run < self.drawing.measure_runs.len() {
+                        self.push_measure_undo("Move Measurement");
+                        let points = &mut self.drawing.measure_runs[run];
+                        *points = measure_edit::reshape(points, measure_edit::Grab::Line, dx, dy);
+                        self.sync_canvas();
+                    }
+                    return Task::none();
+                }
                 // `moveSelected(dx, dy)` then `finalizeSelectionMove`.
                 self.push_undo("Move");
                 let (dx, dy) = self.nudge_step(dx, dy);
@@ -7047,12 +7281,7 @@ impl App {
             }
             K::Enter => {
                 if self.view.mode == Mode::Measure {
-                    if !self.drawing.measure_points.is_empty() {
-                        self.drawing
-                            .measure_runs
-                            .push(self.drawing.measure_points.clone());
-                        self.drawing.measure_points.clear();
-                    }
+                    self.finish_measure_run();
                     self.sync_canvas();
                 } else {
                     if self.drawing.pen_down
@@ -7311,6 +7540,9 @@ impl App {
             self.drag_banked = false;
         }
         self.drawing.restore(snap);
+        if let Some(runs) = &snap.measure_runs {
+            self.drawing.measure_runs = runs.clone();
+        }
         if let Some(layers) = &snap.layers {
             self.layers.items = layers.clone();
         }
@@ -7887,8 +8119,8 @@ impl App {
     /// `bindLayerTreeEvents`' drop (ui-manager.js:3085): a same-row release
     /// is the tree's click (set-active), anything else is `moveLayer` with
     /// the can-move guards BEFORE the `Move Layer` undo push. A leaf row has
-    /// no real inside drop — its middle zone resolves to `after`, which is
-    /// moveLayer's next-sibling behavior anyway.
+    /// no real inside drop — its middle zone lands the row just below it in
+    /// the list, which is `before` it in paint order.
     fn commit_layer_drop(
         &mut self,
         drag: String,
@@ -7906,7 +8138,7 @@ impl App {
                 let pos = if is_group {
                     pos
                 } else if pos == crate::layers::DragPos::Inside {
-                    crate::layers::DragPos::After
+                    crate::layers::DragPos::Before
                 } else {
                     pos
                 };
@@ -8103,7 +8335,7 @@ impl App {
                 if self.drawing.lines.is_empty() && self.drawing.polygons.is_empty() {
                     return Task::none();
                 }
-                self.push_undo("Flip Sketch");
+                self.push_whole_sketch_undo("Flip Sketch");
                 let mut north = self.pages.page().north_angle;
                 transform::flip_sketch(&mut self.drawing, axis, &mut north);
                 let current = self.pages.current;
@@ -9000,6 +9232,9 @@ impl App {
             self.save_current_page();
         }
         let mut current = self.snapshot_model("Edit");
+        if self.undo.next_undo_has_measures() {
+            current.measure_runs = Some(self.drawing.measure_runs.clone());
+        }
         if include_types {
             current.area_codes = Some(self.area_codes.clone());
             current.pages = Some(self.pages.pages.clone());
@@ -9020,6 +9255,9 @@ impl App {
             self.save_current_page();
         }
         let mut current = self.snapshot_model("Edit");
+        if self.undo.next_redo_has_measures() {
+            current.measure_runs = Some(self.drawing.measure_runs.clone());
+        }
         if include_types {
             current.area_codes = Some(self.area_codes.clone());
             current.pages = Some(self.pages.pages.clone());
@@ -9451,6 +9689,16 @@ impl App {
         if self.selection.is_empty() {
             return;
         }
+        if let Some(run) = self.selection.measure {
+            if run < self.drawing.measure_runs.len() {
+                self.push_measure_undo("Delete Measurement");
+                self.drawing.measure_runs.remove(run);
+            }
+            self.selection.clear();
+            self.sync_edit_tools();
+            self.sync_canvas();
+            return;
+        }
         self.push_undo("Delete");
         clipboard::delete(&mut self.drawing, &self.selection);
         // Free labels and symbols go with it.
@@ -9705,8 +9953,22 @@ impl App {
         )
         .unwrap_or_default();
 
-        self.push_undo("Import");
+        let imported_measures = page
+            .get("tapeMeasurements")
+            .and_then(|runs| measure_edit::deserialize_runs(runs).ok())
+            .unwrap_or_default();
+
+        if imported_measures.is_empty() {
+            self.push_undo("Import");
+        } else {
+            self.push_measure_undo("Import");
+        }
         const OFFSET: f64 = 2.0;
+        self.drawing.measure_runs.extend(
+            imported_measures
+                .into_iter()
+                .map(|run| measure_edit::reshape(&run, measure_edit::Grab::Line, OFFSET, OFFSET)),
+        );
         let mut line_ids: std::collections::HashMap<i64, i64> = std::collections::HashMap::new();
         for line in imported_lines {
             let new_id = self.drawing.gen_id();
@@ -9816,6 +10078,8 @@ impl App {
         self.drawing.texts.clear();
         self.drawing.symbols.clear();
         self.drawing.dimension_chains.clear();
+        self.drawing.measure_points.clear();
+        self.drawing.measure_runs.clear();
         self.drawing.points.clear();
         self.drawing.line_ids.clear();
         self.drawing.pen_up();
@@ -9853,6 +10117,8 @@ impl App {
         page.labels = self.drawing.texts.clone();
         page.symbols = self.drawing.symbols.clone();
         page.dimension_chains = self.drawing.dimension_chains.clone();
+        page.tape_measurements =
+            measure_edit::to_save(&self.drawing.measure_runs, &self.drawing.measure_points);
     }
 
     /// `loadPageData(page)` — replace the live drawing with the current
@@ -9867,10 +10133,12 @@ impl App {
         self.drawing.texts = page.labels;
         self.drawing.symbols = page.symbols;
         self.drawing.dimension_chains = page.dimension_chains;
-        // The measure runs are transient (screen 9), and an interrupted
-        // chain's pen-down state would leave a hidden start point behind.
+        self.drawing.measure_runs = page.tape_measurements;
         self.drawing.measure_points.clear();
-        self.drawing.measure_runs.clear();
+        // Banked lists belong to the page that was on screen.
+        self.undo.forget_measures();
+        // An interrupted chain's pen-down state would leave a hidden start
+        // point behind.
         self.drawing.pen_down = false;
         self.drawing.points.clear();
         self.drawing.line_ids.clear();
@@ -10271,6 +10539,9 @@ impl App {
         if is_axf_path(&path) {
             return self.open_axf_path(&path);
         }
+        if rapid_io::Flavor::of(&path).is_some() {
+            return self.open_rapid_path(&path);
+        }
         let DecodedSketch {
             model,
             format,
@@ -10345,16 +10616,27 @@ impl App {
             Err(e) => return self.toasts.show(e),
         };
         let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-        let _ = self.apply_model(&import.model, stem);
+        let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("AXF");
+        self.open_converted(name, stem, &import.model, import.area_count, &import.notes)
+    }
+
+    /// Open a converted sketch as a new, unsaved one and say what came across.
+    fn open_converted(
+        &mut self,
+        name: &str,
+        stem: &str,
+        model: &serde_json::Value,
+        area_count: usize,
+        notes: &[String],
+    ) -> Task<Message> {
+        let _ = self.apply_model(model, stem);
         self.save_as_sketchie = true;
         self.view.center_and_fit(self.sketch_view_bounds());
         let mut message = format!(
-            "Opened {} as a new sketch with {} area{}. Save As to keep it as .sketchie.",
-            path.file_name().and_then(|s| s.to_str()).unwrap_or("AXF"),
-            import.area_count,
-            if import.area_count == 1 { "" } else { "s" },
+            "Opened {name} as a new sketch with {area_count} area{}. Save As to keep it as .sketchie.",
+            if area_count == 1 { "" } else { "s" },
         );
-        for note in &import.notes {
+        for note in notes {
             message.push(' ');
             message.push_str(note);
         }
@@ -10674,6 +10956,16 @@ impl App {
                         .toasts
                         .show("Sketchie SQLite stores are not supported in the web build.".into());
                 }
+                if rapid_io::Flavor::of(std::path::Path::new(&name)).is_some() {
+                    return match rapid_io::decode(&bytes, stem) {
+                        Ok(import) => {
+                            let task = self.apply_model(&import.model, stem);
+                            self.autosave_baseline();
+                            task
+                        }
+                        Err(e) => self.toasts.show(format!("Could not open {name}: {e}")),
+                    };
+                }
                 if name.to_ascii_lowercase().ends_with(".axf") {
                     return match sketch_core::axf::read(&bytes) {
                         Ok(doc) => {
@@ -10760,6 +11052,8 @@ impl App {
             DialogRequest::ImportSketch => self.import_sketch_path(&path),
             DialogRequest::ImportCad => self.import_cad_file(&path),
             DialogRequest::ImportAxf => self.open_axf_path(&path),
+            DialogRequest::ImportRapid => self.open_rapid_path(&path),
+            DialogRequest::ExportRapid(flavor) => self.export_rapid(flavor, &path),
             DialogRequest::ExportAxf => {
                 // Export › Apex AXF: the current page's areas (arc walls
                 // included) and text labels, written with the clean-room
@@ -10886,6 +11180,12 @@ impl App {
             .unwrap_or_default();
         self.save_as_sketchie = false;
         self.sketchy_backing = sketchy::Backing::from_model(&data);
+        // The lopsided corner fireplace of an imported sketch becomes the
+        // library's, as long as this library has it.
+        let fireplace = sketch_core::rapidsketch::CORNER_FIREPLACE_ID;
+        if self.symbols_lib().symbol(fireplace).is_some() {
+            sketch_core::rapidsketch::replace_imported_fireplaces(&mut data);
+        }
         if let Some(custom) = data.pointer("/settings/customSymbols").and_then(|v| {
             serde_json::from_value::<
                     std::collections::BTreeMap<String, sketch_core::symbols::Symbol>,

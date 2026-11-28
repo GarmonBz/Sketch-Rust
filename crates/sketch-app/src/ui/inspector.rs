@@ -102,16 +102,23 @@ pub fn panel<'a>(app: &'a App, d: Density, overlay: bool) -> Element<'a, Message
         .filter(|&b| b)
         .count();
 
-    let title = inspector_title(
-        app,
-        kind_count,
-        has_wall,
-        has_area,
-        has_text,
-        has_symbol,
-        has_chain,
-        trace_active,
-    );
+    let measure = app
+        .selection
+        .measure
+        .and_then(|i| app.drawing.measure_runs.get(i));
+    let title = match measure {
+        Some(_) => "Measurement".to_owned(),
+        None => inspector_title(
+            app,
+            kind_count,
+            has_wall,
+            has_area,
+            has_text,
+            has_symbol,
+            has_chain,
+            trace_active,
+        ),
+    };
 
     let mut header = row![text(title)
         .font(BARLOW_SEMIBOLD)
@@ -130,7 +137,9 @@ pub fn panel<'a>(app: &'a App, d: Density, overlay: bool) -> Element<'a, Message
         ));
     }
 
-    let subject = if kind_count > 1 {
+    let subject = if let Some(run) = measure {
+        measure_section(app, run, d)
+    } else if kind_count > 1 {
         multi_kind_section(app, d)
     } else if has_wall {
         wall_section(app, d)
@@ -224,6 +233,39 @@ pub fn panel<'a>(app: &'a App, d: Density, overlay: bool) -> Element<'a, Message
         box_el = box_el.width(Length::Fixed(d.inspector_w()));
     }
     box_el.into()
+}
+
+/// A picked tape measurement: how long it is, and how to change it.
+fn measure_section<'a>(
+    app: &'a App,
+    run: &[sketch_core::geometry::Pt],
+    d: Density,
+) -> Element<'a, Message> {
+    let length: f64 = run
+        .windows(2)
+        .map(|leg| sketch_core::geometry::distance(leg[0], leg[1]))
+        .sum();
+    let note = |words: &'static str| {
+        text(words)
+            .font(BARLOW)
+            .size(TEXT_12)
+            .color(tokens::muted())
+    };
+    column![
+        text(format!(
+            "Length {}",
+            app.drawing.options.units.length(length)
+        ))
+        .font(BARLOW_SEMIBOLD)
+        .size(TEXT_14)
+        .color(tokens::text()),
+        note("Drag an end to change it, or drag the line to move it."),
+        note("Saved with the sketch. Prints and picture exports leave it out."),
+        kit::text_button("Delete measurement", Some(Message::Delete), d),
+    ]
+    .spacing(SPACE_2)
+    .width(Length::Fill)
+    .into()
 }
 
 #[allow(clippy::too_many_arguments)]

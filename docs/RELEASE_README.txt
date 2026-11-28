@@ -1,3 +1,55 @@
+Sketch Rust 0.3.22 - Windows x64
+
+0.3.22 saves measurement lines with your sketch, each on its own page. In the
+Measure tool, Esc and Delete now drop only the line you are still taping, and
+Clear can be undone. Prints and picture exports leave measurements out.
+
+Sketch Rust 0.3.21 - Windows x64
+
+0.3.21 makes symbols easier to find: categories are listed down the side of a
+wider Insert panel (narrow windows use a drop-down), and search looks in all of
+them. A pinned panel now stays open until you close or unpin it. With the Select
+arrow you can now change, move or delete lines made by the Measure tool.
+
+Sketch Rust 0.3.20 - Windows x64
+
+0.3.20 fixes dragging rows in the Areas list. One line now shows where the row
+will land and the other rows hold still. Drop on the top half of a row to go
+above it, or the bottom half to go below.
+
+Sketch Rust 0.3.19 - Windows x64
+
+0.3.19 fixes two things. In the Areas list the top row is now the front layer;
+drawings look as they did. Right-clicking a symbol or text now picks it, not the
+area beneath, so Delete removes only that. The symbol library gains Corner
+Fireplace 36 and Sliding Closet Door 48, 60 and 96 (the 72 in door is renamed to
+match), and the double sink is now Double Kitchen Sink 33 under Kitchen. The
+lopsided corner fireplace from imported ACI Sketch and RapidSketch files is
+replaced with Corner Fireplace 36, including in sketches already imported.
+
+Sketch Rust 0.3.18 - Windows x64
+
+0.3.18 fixes missing interior walls when importing ACI Sketch and RapidSketch
+files. They now arrive as interior walls, without dimension labels because the
+files store none; sketches imported with 0.3.17 need to be imported again. On
+export, straight solid interior walls are written the same way, so their
+dimension labels are not kept. An import now names any kind of object it leaves
+out, and an area named for its car count, such as "1 Car Attached", comes in as
+a garage.
+
+Sketch Rust 0.3.17 - Windows x64
+
+0.3.17 opens and writes RapidSketch (.rs) and ACI Sketch (.acisketch) files:
+Menu > File > Import and Export, File > Open, or drop the file on the window.
+Walls and arcs, areas with their names, multipliers and fills, text notes,
+symbols (with their own drawings) and the subject property fields carry across.
+An imported file opens as a new sketch and is never saved back in place; check
+its area types, which are chosen from each area's name and "living area"
+switch. Export writes the current page, without background pictures, wall
+colours or hatching. This was worked out from one ACI Sketch file: no .rs file
+has been tried, and no exported file has yet been opened in RapidSketch or ACI
+Sketch.
+
 Sketch Rust 0.3.16 - Windows x64
 
 0.3.16 lines the area types up with the UAD 3.6 URAR's area breakdown. The
