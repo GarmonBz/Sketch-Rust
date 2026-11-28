@@ -342,8 +342,8 @@ enum RowKind {
 }
 
 /// The Areas tab: folders, area layers and other layers in one list, each
-/// with its eye and lock, in the order they paint. Drag a row to reorder it
-/// or to move it into a folder.
+/// with its eye and lock. The top row paints in front, the bottom one at the
+/// back. Drag a row to reorder it or to move it into a folder.
 fn drawn_view<'a>(app: &'a App, model: &calcs::Calcs, d: Density) -> Element<'a, Message> {
     let mut rows: Vec<Element<'a, Message>> = Vec::new();
 
@@ -354,7 +354,7 @@ fn drawn_view<'a>(app: &'a App, model: &calcs::Calcs, d: Density) -> Element<'a,
     let areas = area_rows_by_id(app, model);
     // Every layer is listed, so a layer left behind by a deleted area (or a
     // reopened one) can be seen and deleted; those show as plain rows.
-    let tree = app.layers.visible_rows(|_| true);
+    let tree = app.layers.panel_rows();
     let has_folder = tree.iter().any(|r| r.is_group);
 
     if rows.is_empty() && areas.is_empty() && !has_folder {
@@ -451,7 +451,7 @@ fn drawn_view<'a>(app: &'a App, model: &calcs::Calcs, d: Density) -> Element<'a,
     }
 
     // An area whose layer is out of step still shows, without layer tools.
-    for poly in &app.drawing.polygons {
+    for poly in app.drawing.polygons.iter().rev() {
         if let (false, Some(a)) = (placed.contains(&poly.id), areas.get(&poly.id)) {
             let code = area_code_of(app, poly.id);
             rows.push(loose_area_row(app, a, &code, d));
@@ -759,19 +759,7 @@ fn layer_row<'a>(app: &'a App, r: &LayerRow, kind: RowKind, d: Density) -> Eleme
     };
     let is_folder = matches!(kind, RowKind::Folder(_));
     let dragging = app.dock.layer_drag.as_deref() == Some(id);
-    let drop_mark: Option<DragPos> = if dragging {
-        None
-    } else {
-        app.dock
-            .layer_over
-            .as_ref()
-            .filter(|(target, _)| target != id && app.dock.layer_drag.is_some())
-            // Only a folder takes a row inside it; elsewhere it lands after.
-            .map(|(_, p)| match p {
-                DragPos::Inside if !is_folder => DragPos::After,
-                other => *other,
-            })
-    };
+    let drop_mark = row_drop_mark(app, id, is_folder);
 
     let hovered = app.dock.layer_hover.as_deref() == Some(id);
     let menu_open = app.dock.layer_menu.as_deref() == Some(id);
@@ -788,20 +776,13 @@ fn layer_row<'a>(app: &'a App, r: &LayerRow, kind: RowKind, d: Density) -> Eleme
         _ if touch => 38.0,
         _ => 30.0,
     };
-    let mid_h = (row_h - 12.0).max(16.0);
     let selected = match &kind {
         RowKind::Area { poly, .. } => app.selection.polys.contains(poly),
         RowKind::Other => r.active,
         RowKind::Folder(_) => false,
     };
     let dim = !r.visible || r.locked;
-    let fg = if dragging {
-        tokens::disabled()
-    } else if dim {
-        tokens::muted()
-    } else {
-        tokens::text()
-    };
+    let fg = if dim { tokens::muted() } else { tokens::text() };
     let name_font = if selected {
         BARLOW_SEMIBOLD
     } else {
@@ -897,29 +878,17 @@ fn layer_row<'a>(app: &'a App, r: &LayerRow, kind: RowKind, d: Density) -> Eleme
                 .into(),
         }
     };
-    let mid_content = container(mid_content)
-        .width(Length::Fill)
-        .height(Length::Fixed(mid_h))
-        .align_y(Alignment::Center)
-        .clip(true);
-
-    let zone = |h: f32, pos: DragPos, content: Element<'a, Message>| -> Element<'a, Message> {
-        mouse_area(
-            container(content)
-                .width(Length::Fill)
-                .height(Length::Fixed(h)),
-        )
-        .on_press(Message::LayerPress(id.to_owned()))
-        .on_release(Message::LayerDrop(id.to_owned(), pos))
-        .on_enter(Message::LayerZoneHover(id.to_owned(), pos))
-        .into()
-    };
-    let strip = column![
-        zone(6.0, DragPos::Before, Space::new().into()),
-        zone(mid_h, DragPos::Inside, mid_content.into()),
-        zone(6.0, DragPos::After, Space::new().into()),
-    ]
-    .width(Length::Fill);
+    // A press on the name or the grip picks the row up. A release before the
+    // drop zones below are on screen is still a plain click.
+    let strip = mouse_area(
+        container(mid_content)
+            .width(Length::Fill)
+            .height(Length::Fixed(row_h))
+            .align_y(Alignment::Center)
+            .clip(true),
+    )
+    .on_press(Message::LayerPress(id.to_owned()))
+    .on_release(Message::LayerDrop(id.to_owned(), DragPos::Inside));
 
     // The eye, the lock and the menu are always there, in the same places, so
     // hiding or locking is one click and nothing shifts when the pointer
@@ -953,7 +922,7 @@ fn layer_row<'a>(app: &'a App, r: &LayerRow, kind: RowKind, d: Density) -> Eleme
     .align_y(Alignment::Center);
 
     // The grip: a narrow handle at the far left that starts the same drag the
-    // row body does (a wider target on touch screens). It lights up with the
+    // row's name does (a wider target on touch screens). It lights up with the
     // row, and the cursor turns to a grabbing hand while a row is dragged.
     let grip_w = if touch { 28.0 } else { 14.0 };
     let grip_color = if dragging {
@@ -972,12 +941,7 @@ fn layer_row<'a>(app: &'a App, r: &LayerRow, kind: RowKind, d: Density) -> Eleme
     )
     .on_press(Message::LayerPress(id.to_owned()))
     .on_release(Message::LayerDrop(id.to_owned(), DragPos::Inside))
-    .on_enter(Message::LayerZoneHover(id.to_owned(), DragPos::Inside))
-    .interaction(if app.dock.layer_drag.is_some() {
-        mouse::Interaction::Grabbing
-    } else {
-        mouse::Interaction::Grab
-    });
+    .interaction(mouse::Interaction::Grab);
 
     let row_body = row![grip, head, lead, strip, tools]
         .spacing(4)
@@ -995,30 +959,49 @@ fn layer_row<'a>(app: &'a App, r: &LayerRow, kind: RowKind, d: Density) -> Eleme
     let frame = container(row_body)
         .width(Length::Fill)
         .style(move |_| container::Style {
-            background: Some(Background::Color(if selected {
+            // The row being carried stays lit until it is dropped.
+            background: Some(Background::Color(if selected || dragging {
                 tokens::accent_soft()
-            } else if hovered && !dragging {
+            } else if hovered && app.dock.layer_drag.is_none() {
                 tokens::hover()
             } else {
                 Color::TRANSPARENT
             })),
             border: Border {
-                color: if selected || inside {
+                color: if selected || dragging || inside {
                     tokens::accent()
                 } else {
                     Color::TRANSPARENT
                 },
-                width: if selected || inside { 1.0 } else { 0.0 },
+                width: if selected || dragging || inside {
+                    1.0
+                } else {
+                    0.0
+                },
                 radius: RADIUS_CONTROL.into(),
             },
             ..container::Style::default()
         });
 
-    let marked: Element<'a, Message> = match drop_mark {
-        Some(DragPos::Before) => column![drop_rule(), frame].width(Length::Fill).into(),
-        Some(DragPos::After) => column![frame, drop_rule()].width(Length::Fill).into(),
-        _ => frame.into(),
+    // The drop line lies over the row's edge, so the rows hold still under the
+    // pointer.
+    let line = match drop_mark {
+        Some(DragPos::After) => Some(alignment::Vertical::Top),
+        Some(DragPos::Before) => Some(alignment::Vertical::Bottom),
+        _ => None,
     };
+    let line: Element<'a, Message> = match line {
+        Some(edge) => container(drop_rule())
+            .width(Length::Fill)
+            .height(Length::Fixed(row_h))
+            .align_y(edge)
+            .into(),
+        None => Space::new().into(),
+    };
+    let mut marked = stack![frame, line].width(Length::Fill);
+    if app.dock.layer_drag.is_some() {
+        marked = marked.push(drop_zones(id, row_h, is_folder));
+    }
 
     let layer_menu_msg = Message::LayerRowMenu(id.to_owned());
     let row = kit::long_press(
@@ -1032,6 +1015,47 @@ fn layer_row<'a>(app: &'a App, r: &LayerRow, kind: RowKind, d: Density) -> Eleme
         Some(poly) => kit::with_id(format!("area-row-{poly}"), row),
         None => row,
     }
+}
+
+/// Where the drop mark sits on the row `id`: only the one row a release would
+/// drop beside, or into, has one.
+fn row_drop_mark(app: &App, id: &str, is_folder: bool) -> Option<DragPos> {
+    let carried = app.dock.layer_drag.as_deref()?;
+    let (target, pos) = app.dock.layer_over.as_ref()?;
+    // Only a folder takes a row inside it; elsewhere it lands below.
+    let mark = match pos {
+        DragPos::Inside if !is_folder => DragPos::Before,
+        other => *other,
+    };
+    (target == id && carried != id).then_some(mark)
+}
+
+/// While a row is carried, every other row takes it across its whole face,
+/// buttons included. The top half puts it above and the bottom half below; a
+/// folder keeps its middle for putting it inside. The list runs front-first,
+/// against paint order, so above a row is `After` it and below is `Before`.
+fn drop_zones<'a>(id: &str, row_h: f32, is_folder: bool) -> Element<'a, Message> {
+    let zone = |h: f32, pos: DragPos| -> Element<'a, Message> {
+        mouse_area(Space::new().width(Length::Fill).height(Length::Fixed(h)))
+            .on_enter(Message::LayerZoneHover(id.to_owned(), pos))
+            .on_release(Message::LayerDrop(id.to_owned(), pos))
+            .interaction(mouse::Interaction::Grabbing)
+            .into()
+    };
+    let zones = if is_folder {
+        let edge = row_h / 4.0;
+        vec![
+            zone(edge, DragPos::After),
+            zone(row_h - 2.0 * edge, DragPos::Inside),
+            zone(edge, DragPos::Before),
+        ]
+    } else {
+        vec![
+            zone(row_h / 2.0, DragPos::After),
+            zone(row_h / 2.0, DragPos::Before),
+        ]
+    };
+    Column::with_children(zones).width(Length::Fill).into()
 }
 
 fn drop_rule<'a>() -> Element<'a, Message> {
@@ -1627,4 +1651,30 @@ fn area_color(codes: &[AreaCode], code: &str) -> Color {
                 tokens::accent()
             }
         })
+}
+
+#[cfg(test)]
+mod drop_mark_tests {
+    use super::*;
+
+    #[test]
+    fn only_the_row_under_the_pointer_is_marked() {
+        let (mut app, _) = App::boot(1.0);
+        let marks = |app: &App| -> Vec<Option<DragPos>> {
+            ["a", "b", "c"]
+                .map(|id| row_drop_mark(app, id, false))
+                .to_vec()
+        };
+        app.dock.layer_over = Some(("b".into(), DragPos::After));
+        assert_eq!(marks(&app), [None, None, None], "nothing is being carried");
+        app.dock.layer_drag = Some("a".into());
+        assert_eq!(marks(&app), [None, Some(DragPos::After), None]);
+        app.dock.layer_over = Some(("c".into(), DragPos::Inside));
+        assert_eq!(marks(&app), [None, None, Some(DragPos::Before)]);
+        assert_eq!(
+            row_drop_mark(&app, "c", true),
+            Some(DragPos::Inside),
+            "a folder takes the row in"
+        );
+    }
 }

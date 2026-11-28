@@ -757,6 +757,49 @@ fn canvas_context_menu_closes_on_an_outside_press_and_on_escape() {
     assert!(state(h).context.open.is_none());
 }
 
+#[test]
+fn right_clicking_a_symbol_acts_on_the_symbol_not_the_area_under_it() {
+    use crate::context_menu::Action;
+    let r = {
+        let mut peek = harness_next_at(VIEWPORT);
+        draw_closed_square(&mut peek);
+        state(peek).canvas_rect()
+    };
+    let (x, y) = drawn_square_center_on_screen(VIEWPORT.width, VIEWPORT.height);
+    let at = iced::Point::new(x, y);
+    // The same square with a symbol in the middle of it, in Select mode.
+    let build = || {
+        let mut h = harness_next_at(VIEWPORT);
+        draw_closed_square(&mut h);
+        h.send(Message::Key(KeyCmd::Escape));
+        let mut app = state(h);
+        let world = app.world(x - r.x, y - r.y);
+        app.place_symbol_at(world, "caddillo/toilet".into());
+        app.selection.clear();
+        app.view.mode = crate::view_state::Mode::Select;
+        app
+    };
+
+    // Not yet selected, then already selected.
+    for preselected in [false, true] {
+        let mut app = build();
+        let symbol = app.drawing.symbols[0].id;
+        if preselected {
+            app.selection.symbols.insert(symbol);
+        }
+        let _ = app.update(Message::RightPress(at));
+        assert!(app.context.open.is_some());
+        assert!(app.selection.symbols.contains(&symbol), "{preselected}");
+        assert!(app.selection.polys.is_empty(), "{preselected}");
+        assert_eq!(app.context.area_target, None);
+        assert!(!app.context.areas_selected);
+        let areas = app.drawing.polygons.len();
+        let _ = app.update(Message::ContextAction(Action::Delete));
+        assert!(app.drawing.symbols.is_empty(), "the symbol goes");
+        assert_eq!(app.drawing.polygons.len(), areas, "the area stays");
+    }
+}
+
 /// A closed square plus one new folder named "Layer": the combined tree's
 /// starting point for the tests below.
 macro_rules! tree_harness {
@@ -939,8 +982,8 @@ fn dragging_a_rows_grip_over_another_row_moves_it_there() {
     h.send(Message::LayerMoveTo(area.clone(), Some(folder.clone())));
     h.send(Message::Ui(UiMsg::ToggleLedgerLayers));
     // The grip of the Layer 1 row (left edge, fourth row), released over the
-    // middle of the area row: Layer 1 lands after it, in the same folder.
-    h.script(&["press (21, 247)", "move (120, 180)", "release (120, 180)"]);
+    // lower half of the area row: Layer 1 lands below it, in the same folder.
+    h.script(&["press (21, 247)", "move (120, 200)", "release (120, 200)"]);
     let app = state(h);
     assert_eq!(
         app.layers.layer("layer-1").unwrap().parent_id.as_deref(),
@@ -954,7 +997,100 @@ fn dragging_a_rows_grip_over_another_row_moves_it_there() {
         .map(|l| l.id.as_str())
         .collect();
     let pos = |id: &str| order.iter().position(|x| *x == id).unwrap();
-    assert!(pos(&area) < pos("layer-1"), "{order:?}");
+    // Below in the list is earlier in paint order.
+    assert!(pos("layer-1") < pos(&area), "{order:?}");
+}
+
+/// A saved sketch of four areas. Their rows read, from the top, DK, PORCH,
+/// GAR and GLA1: 48 px each, 50 apart, the first centred at y = 155.
+fn four_area_sketch() -> std::path::PathBuf {
+    use crate::view_state::Mode;
+    use sketch_core::geometry::Pt;
+    let (mut app, _) = crate::App::boot(1.0);
+    for (i, code) in ["GLA1", "GAR", "PORCH", "DK"].into_iter().enumerate() {
+        let x = i as f64 * 14.0;
+        let known: std::collections::BTreeSet<i64> =
+            app.drawing.polygons.iter().map(|p| p.id).collect();
+        let _ = app.set_mode(Mode::DrawExterior);
+        let ctx = crate::drawing::DrawCtx {
+            snap: false,
+            ..app.draw_ctx()
+        };
+        app.drawing.pen_down_at(Pt::new(x, 0.0), ctx);
+        for (dx, y) in [(10.0, 0.0), (10.0, -10.0), (0.0, -10.0), (0.0, 0.0)] {
+            let before = app.drawing.lines.last().map(|l| l.id);
+            app.drawing.click(Pt::new(x + dx, y), ctx);
+            app.finish_wall_commit(before);
+        }
+        let _ = app.update(Message::Key(KeyCmd::Escape));
+        let new = app.drawing.polygons.iter().map(|p| p.id);
+        let new = new.into_iter().find(|id| !known.contains(id)).unwrap();
+        app.selection.clear();
+        app.selection.polys.insert(new);
+        let assign = crate::area_workflow::Msg::AssignSelected(code.into());
+        let _ = app.update(Message::AreaWorkflow(assign));
+    }
+    app.selection.clear();
+    let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/e2e-next");
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("Four Areas.json");
+    std::fs::write(&file, serde_json::to_vec(&app.build_save_model()).unwrap()).unwrap();
+    file
+}
+
+/// The area codes as the Areas list reads them, top first.
+fn listed_codes(app: &crate::App) -> Vec<String> {
+    app.layers
+        .panel_rows()
+        .iter()
+        .filter_map(|r| r.area_poly_id.as_deref()?.parse::<i64>().ok())
+        .filter_map(|id| app.drawing.polygons.iter().find(|p| p.id == id))
+        .map(|p| p.kind.clone())
+        .collect()
+}
+
+#[test]
+fn a_carried_area_row_lands_where_the_pointer_lets_go() {
+    let file = four_area_sketch();
+    // The bottom row, GLA1, carried by its grip.
+    for (what, (x, y), want) in [
+        (
+            "the near half of its neighbour, over the eye button",
+            (178.0, 270.0),
+            ["DK", "PORCH", "GLA1", "GAR"],
+        ),
+        (
+            "the upper half of the top row",
+            (100.0, 140.0),
+            ["GLA1", "DK", "PORCH", "GAR"],
+        ),
+        (
+            "the lower half of a row further up",
+            (225.0, 218.0),
+            ["DK", "PORCH", "GLA1", "GAR"],
+        ),
+        (
+            "the upper half of a row further up",
+            (100.0, 192.0),
+            ["DK", "GLA1", "PORCH", "GAR"],
+        ),
+    ] {
+        let mut h = harness_next_at(VIEWPORT);
+        h.send(Message::FileDropped(file.clone()));
+        h.send(Message::Key(KeyCmd::Escape));
+        h.script(&[
+            "press (21, 306)",
+            &format!("move ({x:.1}, {y:.1})"),
+            &format!("release ({x:.1}, {y:.1})"),
+        ]);
+        let app = state(h);
+        assert_eq!(listed_codes(&app), want, "dropped on {what}");
+        assert_eq!(app.dock.layer_drag, None, "{what}");
+        assert!(
+            app.layers.layer("layer-1").is_some_and(|l| l.visible),
+            "{what}"
+        );
+    }
 }
 
 /// Two "Kitchen" labels placed on an empty sketch, and their positions on
@@ -2165,6 +2301,363 @@ fn p7_inspector_controls_across_selection_kinds_and_sizes() {
 }
 
 #[test]
+fn a_pinned_insert_panel_stays_until_the_user_closes_it() {
+    use crate::ui::insert::PINNED_HINT;
+    use crate::ui::tray::DrawerTab;
+    for tab in [DrawerTab::Symbols, DrawerTab::Labels] {
+        let open = Message::Ui(UiMsg::OpenDrawer(Some(tab)));
+
+        // Unpinned, picking a tool closes it.
+        let mut h = harness_next_at(VIEWPORT);
+        h.send(open.clone());
+        assert!(!h.shows(PINNED_HINT));
+        h.script(&["click \"Wall\""]);
+        assert!(!h.shows("Pin"), "unpinned {tab:?} stayed open");
+
+        let mut h = harness_next_at(VIEWPORT);
+        h.send(open.clone());
+        h.script(&["click \"Pin\""]);
+        assert!(h.shows(PINNED_HINT), "{tab:?} does not say what Pin does");
+        // The second click on Select opens that tool's options.
+        for tool in ["Wall", "Select", "Select", "Measure"] {
+            h.script(&[&format!("click {tool:?}")]);
+            assert!(h.shows("Pinned"), "{tool} closed the pinned {tab:?}");
+        }
+        // Another popup's Close button, then Escape.
+        h.send(Message::Ui(UiMsg::CloseOverlays));
+        assert!(h.shows("Pinned"), "closing overlays closed {tab:?}");
+        h.script(&["type escape"]);
+        assert!(h.shows("Pinned"), "Escape closed the pinned {tab:?}");
+        let app = state(h);
+        assert_eq!(app.ui.drawer, Some(tab));
+    }
+
+    // Escape still reaches the drawing: it drops the armed label.
+    let mut h = harness_next_at(VIEWPORT);
+    h.send(Message::Ui(UiMsg::OpenDrawer(Some(DrawerTab::Labels))));
+    h.script(&["click \"Pin\"", "click \"Bath\"", "type escape"]);
+    let app = state(h);
+    assert_eq!(app.view.mode, Mode::Select);
+    assert_eq!(app.ui.drawer, Some(DrawerTab::Labels));
+
+    // The user's own close still works, and the Insert button's second press.
+    let mut h = harness_next_at(VIEWPORT);
+    h.script(&["click \"Insert\"", "click \"Pin\""]);
+    h.send(Message::Ui(UiMsg::OpenDrawer(None)));
+    assert!(!h.shows("Pinned"));
+    h.script(&["click \"Insert\""]);
+    assert!(h.shows("Pinned"), "it comes back pinned");
+    h.script(&["click \"Insert\""]);
+    assert!(!h.shows("Pinned"));
+}
+
+#[test]
+fn the_select_arrow_changes_moves_and_deletes_a_measurement() {
+    // Taped inside a room, so the measurement has an area underneath it.
+    let (x, y) = drawn_square_center_on_screen(VIEWPORT.width, VIEWPORT.height);
+    let mut h = harness_next_at(VIEWPORT);
+    draw_closed_square(&mut h);
+    let press = |x: f32, y: f32| format!("press ({x:.1}, {y:.1})");
+    let move_to = |x: f32, y: f32| format!("move ({x:.1}, {y:.1})");
+    let release = |x: f32, y: f32| format!("release ({x:.1}, {y:.1})");
+    h.script(&[
+        "click \"Measure\"",
+        &format!("click ({x:.1}, {:.1})", y - 40.0),
+        &format!("click ({x:.1}, {:.1})", y + 40.0),
+        // No Finish: leaving the tool keeps it.
+        "click \"Select\"",
+    ]);
+    // Drag the lower end sideways, then the middle of the line.
+    for (from, to) in [
+        ((x, y + 40.0), (x + 30.0, y + 40.0)),
+        ((x + 15.0, y), (x + 55.0, y)),
+    ] {
+        h.script(&[
+            &press(from.0, from.1),
+            &move_to(to.0, to.1),
+            &release(to.0, to.1),
+        ]);
+    }
+    assert!(h.shows("Delete measurement"), "the Inspector offers it");
+    let mut app = state(h);
+    assert_eq!(app.view.mode, Mode::Select);
+    assert!(app.drawing.measure_points.is_empty());
+    assert_eq!(app.drawing.measure_runs.len(), 1);
+    assert_eq!(app.selection.measure, Some(0));
+    assert!(app.selection.polys.is_empty(), "not the room under it");
+    let room = app.drawing.polygons[0].points.clone();
+    let canvas = app.canvas_rect();
+    // Where the two ends are on screen, in window pixels.
+    let ends = |app: &crate::App| -> Vec<(f32, f32)> {
+        app.drawing.measure_runs[0]
+            .iter()
+            .map(|p| {
+                let world = crate::view_state::World { x: p.x, y: p.y };
+                let (sx, sy) = app.view.to_screen(world);
+                (sx as f32 + canvas.x, sy as f32 + canvas.y)
+            })
+            .collect()
+    };
+    let near = |got: Vec<(f32, f32)>, want: [(f32, f32); 2], what: &str| {
+        assert!(
+            got.iter()
+                .zip(want)
+                .all(|(g, w)| (g.0 - w.0).abs() < 2.0 && (g.1 - w.1).abs() < 2.0),
+            "{what}: {got:?} not {want:?}"
+        );
+    };
+    let taped = [(x, y - 40.0), (x, y + 40.0)];
+    let stretched = [(x, y - 40.0), (x + 30.0, y + 40.0)];
+    let moved = [(x + 40.0, y - 40.0), (x + 70.0, y + 40.0)];
+    near(ends(&app), moved, "after both drags");
+
+    for (cmd, want, what) in [
+        (KeyCmd::Undo, stretched, "undo the move"),
+        (KeyCmd::Undo, taped, "undo the stretch"),
+        (KeyCmd::Redo, stretched, "redo the stretch"),
+        (KeyCmd::Redo, moved, "redo the move"),
+    ] {
+        let _ = app.update(Message::Key(cmd));
+        near(ends(&app), want, what);
+    }
+
+    let middle = (x + 55.0 - canvas.x, y - canvas.y);
+    let click = Message::CanvasClick {
+        x: middle.0,
+        y: middle.1,
+        double: false,
+        ctrl: false,
+    };
+    // Escape lets go; a click picks it again.
+    let _ = app.update(click.clone());
+    assert_eq!(app.selection.measure, Some(0));
+    let _ = app.update(Message::Key(KeyCmd::Escape));
+    assert!(app.selection.is_empty());
+
+    // Right-click picks it for the menu, not the room.
+    let _ = app.update(Message::RightPress(iced::Point::new(x + 55.0, y)));
+    assert_eq!(app.selection.measure, Some(0));
+    assert!(app.context.has_selection);
+    assert_eq!(app.context.area_target, None);
+
+    // The arrow keys nudge it.
+    let before = app.drawing.measure_runs[0].clone();
+    let _ = app.update(Message::Key(KeyCmd::Nudge(1.0, 0.0)));
+    assert!(app.drawing.measure_runs[0][0].x > before[0].x);
+    let _ = app.update(Message::Key(KeyCmd::Undo));
+    assert_eq!(app.drawing.measure_runs[0], before);
+
+    // Delete removes it and nothing else, and undo brings it back.
+    let _ = app.update(click.clone());
+    let _ = app.update(Message::Delete);
+    assert!(app.drawing.measure_runs.is_empty());
+    assert_eq!(app.drawing.polygons[0].points, room);
+    let _ = app.update(Message::Key(KeyCmd::Undo));
+    assert_eq!(app.drawing.measure_runs, std::slice::from_ref(&before));
+
+    // One taped after an edit survives stepping back over that edit.
+    let _ = app.update(click);
+    let _ = app.update(Message::Key(KeyCmd::Nudge(1.0, 0.0)));
+    let _ = app.set_mode(Mode::Measure);
+    app.drawing.measure_points = before.clone();
+    let _ = app.update(Message::Key(KeyCmd::Enter));
+    let _ = app.update(Message::Key(KeyCmd::Undo));
+    assert_eq!(app.drawing.measure_runs, [before.clone(), before]);
+}
+
+/// Two walls of a room, to tape along and to transform.
+fn app_with_two_walls() -> crate::App {
+    let (mut app, _) = crate::App::boot(1.0);
+    app.drawing.lines = serde_json::from_value(serde_json::json!([
+        { "id": 1, "start": { "x": 0.0, "y": 0.0 }, "end": { "x": 10.0, "y": 0.0 },
+          "type": "exterior" },
+        { "id": 2, "start": { "x": 10.0, "y": 0.0 }, "end": { "x": 10.0, "y": 6.0 },
+          "type": "exterior" },
+    ]))
+    .unwrap();
+    app.drawing.set_next_id(10);
+    app
+}
+
+fn tape_run(xy: &[(f64, f64)]) -> Vec<sketch_core::geometry::Pt> {
+    xy.iter()
+        .map(|&(x, y)| sketch_core::geometry::Pt::new(x, y))
+        .collect()
+}
+
+/// Tapes `run` with the Measure tool and goes back to Select.
+fn tape(app: &mut crate::App, run: &[sketch_core::geometry::Pt]) {
+    let _ = app.set_mode(Mode::Measure);
+    app.drawing.measure_points = run.to_vec();
+    let _ = app.update(Message::Key(KeyCmd::Enter));
+    let _ = app.set_mode(Mode::Select);
+}
+
+#[test]
+fn measurements_are_saved_with_the_sketch_in_every_format() {
+    let dir = std::env::temp_dir().join(format!("sketch-measures-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let save_as = |app: &mut crate::App, path: &std::path::Path| {
+        crate::file_dialogs::with_save_path(Some(path.to_path_buf()), || {
+            let task = app.update(Message::SaveFileAs);
+            crate::file_dialogs::drive(&mut *app, task);
+        });
+    };
+    let open = |path: &std::path::Path| {
+        let (mut app, _) = crate::App::boot(1.0);
+        crate::file_dialogs::with_open_path(Some(path.to_path_buf()), || {
+            let task = app.update(Message::OpenFile);
+            crate::file_dialogs::drive(&mut app, task);
+        });
+        app
+    };
+    let first = tape_run(&[(0.0, 0.0), (10.0, 0.0), (10.0, 6.0), (0.0, 0.0)]);
+    let second = tape_run(&[(2.0, 3.0), (8.0, 3.0)]);
+    for name in [
+        "tape.sketchy",
+        "tape.sketchie",
+        "tape.sketchie.json",
+        "tape.skx",
+        "tape.json",
+    ] {
+        let path = dir.join(name);
+        let _ = std::fs::remove_file(&path);
+        let mut app = app_with_two_walls();
+        tape(&mut app, &first);
+        // The second page is saved with its line still being taped.
+        app.add_page();
+        assert!(app.drawing.measure_runs.is_empty(), "each page has its own");
+        let _ = app.set_mode(Mode::Measure);
+        app.drawing.measure_points = second.clone();
+        save_as(&mut app, &path);
+        assert!(path.exists(), "{name} was not written");
+
+        let mut again = open(&path);
+        again.refresh_dirty();
+        assert!(!again.dirty, "{name} reads as edited just after opening");
+        assert_eq!(
+            again.drawing.measure_runs,
+            std::slice::from_ref(&first),
+            "{name}"
+        );
+        again.go_to_page(1);
+        assert_eq!(
+            again.drawing.measure_runs,
+            std::slice::from_ref(&second),
+            "{name}"
+        );
+        again.refresh_dirty();
+        assert!(!again.dirty, "{name}: turning the page is not an edit");
+
+        // A change to a measurement counts as unsaved work, and is kept.
+        again.pick_measure(0);
+        let _ = again.update(Message::Key(KeyCmd::Nudge(1.0, 0.0)));
+        let moved = again.drawing.measure_runs.clone();
+        assert_ne!(moved, std::slice::from_ref(&second));
+        again.refresh_dirty();
+        assert!(again.dirty, "{name}: moving one is an edit");
+        save_as(&mut again, &path);
+        let mut third = open(&path);
+        third.go_to_page(1);
+        assert_eq!(third.drawing.measure_runs, moved, "{name}");
+        // And a removed one stays removed.
+        third.pick_measure(0);
+        let _ = third.update(Message::Delete);
+        save_as(&mut third, &path);
+        let mut last = open(&path);
+        assert_eq!(
+            last.drawing.measure_runs,
+            std::slice::from_ref(&first),
+            "{name}"
+        );
+        last.go_to_page(1);
+        assert!(last.drawing.measure_runs.is_empty(), "{name}");
+    }
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn escape_delete_and_clear_cannot_lose_finished_measurements() {
+    let mut app = app_with_two_walls();
+    let kept = tape_run(&[(0.0, 0.0), (10.0, 0.0)]);
+    let unfinished = tape_run(&[(1.0, 1.0), (5.0, 1.0)]);
+    tape(&mut app, &kept);
+    for key in [KeyCmd::Escape, KeyCmd::Delete] {
+        let _ = app.set_mode(Mode::Measure);
+        app.drawing.measure_points = unfinished.clone();
+        let _ = app.update(Message::Key(key));
+        assert!(app.drawing.measure_points.is_empty());
+        assert_eq!(app.drawing.measure_runs, std::slice::from_ref(&kept));
+    }
+    // A single point is not a measurement.
+    let _ = app.set_mode(Mode::Measure);
+    app.drawing.measure_points = tape_run(&[(3.0, 3.0)]);
+    let _ = app.set_mode(Mode::Select);
+    assert_eq!(app.drawing.measure_runs, std::slice::from_ref(&kept));
+
+    let _ = app.set_mode(Mode::Measure);
+    let _ = app.update(Message::Ui(UiMsg::MeasureClear));
+    assert!(app.drawing.measure_runs.is_empty());
+    let _ = app.update(Message::Key(KeyCmd::Undo));
+    assert_eq!(app.drawing.measure_runs, [kept]);
+}
+
+#[test]
+fn measurements_follow_rotate_flip_import_and_new() {
+    let mut app = app_with_two_walls();
+    let corners = tape_run(&[(0.0, 0.0), (10.0, 0.0), (10.0, 6.0)]);
+    tape(&mut app, &corners);
+    let on_the_walls = |app: &crate::App| {
+        let walls = [
+            app.drawing.lines[0].start,
+            app.drawing.lines[0].end,
+            app.drawing.lines[1].end,
+        ];
+        app.drawing.measure_runs[0]
+            .iter()
+            .zip(walls)
+            .all(|(p, w)| (p.x - w.x).hypot(p.y - w.y) < 1e-9)
+    };
+    for turn in [
+        Message::RotateSketchBy(90.0),
+        Message::Key(KeyCmd::FlipSketch(true)),
+    ] {
+        let _ = app.update(turn);
+        assert_ne!(app.drawing.measure_runs[0], corners);
+        assert!(on_the_walls(&app), "{:?}", app.drawing.measure_runs);
+        let _ = app.update(Message::Key(KeyCmd::Undo));
+        assert_eq!(app.drawing.measure_runs[0], corners);
+        assert!(on_the_walls(&app));
+    }
+
+    // Import brings the other sketch's measurements, offset like the rest.
+    let other = serde_json::json!({ "pages": [{ "lines": [], "tapeMeasurements":
+        [[{ "x": 1.0, "y": 1.0 }, { "x": 4.0, "y": 1.0 }]] }] });
+    let _ = app.import_state(&other, "other.json");
+    assert_eq!(
+        app.drawing.measure_runs,
+        [corners.clone(), tape_run(&[(3.0, 3.0), (6.0, 3.0)])]
+    );
+    let _ = app.update(Message::Key(KeyCmd::Undo));
+    assert_eq!(app.drawing.measure_runs, std::slice::from_ref(&corners));
+
+    // They are the page's, not a layer's.
+    let layer = app.layers.default_layer_id();
+    assert!(app
+        .export_layer_data(&layer)
+        .get("tapeMeasurements")
+        .is_none());
+
+    // File > New carries none over, not even one being taped.
+    let _ = app.set_mode(Mode::Measure);
+    app.drawing.measure_points = corners;
+    app.reset_to_blank();
+    assert!(app.drawing.measure_runs.is_empty());
+    let model = app.build_save_model_without_backing();
+    assert!(model["pages"][0].get("tapeMeasurements").is_none());
+}
+
+#[test]
 fn p8_insert_drawer_symbols_and_labels_across_sizes() {
     let lib = symlib::library();
     let ix = (*lib).as_ref().expect("symbol library loads");
@@ -2200,20 +2693,29 @@ fn p8_insert_drawer_symbols_and_labels_across_sizes() {
                 harness.shows("Edit library"),
                 "edit library action missing at {size_label}"
             );
-            assert!(
-                harness.shows(&format!("Favorites ({})", ix.favorites.len())),
-                "Favorites count missing at {size_label}"
-            );
-            let total_syms: usize = ix.categories.iter().map(|c| c.items.len()).sum();
-            assert!(
-                harness.shows(&format!("All {total_syms}")),
-                "All symbols chip missing at {size_label}"
-            );
-            for cat in &ix.categories {
-                let chip_label = format!("{} ({})", cat.name, cat.items.len());
+            // A Wide drawer lists every category down its side; narrower
+            // ones keep Favorites and All and drop the rest down.
+            if matches!(SizeClass::of(w), SizeClass::Wide) {
                 assert!(
-                    harness.shows(&chip_label),
-                    "category chip '{chip_label}' missing at {size_label}"
+                    harness.shows("Favorites") && harness.shows("All symbols"),
+                    "category list missing at {size_label}"
+                );
+                for cat in &ix.categories {
+                    assert!(
+                        harness.shows(&cat.name),
+                        "category '{}' missing at {size_label}",
+                        cat.name
+                    );
+                }
+            } else {
+                assert!(
+                    harness.shows(&format!("Favorites ({})", ix.favorites.len())),
+                    "Favorites count missing at {size_label}"
+                );
+                let total_syms: usize = ix.categories.iter().map(|c| c.items.len()).sum();
+                assert!(
+                    harness.shows(&format!("All {total_syms}")),
+                    "All symbols chip missing at {size_label}"
                 );
             }
 
@@ -2319,8 +2821,11 @@ fn p8_insert_drawer_symbols_and_labels_across_sizes() {
 
     // 4. Tray open + Context Favorite toggle updates Favorites list live.
     {
-        let mut h = harness_next_at(VIEWPORT);
-        h.script(&["click \"Insert\""]);
+        // A mid-size window, whose Favorites button carries its count.
+        let mut h = harness_next_at(iced::Size::new(800.0, 1280.0));
+        h.send(Message::Ui(UiMsg::OpenDrawer(Some(
+            crate::ui::tray::DrawerTab::Symbols,
+        ))));
         h.send(Message::SymbolManager(crate::symbol_manager::Msg::Context(
             non_fav.id.clone(),
         )));
@@ -3535,7 +4040,7 @@ fn p12_symbol_library_and_shape_editing_across_sizes() {
             let cmd = crate::ui::commands::find("symbol-library").unwrap();
             let _ = app.update((cmd.run)(&app));
             assert!(app.ui.symbol_library.open);
-            assert_eq!(app.symbols_lib().library.symbols.len(), 500);
+            assert_eq!(app.symbols_lib().library.symbols.len(), 503);
             assert_eq!(app.symbols_lib().categories.len(), 18);
 
             let first_sym_id = app.ui.symbol_library.focused.clone().unwrap();
@@ -3705,7 +4210,7 @@ fn p12_symbol_library_and_shape_editing_across_sizes() {
             assert!(report.conflicts.contains(&desk_id));
             let _ = std::fs::remove_dir_all(&tmp_dir);
 
-            // Delete a category (writes symbols.json.bak) then Restore original library -> 500 symbols.
+            // Delete a category (writes symbols.json.bak) then Restore original library -> 503 symbols.
             let del_cat = app.symbols_lib().categories[0].key.clone();
             let _ = app.update(Message::Ui(UiMsg::SymbolLibrary(SymMsg::Open(None))));
             let _ = app.update(Message::Ui(UiMsg::SymbolLibrary(
@@ -3729,7 +4234,7 @@ fn p12_symbol_library_and_shape_editing_across_sizes() {
                 SymMsg::RequestRestoreOriginal,
             )));
             let _ = app.update(Message::Ui(UiMsg::SymbolLibrary(SymMsg::Confirm)));
-            assert_eq!(app.symbols_lib().library.symbols.len(), 500);
+            assert_eq!(app.symbols_lib().library.symbols.len(), 503);
             assert_eq!(app.symbols_lib().categories.len(), 18);
             assert_eq!(app.ui.symbol_library.category, ALL_KEY);
         });

@@ -328,12 +328,12 @@ mod tests {
             return;
         };
         let library = SymbolLibrary::load(&path).expect("library loads");
-        assert_eq!(library.symbols.len(), 500);
-        assert_eq!(library.symbol_count, 500);
+        assert_eq!(library.symbols.len(), 503);
+        assert_eq!(library.symbol_count, 503);
         assert_eq!(library.categories.len(), 19);
         assert_eq!(library.default_favorites.len(), 18);
         assert_eq!(library.version, 1);
-        assert_eq!(library.symbol_count(), 500);
+        assert_eq!(library.symbol_count(), 503);
     }
 
     #[test]
@@ -417,6 +417,51 @@ mod tests {
     }
 
     #[test]
+    fn sliding_closet_doors_fill_their_openings() {
+        let Some(path) = real_library_path() else {
+            return;
+        };
+        let library = SymbolLibrary::load(&path).expect("library loads");
+        for (id, width) in [
+            ("custom/door-bypass-48", 48.0),
+            ("custom/door-bypass-60", 60.0),
+            ("caddillo/door-bypass-72", 72.0),
+            ("custom/door-bypass-96", 96.0),
+        ] {
+            let door = &library.symbols[id];
+            assert_eq!(door.label, format!("Sliding Closet Door {width}"));
+            assert_eq!(door.wall_gap_width, width);
+            assert_eq!(door.wall_snap, WallSnap::Side);
+            // A 4.5 in jamb stands outside each end of the opening.
+            assert!((door.bounds.min_x + 4.5).abs() < 1e-3);
+            assert!((door.bounds.max_x - width - 4.5).abs() < 1e-3);
+            // Two panels, one from each end, lapped 3.75 in at the middle.
+            let panels: Vec<(f64, f64)> = door
+                .geometry
+                .iter()
+                .filter_map(|e| e.vertices.as_ref())
+                .map(|v| {
+                    let xs = v.iter().map(|p| p.x);
+                    (
+                        xs.clone().fold(f64::MAX, f64::min),
+                        xs.fold(f64::MIN, f64::max),
+                    )
+                })
+                .filter(|(from, to)| to - from > 5.0)
+                .collect();
+            assert_eq!(panels.len(), 2, "{id}");
+            assert!(panels[0].0.abs() < 1e-3 && (panels[1].1 - width).abs() < 1e-3);
+            assert!((panels[0].1 - panels[1].0 - 3.75).abs() < 1e-3, "{id}");
+        }
+        let sink = &library.symbols["caddillo/sink-kitchen-dbl"];
+        assert_eq!(sink.label, "Double Kitchen Sink 33");
+        assert!(library
+            .categories
+            .iter()
+            .any(|c| c.key == "kitchen" && c.symbol_ids.contains(&sink.id)));
+    }
+
+    #[test]
     fn accessors_and_geometry_shape_survive_the_real_library() {
         let Some(path) = real_library_path() else {
             eprintln!("skipping: assets/symbols.json not present");
@@ -445,7 +490,7 @@ mod tests {
         if let Some(path) = real_library_path() {
             assert_eq!(resolve(Some(&path)), path);
             let library = SymbolLibrary::load_resolved(Some(&path)).expect("load_resolved");
-            assert_eq!(library.symbols.len(), 500);
+            assert_eq!(library.symbols.len(), 503);
         }
         // With no file anywhere, resolution still returns a usable candidate path.
         let fallback = resolve(None);

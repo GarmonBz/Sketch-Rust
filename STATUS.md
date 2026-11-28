@@ -1,5 +1,74 @@
 # Sketch Rust — STATUS ledger
 
+0.3.22 saves tape measurements with the sketch (user's choice after 0.3.21).
+Each page keeps its own in a new `tapeMeasurements` key, written only when there
+are some; a line still being taped is saved once it has two points. `.skx` and
+JSON carry the whole model, `.sketchy` keeps unmodeled page keys in its level
+extras, and `.sketchie` keeps them in its workfile, so (like other app-only data)
+they are lost there if another editor changes the file's core geometry. One
+unreadable run is dropped alone. Because they are now content: Escape and Delete
+in the Measure tool drop only the unfinished line (they cleared everything);
+Clear is undoable; a one-point run is discarded; New clears them (its reset did
+not touch them before); whole-sketch rotate and flip move them; File > Import
+brings them in at the usual offset. Prints, PNG/SVG/DXF/PDF, AXF, RapidSketch
+and layer exports leave them out. Moving every wall with a selection does not
+move them. Older versions open such a file and keep the key when saving but do
+not show it.
+Gate (Windows): `cargo test --workspace` 808 passed / 0 failed / 3 ignored, then
+a lint fix in the new tests only, after which `cargo clippy --workspace
+--all-targets -- -D warnings`, `cargo fmt --all --check` and the 12 measurement
+tests are clean. Save and reopen was tested in `.sketchy`, `.sketchie`,
+`.sketchie.json`, `.skx` and `.json`. NOT verified by hand in the running app.
+
+0.3.21, three user reports.
+1. The symbol picker's category buttons wrapped into a 92 px scrolling box
+(7 of 14 visible). The user chose a side list (mockup "A"): a Wide window
+(>= 1100) gets a 540 px drawer with the categories down the side; narrower ones
+keep Favorites and All and use one drop-down. Search now covers every category
+(it searched only the open one); choosing a category ends the search. A library
+with more categories than fit (the unedited default has 18) scrolls the list.
+2. "Pin does not seem to do anything." Picking and placing kept the drawer, but
+any tool, a tool fly-out, Escape or another popup's Close shut it. A pinned
+drawer now stays until closed or unpinned, Escape goes to the drawing, and the
+footer says so. The pin is still not remembered across restarts.
+3. Tape measurements could not be touched with Select. Click picks one (it
+draws highlighted with each leg's length), an end or corner drags to change it,
+a leg drags to move it, arrows nudge, Delete / right-click / Inspector remove
+it, all undoable. Leaving the Measure tool now finishes the open measurement.
+Unchanged: they are not saved with the sketch, are not in exports, and Escape
+while still in the Measure tool clears them all.
+Gate (Windows): `cargo test --workspace` 804 passed / 0 failed / 3 ignored, then
+a one-line lint fix in a test, after which `cargo clippy --workspace
+--all-targets -- -D warnings`, `cargo fmt --all --check` and that test are
+clean. Checked with headless pointer input and screenshots; NOT verified with a
+real mouse in the running app.
+
+0.3.20 fixes dragging rows in the Areas list (user report: "it's janky"). The
+drop line was drawn on every row except the one under the pointer, and taking up
+layout space it also shifted those rows. Only a 6 px strip meant "above", and
+nothing but a row's name took the drag. Now one line, drawn over the rows, marks
+the target; each row takes the drag across its whole face, halves meaning above
+and below (a folder keeps its middle for "inside"); either half of an adjacent
+row moves past it; and the carried row stays lit. Gate (Windows): `cargo test
+--workspace` 798 passed / 0 failed / 3 ignored, then a lint-only rewrite, after
+which `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D
+warnings` and the drag tests are clean. Checked with headless drags and
+screenshots; NOT verified with a real mouse in the running app.
+
+0.3.19 (user reports). Symbols: Corner Fireplace 36, which also replaces the
+lopsided corner fireplace that RapidSketch / ACI Sketch files bring in; Sliding
+Closet Door 48, 60, 72 and 96; and the 33 in double sink renamed Double Kitchen
+Sink 33 and filed under Kitchen (503 symbols). The Areas list now reads
+front-first, so the top row draws in front; paint order itself is unchanged, and
+canvas clicks now take the area painted on top. A right-click picks a symbol or
+text under the pointer, as a left click does, instead of the area beneath, so
+Delete removes just that. Gate (Windows): `cargo fmt --all --check` and `cargo
+clippy --workspace --all-targets -- -D warnings` clean, `cargo test
+--workspace` 795 passed / 0 failed / 3 ignored (one library count assertion was
+corrected after the full run and passed on its own). NOT verified: the changes
+by eye in the running app, and how ACI Sketch itself draws its corner
+fireplace; the swap places it where the walls of the sample show it belongs.
+
 0.3.18 imports interior walls from RapidSketch / ACI Sketch files (user report:
 "The interior walls are missing"). They are `FreeformLine` objects on the sketch
 itself — two `SnappingHandle` ends, nothing else — which the first sample never

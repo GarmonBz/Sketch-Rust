@@ -90,6 +90,13 @@ pub const TOPICS: &[Topic] = &[
                 "Drag a corner to move it, or switch to Wall > Insert vertex (Insert) to add a corner along a wall.",
                 "Arrow keys nudge the selection by the snap pitch (or 1 ft with snap off); Delete removes it; Ctrl + Z undoes.",
             ]),
+            Heading("Changing a measurement"),
+            Points(&[
+                "With Select, click a line made by the Measure tool. Drag an end or corner to change it, or drag the line to move it.",
+                "Delete, right-click or the Inspector removes it, and Ctrl + Z undoes.",
+                "Measurements are saved with the sketch, each on its own page. Prints, and exports to picture, drawing or other apps' files, leave them out.",
+                "While measuring, Esc or Delete drops only the line you are still taping. Clear removes every measurement on the page, and Ctrl + Z brings them back.",
+            ]),
         ],
     },
     Topic {
@@ -104,7 +111,7 @@ pub const TOPICS: &[Topic] = &[
             ]),
             Heading("Reading the numbers"),
             Points(&[
-                "The Drawn view in the Areas drawer lists each area with its type and net sf, on the layer folder it belongs to, plus live GLA and Non-GLA totals. Use the eye to hide an area or a folder, the lock to protect it, drag a row to reorder it or move it into a folder, and the folder button to add a layer folder.",
+                "The Drawn view in the Areas drawer lists each area with its type and net sf, on the layer folder it belongs to, plus live GLA and Non-GLA totals. Use the eye to hide an area or a folder, the lock to protect it, drag a row to reorder it or move it into a folder (the top row draws in front), and the folder button to add a layer folder.",
                 "Tools > Area breakdown shows the rectangle and bow math behind every area.",
                 "Click Edit area types in the Types tab (or Menu > Areas > Area types) to customize codes, names, colours, multipliers, and calculation rules.",
             ]),
@@ -120,6 +127,8 @@ pub const TOPICS: &[Topic] = &[
             Points(&[
                 "Press S or tap Insert in the tool tray to open the Insert drawer.",
                 "Browse Favorites or categories, click a symbol, then click the drawing to place it (or drag straight from Favorites onto the canvas).",
+                "A wide window lists the categories down the side of the drawer; a narrower one has them in a drop-down. Search covers every category.",
+                "Pin keeps the drawer open while you work, until you close it or unpin it.",
                 "Doors and windows snap onto a wall and cut an opening automatically; the side of the wall you click sets the door swing.",
                 "Select a placed symbol to drag, rotate, flip, resize, or open Edit shape in the Inspector.",
                 "Open Symbol library from the Insert drawer or Menu > Insert to manage categories, edit symbol properties, import DXF blocks, or draw custom symbol shapes.",

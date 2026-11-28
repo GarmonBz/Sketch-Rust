@@ -238,7 +238,7 @@ impl UiState {
             || self.page_menu.is_some()
             || self.export_menu
             || self.tray_flyout.is_some()
-            || self.drawer.is_some()
+            || (self.drawer.is_some() && !self.drawer_pinned)
             || self.controls_popover.is_some()
             || self.pad_popover.is_some()
             || self.type_editor.open
@@ -257,13 +257,21 @@ impl UiState {
         self.page_menu = None;
         self.export_menu = false;
         self.tray_flyout = None;
-        self.drawer = None;
+        self.close_unpinned_drawer();
         self.controls_popover = None;
         self.pad_popover = None;
         self.type_editor.close();
         self.symbol_library.open = false;
         self.symbol_library.medium_editor_open = false;
         self.start.open = false;
+    }
+
+    /// Closes the Insert drawer on the user's behalf. A pinned one stays until
+    /// they close it themselves.
+    pub fn close_unpinned_drawer(&mut self) {
+        if !self.drawer_pinned {
+            self.drawer = None;
+        }
     }
 
     /// True when the bottom sheet adds height in Compact (`< 700px`).

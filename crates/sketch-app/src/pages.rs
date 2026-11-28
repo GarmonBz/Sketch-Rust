@@ -46,6 +46,13 @@ pub struct Page {
     /// `dimensionChains` (screen 9).
     #[serde(default)]
     pub dimension_chains: Vec<crate::chains::ChainRecord>,
+    /// Tape measurements, each a run of points in feet.
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        deserialize_with = "crate::measure_edit::deserialize_runs"
+    )]
+    pub tape_measurements: Vec<Vec<sketch_core::geometry::Pt>>,
     /// Keys this build does not model (Sketchy residue such as `sketchy_id`
     /// or `sketchy_other`), kept so a save writes them back unchanged.
     #[serde(flatten)]
@@ -294,6 +301,23 @@ pub fn parse_float(text: &str) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_damaged_measurement_does_not_cost_the_page() {
+        let read = |value: serde_json::Value| serde_json::from_value::<Page>(value).unwrap();
+        let end = |x: f64| serde_json::json!({ "x": x, "y": 0.0 });
+        let page = read(serde_json::json!({
+            "northAngle": 90.0,
+            "tapeMeasurements": [[end(0.0), end(4.0)], [{ "x": 1.0 }], "junk", [end(2.0)]],
+        }));
+        assert_eq!(page.north_angle, 90.0);
+        assert_eq!(page.tape_measurements.len(), 1);
+        let page = read(serde_json::json!({ "northAngle": 90.0, "tapeMeasurements": 5 }));
+        assert_eq!((page.north_angle, page.tape_measurements.len()), (90.0, 0));
+        // A page without any is written as before.
+        let written = serde_json::to_value(Page::default()).unwrap();
+        assert!(written.get("tapeMeasurements").is_none());
+    }
 
     #[test]
     fn next_add_prev_and_underlay_follow_the_original() {

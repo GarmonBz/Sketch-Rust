@@ -42,6 +42,8 @@ pub struct Snapshot {
     /// edits so renaming/deleting a type across pages undoes and redoes cleanly.
     pub area_codes: Option<Vec<sketch_core::geometry::AreaCode>>,
     pub pages: Option<Vec<crate::pages::Page>>,
+    /// The tape measurements, banked only by the steps that edit them.
+    pub measure_runs: Option<Vec<Vec<Pt>>>,
 }
 
 /// The two stacks. `push` clears redo, as `pushUndo` does.
@@ -123,6 +125,36 @@ impl UndoStack {
         self.undo[target..].iter().any(|s| s.area_codes.is_some())
     }
 
+    pub fn next_undo_has_measures(&self) -> bool {
+        self.undo.last().is_some_and(|s| s.measure_runs.is_some())
+    }
+
+    pub fn next_redo_has_measures(&self) -> bool {
+        self.redo.last().is_some_and(|s| s.measure_runs.is_some())
+    }
+
+    pub fn undo_range_has_measures(&self, index: usize) -> bool {
+        let target = index.min(self.undo.len());
+        self.undo[target..].iter().any(|s| s.measure_runs.is_some())
+    }
+
+    /// A newly finished measurement joins every banked list, so stepping back
+    /// over an earlier measurement edit does not take it away.
+    pub fn add_measure(&mut self, run: &[Pt]) {
+        for snapshot in self.undo.iter_mut().chain(self.redo.iter_mut()) {
+            if let Some(runs) = &mut snapshot.measure_runs {
+                runs.push(run.to_vec());
+            }
+        }
+    }
+
+    /// Measurements belong to the page on screen and go when it is left.
+    pub fn forget_measures(&mut self) {
+        for snapshot in self.undo.iter_mut().chain(self.redo.iter_mut()) {
+            snapshot.measure_runs = None;
+        }
+    }
+
     pub fn can_undo(&self) -> bool {
         !self.undo.is_empty()
     }
@@ -144,7 +176,11 @@ impl UndoStack {
                 break;
             };
             out.push(state.clone());
+            // A step that did not touch the measurements leaves them as the
+            // last one restored them.
+            let measures = current.measure_runs.take();
             current = state;
+            current.measure_runs = current.measure_runs.or(measures);
         }
         out
     }
@@ -196,6 +232,7 @@ mod tests {
             active_layer_id: None,
             area_codes: None,
             pages: None,
+            measure_runs: None,
         }
     }
 

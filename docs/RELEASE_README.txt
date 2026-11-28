@@ -1,3 +1,32 @@
+Sketch Rust 0.3.22 - Windows x64
+
+0.3.22 saves measurement lines with your sketch, each on its own page. In the
+Measure tool, Esc and Delete now drop only the line you are still taping, and
+Clear can be undone. Prints and picture exports leave measurements out.
+
+Sketch Rust 0.3.21 - Windows x64
+
+0.3.21 makes symbols easier to find: categories are listed down the side of a
+wider Insert panel (narrow windows use a drop-down), and search looks in all of
+them. A pinned panel now stays open until you close or unpin it. With the Select
+arrow you can now change, move or delete lines made by the Measure tool.
+
+Sketch Rust 0.3.20 - Windows x64
+
+0.3.20 fixes dragging rows in the Areas list. One line now shows where the row
+will land and the other rows hold still. Drop on the top half of a row to go
+above it, or the bottom half to go below.
+
+Sketch Rust 0.3.19 - Windows x64
+
+0.3.19 fixes two things. In the Areas list the top row is now the front layer;
+drawings look as they did. Right-clicking a symbol or text now picks it, not the
+area beneath, so Delete removes only that. The symbol library gains Corner
+Fireplace 36 and Sliding Closet Door 48, 60 and 96 (the 72 in door is renamed to
+match), and the double sink is now Double Kitchen Sink 33 under Kitchen. The
+lopsided corner fireplace from imported ACI Sketch and RapidSketch files is
+replaced with Corner Fireplace 36, including in sketches already imported.
+
 Sketch Rust 0.3.18 - Windows x64
 
 0.3.18 fixes missing interior walls when importing ACI Sketch and RapidSketch

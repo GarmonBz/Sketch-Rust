@@ -1966,7 +1966,10 @@ fn draw_texts(frame: &mut Frame, scene: &Scene) {
 fn draw_measure(frame: &mut Frame, scene: &Scene) {
     let color = crate::theme::hex(0xF6AD55);
     let stroke = Stroke::default().with_color(color).with_width(1.5);
-    for run in scene.measure_runs {
+    for (i, run) in scene.measure_runs.iter().enumerate() {
+        if scene.selection.measure == Some(i) {
+            continue;
+        }
         for pair in run.windows(2) {
             let a = scene.screen(pair[0]);
             let b = scene.screen(pair[1]);
@@ -1982,6 +1985,13 @@ fn draw_measure(frame: &mut Frame, scene: &Scene) {
             );
         }
     }
+    if let Some(run) = scene
+        .selection
+        .measure
+        .and_then(|i| scene.measure_runs.get(i))
+    {
+        draw_picked_measure(frame, scene, run);
+    }
     // current run
     for pair in scene.measure_points.windows(2) {
         let a = scene.screen(pair[0]);
@@ -1996,6 +2006,45 @@ fn draw_measure(frame: &mut Frame, scene: &Scene) {
             iced::Size::new(6.0, 6.0),
             color,
         );
+    }
+}
+
+/// The selected measurement: highlighted, with handles big enough to drag and
+/// the length of each leg.
+fn draw_picked_measure(frame: &mut Frame, scene: &Scene, run: &[Pt]) {
+    let stroke = Stroke::default().with_color(SELECT_LINE).with_width(2.5);
+    for leg in run.windows(2) {
+        let (a, b) = (scene.screen(leg[0]), scene.screen(leg[1]));
+        frame.stroke(&Path::line(a, b), stroke);
+    }
+    for p in run {
+        let s = scene.screen(*p);
+        frame.fill_rectangle(
+            Point::new(s.x - 5.0, s.y - 5.0),
+            Size::new(10.0, 10.0),
+            SELECT_LINE,
+        );
+    }
+    for leg in run.windows(2) {
+        let (a, b) = (scene.screen(leg[0]), scene.screen(leg[1]));
+        let label = scene.drawing.options.units.length(distance(leg[0], leg[1]));
+        let middle = Point::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0);
+        let width = label.chars().count() as f32 * 7.0 + 12.0;
+        frame.fill_rectangle(
+            Point::new(middle.x - width / 2.0, middle.y - 10.0),
+            Size::new(width, 20.0),
+            SELECT_LINE,
+        );
+        frame.fill_text(Text {
+            content: label,
+            position: middle,
+            color: Color::WHITE,
+            size: Pixels(12.0),
+            font: ARIAL,
+            align_x: Alignment::Center,
+            align_y: Vertical::Center,
+            ..Text::default()
+        });
     }
 }
 

@@ -38,6 +38,9 @@ pub struct Selection {
     pub dimensions: HashSet<i64>,
     /// `state.activeLineEndpoint` — the handle a Length edit or a drag moves.
     pub active_endpoint: Option<(i64, bool)>,
+    /// A picked tape measurement, by its place in the list. It is picked on
+    /// its own, never as part of a group.
+    pub measure: Option<usize>,
 }
 
 impl Selection {
@@ -50,6 +53,7 @@ impl Selection {
             && self.area_sizes.is_empty()
             && self.dimensions.is_empty()
             && self.chains.is_empty()
+            && self.measure.is_none()
     }
 
     /// `clearSelection`.
@@ -63,6 +67,7 @@ impl Selection {
         self.dimensions.clear();
         self.chains.clear();
         self.active_endpoint = None;
+        self.measure = None;
     }
 
     /// Adds everything `other` holds (a fence's position-picked entities).

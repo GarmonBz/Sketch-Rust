@@ -8,6 +8,10 @@ impl App {
         self.save_current_page();
         let branch = self.layers.descendant_layer_ids(id);
         let mut page = self.page_to_save(self.pages.page());
+        // Tape measurements belong to the page, not to a layer.
+        if let Some(page) = page.as_object_mut() {
+            page.remove("tapeMeasurements");
+        }
         // page_to_save's numeric conversion applies only to labels/symbols;
         // lines and polygons already carry named IDs.
         page["lines"] = serde_json::to_value(&self.drawing.lines).unwrap();
