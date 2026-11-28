@@ -509,6 +509,129 @@ impl Document {
     }
 }
 
+/// The library symbol that stands in for the programs' corner fireplace.
+pub const CORNER_FIREPLACE_ID: &str = "custom/fireplace-corner-36";
+/// Where that drawing's wall corner is, in its own inches. Its walls run from
+/// there toward +x and -y.
+pub const CORNER_FIREPLACE_WALL_CORNER: (f64, f64) = (-28.2144, 28.2144);
+
+/// Where an imported corner fireplace's wall corner belongs, in the drawing's
+/// own inches, and how far clockwise to turn the library one to face the same
+/// way. The file's size is far out of square, and its longer side would reach
+/// through a wall, so the corner is that of a square as wide as the shorter
+/// side, about the same centre.
+fn fireplace_corner(def: &Def) -> Option<(SymbolPoint, f64)> {
+    let imported = def.category == SYMBOL_CATEGORY
+        && def.name.eq_ignore_ascii_case("corner")
+        && def.description.eq_ignore_ascii_case("fireplaces corner");
+    if !imported {
+        return None;
+    }
+    // The first closed three-point outline is the unit itself.
+    let outline = def.geometry.iter().find_map(|e| {
+        let v = e.vertices.as_deref()?;
+        (e.closed == Some(true) && v.len() == 3).then_some(v)
+    })?;
+    (0..3).find_map(|i| {
+        let (at, a, b) = (outline[i], outline[(i + 1) % 3], outline[(i + 2) % 3]);
+        let level = |p: Vertex| (p.y - at.y).abs() < 0.01;
+        let upright = |p: Vertex| (p.x - at.x).abs() < 0.01;
+        let (across, along) = if level(a) && upright(b) {
+            (a.x - at.x, b.y - at.y)
+        } else if level(b) && upright(a) {
+            (b.x - at.x, a.y - at.y)
+        } else {
+            return None;
+        };
+        // The library drawing's walls run right and down from its corner.
+        let turn = match (across > 0.0, along > 0.0) {
+            (true, false) => 0.0,
+            (false, false) => 90.0,
+            (false, true) => 180.0,
+            (true, true) => 270.0,
+        };
+        let half = across.abs().min(along.abs()) / 2.0;
+        let corner = SymbolPoint {
+            x: at.x + across / 2.0 - half.copysign(across),
+            y: at.y + along / 2.0 - half.copysign(along),
+        };
+        Some((corner, turn))
+    })
+}
+
+/// Swap the corner fireplace that comes in with a RapidSketch or ACI Sketch
+/// file for the library's own, in a save model. The files store it stretched
+/// out of square. Each one goes in its wall corner, facing the same way.
+/// Returns how many placed symbols changed.
+pub fn replace_imported_fireplaces(model: &mut Value) -> usize {
+    let Some(definitions) = model
+        .pointer("/settings/customSymbols")
+        .and_then(Value::as_object)
+    else {
+        return 0;
+    };
+    let old: Vec<(String, SymbolPoint, f64)> = definitions
+        .iter()
+        .filter_map(|(id, value)| {
+            let def: Def = serde_json::from_value(value.clone()).ok()?;
+            fireplace_corner(&def).map(|(corner, turn)| (id.clone(), corner, turn))
+        })
+        .collect();
+    if old.is_empty() {
+        return 0;
+    }
+    // Where a point of a placed drawing lands on the page.
+    let on_page = |p: SymbolPoint, x: f64, y: f64, rotation: f64, scale: f64, flip: bool| {
+        let at = SymbolBounds {
+            min_x: p.x,
+            min_y: p.y,
+            max_x: p.x,
+            max_y: p.y,
+        };
+        world_corners(at, x, y, rotation, scale, flip)[0]
+    };
+    let mut changed = 0;
+    let pages = model.get_mut("pages").and_then(Value::as_array_mut);
+    for page in pages.into_iter().flatten() {
+        let symbols = page.get_mut("symbols").and_then(Value::as_array_mut);
+        for symbol in symbols.into_iter().flatten() {
+            let Ok(placed) = serde_json::from_value::<Placed>(symbol.clone()) else {
+                continue;
+            };
+            let Some(&(_, corner, turn)) = old.iter().find(|(id, ..)| *id == placed.symbol_type)
+            else {
+                continue;
+            };
+            let scale = placed.scale.filter(|s| *s > 0.0).unwrap_or(1.0);
+            let (rotation, flip) = (placed.rotation, placed.flip_h);
+            let wall_corner = on_page(corner, placed.x, placed.y, rotation, scale, flip);
+            // A mirrored symbol turns the other way.
+            let rotation = if flip {
+                rotation - turn
+            } else {
+                rotation + turn
+            }
+            .rem_euclid(360.0);
+            let (x, y) = CORNER_FIREPLACE_WALL_CORNER;
+            let offset = on_page(SymbolPoint { x, y }, 0.0, 0.0, rotation, scale, flip);
+            symbol["symbolType"] = json!(CORNER_FIREPLACE_ID);
+            symbol["x"] = json!(wall_corner.x - offset.x);
+            symbol["y"] = json!(wall_corner.y - offset.y);
+            symbol["rotation"] = json!(rotation);
+            changed += 1;
+        }
+    }
+    if let Some(definitions) = model
+        .pointer_mut("/settings/customSymbols")
+        .and_then(Value::as_object_mut)
+    {
+        for (id, ..) in &old {
+            definitions.remove(id);
+        }
+    }
+    changed
+}
+
 // ---------------------------------------------------------------------------
 // Export
 // ---------------------------------------------------------------------------

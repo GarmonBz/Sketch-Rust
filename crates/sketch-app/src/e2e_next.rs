@@ -3535,7 +3535,7 @@ fn p12_symbol_library_and_shape_editing_across_sizes() {
             let cmd = crate::ui::commands::find("symbol-library").unwrap();
             let _ = app.update((cmd.run)(&app));
             assert!(app.ui.symbol_library.open);
-            assert_eq!(app.symbols_lib().library.symbols.len(), 499);
+            assert_eq!(app.symbols_lib().library.symbols.len(), 500);
             assert_eq!(app.symbols_lib().categories.len(), 18);
 
             let first_sym_id = app.ui.symbol_library.focused.clone().unwrap();
@@ -3705,7 +3705,7 @@ fn p12_symbol_library_and_shape_editing_across_sizes() {
             assert!(report.conflicts.contains(&desk_id));
             let _ = std::fs::remove_dir_all(&tmp_dir);
 
-            // Delete a category (writes symbols.json.bak) then Restore original library -> 499 symbols.
+            // Delete a category (writes symbols.json.bak) then Restore original library -> 500 symbols.
             let del_cat = app.symbols_lib().categories[0].key.clone();
             let _ = app.update(Message::Ui(UiMsg::SymbolLibrary(SymMsg::Open(None))));
             let _ = app.update(Message::Ui(UiMsg::SymbolLibrary(
@@ -3729,7 +3729,7 @@ fn p12_symbol_library_and_shape_editing_across_sizes() {
                 SymMsg::RequestRestoreOriginal,
             )));
             let _ = app.update(Message::Ui(UiMsg::SymbolLibrary(SymMsg::Confirm)));
-            assert_eq!(app.symbols_lib().library.symbols.len(), 499);
+            assert_eq!(app.symbols_lib().library.symbols.len(), 500);
             assert_eq!(app.symbols_lib().categories.len(), 18);
             assert_eq!(app.ui.symbol_library.category, ALL_KEY);
         });

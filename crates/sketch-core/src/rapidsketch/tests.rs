@@ -216,6 +216,89 @@ fn a_positive_arc_height_stands_left_of_travel_with_y_up() {
 }
 
 #[test]
+fn the_imported_corner_fireplace_becomes_the_library_one_in_the_same_corner() {
+    use crate::symbols::{world_corners, Bounds};
+    let at = |x: f64, y: f64, placed: &serde_json::Value| {
+        let bounds = Bounds {
+            min_x: x,
+            min_y: y,
+            max_x: x,
+            max_y: y,
+        };
+        world_corners(
+            bounds,
+            placed["x"].as_f64().unwrap(),
+            placed["y"].as_f64().unwrap(),
+            placed["rotation"].as_f64().unwrap(),
+            placed["scale"].as_f64().unwrap(),
+            placed["flipH"].as_bool().unwrap(),
+        )[0]
+    };
+    // Which way a wall runs from the corner, to the nearest whole step.
+    let way = |from: Pt, to: Pt| {
+        let (dx, dy) = (to.x - from.x, to.y - from.y);
+        let length = dx.hypot(dy);
+        ((dx / length).round() as i32, (dy / length).round() as i32)
+    };
+    // A stretched right triangle with its square corner in each quadrant.
+    for (sx, sy) in [(-1.0, 1.0), (1.0, 1.0), (1.0, -1.0), (-1.0, -1.0)] {
+        let (cx, cy) = (23.0 * sx, 39.0 * sy);
+        for (rotation, flip) in [(0.0, false), (270.0, false), (90.0, true), (180.0, true)] {
+            let outline = serde_json::json!([
+                {"x": cx, "y": -cy}, {"x": cx, "y": cy}, {"x": -cx, "y": cy}
+            ]);
+            let placed = serde_json::json!({
+                "id": 5, "symbolType": "rapidsketch/fireplaces-corner-1", "x": 12.0,
+                "y": -7.0, "rotation": rotation, "scale": 1.0, "flipH": flip
+            });
+            let mut model = serde_json::json!({
+                "pages": [{"symbols": [placed.clone()]}],
+                "settings": {"customSymbols": {"rapidsketch/fireplaces-corner-1": {
+                    "id": "rapidsketch/fireplaces-corner-1", "category": "rapidsketch",
+                    "categoryName": "RapidSketch imports", "name": "Corner",
+                    "description": "Fireplaces Corner",
+                    "geometry": [{"entityType": "POLYLINE", "closed": true, "vertices": outline}]
+                }}}
+            });
+            assert_eq!(replace_imported_fireplaces(&mut model), 1);
+            assert!(model["settings"]["customSymbols"]
+                .as_object()
+                .unwrap()
+                .is_empty());
+            let new = &model["pages"][0]["symbols"][0];
+            assert_eq!(new["symbolType"], CORNER_FIREPLACE_ID);
+            assert_eq!(new["id"], 5);
+
+            // 46 x 78 in: the corner of the 46 in square about the centre.
+            let old_corner = at(cx, 23.0 * sy, &placed);
+            let square_corner = at(cx, cy, &placed);
+            let (x, y) = CORNER_FIREPLACE_WALL_CORNER;
+            let new_corner = at(x, y, new);
+            assert!(near_pt(old_corner, new_corner, 1e-6), "{new_corner:?}");
+            let mut old_walls = [
+                way(square_corner, at(-cx, cy, &placed)),
+                way(square_corner, at(cx, -cy, &placed)),
+            ];
+            let mut new_walls = [
+                way(new_corner, at(x + 48.0, y, new)),
+                way(new_corner, at(x, y - 48.0, new)),
+            ];
+            old_walls.sort_unstable();
+            new_walls.sort_unstable();
+            assert_eq!(old_walls, new_walls, "({sx}, {sy}) at {rotation}, {flip}");
+        }
+    }
+}
+
+#[test]
+fn other_imported_symbols_are_left_alone() {
+    let mut model = exported().to_model("sample").model;
+    let before = model.clone();
+    assert_eq!(replace_imported_fireplaces(&mut model), 0);
+    assert_eq!(model, before);
+}
+
+#[test]
 fn a_garage_named_by_its_size_is_a_garage() {
     let named = |name: &str| {
         let wall = serde_json::json!({

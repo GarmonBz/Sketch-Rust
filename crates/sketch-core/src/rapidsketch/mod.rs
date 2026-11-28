@@ -10,7 +10,10 @@
 mod convert;
 mod write;
 
-pub use convert::{from_page, RapidImport};
+pub use convert::{
+    from_page, replace_imported_fireplaces, RapidImport, CORNER_FIREPLACE_ID,
+    CORNER_FIREPLACE_WALL_CORNER,
+};
 pub use write::write;
 
 use crate::geometry::Pt;

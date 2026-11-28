@@ -328,12 +328,12 @@ mod tests {
             return;
         };
         let library = SymbolLibrary::load(&path).expect("library loads");
-        assert_eq!(library.symbols.len(), 499);
-        assert_eq!(library.symbol_count, 499);
+        assert_eq!(library.symbols.len(), 500);
+        assert_eq!(library.symbol_count, 500);
         assert_eq!(library.categories.len(), 19);
         assert_eq!(library.default_favorites.len(), 18);
         assert_eq!(library.version, 1);
-        assert_eq!(library.symbol_count(), 499);
+        assert_eq!(library.symbol_count(), 500);
     }
 
     #[test]
@@ -359,6 +359,61 @@ mod tests {
             in_doors,
             "the double garage door is listed under Doors & windows"
         );
+    }
+
+    #[test]
+    fn corner_fireplace_fits_a_square_corner() {
+        let Some(path) = real_library_path() else {
+            return;
+        };
+        let library = SymbolLibrary::load(&path).expect("library loads");
+        let unit = &library.symbols["custom/fireplace-corner-36"];
+        assert_eq!(unit.label, "Corner Fireplace 36");
+        let listed = library.categories.iter().any(|c| {
+            c.key == "fireplaces"
+                && c.symbol_ids
+                    .iter()
+                    .any(|i| i == "custom/fireplace-corner-36")
+        });
+        assert!(
+            listed,
+            "the corner fireplace is listed under Fireplaces & structure"
+        );
+        // The first outline is the body: the wall corner at the top left (y up),
+        // then 48 in along each wall.
+        let body = unit.geometry[0].vertices.as_ref().expect("body outline");
+        let corner = &body[0];
+        // Imported sketches are placed against this point.
+        let (x, y) = crate::rapidsketch::CORNER_FIREPLACE_WALL_CORNER;
+        assert!((corner.x - x).abs() < 1e-3 && (corner.y - y).abs() < 1e-3);
+        assert!((body[1].x - corner.x - 48.0).abs() < 1e-3);
+        assert!((body[1].y - corner.y).abs() < 1e-3);
+        assert!((corner.y - body[4].y - 48.0).abs() < 1e-3);
+        assert!((body[4].x - corner.x).abs() < 1e-3);
+        // Everything stays inside the two walls, and the whole drawing mirrors
+        // across the line that halves the corner.
+        let points: Vec<(f64, f64)> = unit
+            .geometry
+            .iter()
+            .flat_map(|e| {
+                e.vertices
+                    .iter()
+                    .flatten()
+                    .map(|v| (v.x, v.y))
+                    .chain(e.start_point.iter().map(|p| (p.x, p.y)))
+                    .chain(e.end_point.iter().map(|p| (p.x, p.y)))
+            })
+            .map(|(x, y)| (x - corner.x, y - corner.y))
+            .collect();
+        for &(x, y) in &points {
+            assert!(x > -1e-3 && y < 1e-3, "({x}, {y}) is behind a wall");
+            assert!(
+                points
+                    .iter()
+                    .any(|&(u, v)| (u + y).abs() < 1e-3 && (v + x).abs() < 1e-3),
+                "({x}, {y}) has no mirror image"
+            );
+        }
     }
 
     #[test]
@@ -390,7 +445,7 @@ mod tests {
         if let Some(path) = real_library_path() {
             assert_eq!(resolve(Some(&path)), path);
             let library = SymbolLibrary::load_resolved(Some(&path)).expect("load_resolved");
-            assert_eq!(library.symbols.len(), 499);
+            assert_eq!(library.symbols.len(), 500);
         }
         // With no file anywhere, resolution still returns a usable candidate path.
         let fallback = resolve(None);

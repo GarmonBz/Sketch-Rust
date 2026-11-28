@@ -10941,6 +10941,12 @@ impl App {
             .unwrap_or_default();
         self.save_as_sketchie = false;
         self.sketchy_backing = sketchy::Backing::from_model(&data);
+        // The lopsided corner fireplace of an imported sketch becomes the
+        // library's, as long as this library has it.
+        let fireplace = sketch_core::rapidsketch::CORNER_FIREPLACE_ID;
+        if self.symbols_lib().symbol(fireplace).is_some() {
+            sketch_core::rapidsketch::replace_imported_fireplaces(&mut data);
+        }
         if let Some(custom) = data.pointer("/settings/customSymbols").and_then(|v| {
             serde_json::from_value::<
                     std::collections::BTreeMap<String, sketch_core::symbols::Symbol>,
